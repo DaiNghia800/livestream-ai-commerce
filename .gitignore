@@ -25,3 +25,4 @@ test-results/
 *.tfvars.json
 .DS_Store
 Thumbs.db
+*.tsbuildinfo

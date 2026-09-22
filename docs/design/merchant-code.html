@@ -1,0 +1,982 @@
+<!DOCTYPE html><html class="light" lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>LiveOrder AI - Tổng quan hoạt động Livestream &amp; Đơn hàng</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet">
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS with CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-container-lowest": "#ffffff",
+            "on-tertiary-fixed": "#001f26",
+            "on-tertiary-container": "#93e8ff",
+            "inverse-primary": "#c3c0ff",
+            "outline": "#777587",
+            "inverse-surface": "#283044",
+            "primary-container": "#4f46e5",
+            "surface-dim": "#d2d9f4",
+            "surface-bright": "#faf8ff",
+            "on-surface": "#131b2e",
+            "outline-variant": "#c7c4d8",
+            "tertiary": "#00505f",
+            "on-primary": "#ffffff",
+            "error": "#ba1a1a",
+            "surface-container-highest": "#dae2fd",
+            "on-background": "#131b2e",
+            "tertiary-container": "#006a7c",
+            "secondary-container": "#8a4cfc",
+            "surface": "#faf8ff",
+            "surface-container": "#eaedff",
+            "secondary": "#712ae2",
+            "secondary-fixed-dim": "#d2bbff",
+            "primary-fixed-dim": "#c3c0ff",
+            "on-secondary-container": "#fffbff",
+            "surface-container-high": "#e2e7ff",
+            "inverse-on-surface": "#eef0ff",
+            "primary": "#3525cd",
+            "secondary-fixed": "#eaddff",
+            "on-secondary-fixed": "#25005a",
+            "on-error": "#ffffff",
+            "on-secondary-fixed-variant": "#5a00c6",
+            "error-container": "#ffdad6",
+            "on-tertiary-fixed-variant": "#004e5c",
+            "tertiary-fixed-dim": "#4cd7f6",
+            "on-primary-container": "#dad7ff",
+            "on-error-container": "#93000a",
+            "on-tertiary": "#ffffff",
+            "on-secondary": "#ffffff",
+            "surface-variant": "#dae2fd",
+            "tertiary-fixed": "#acedff",
+            "on-surface-variant": "#464555",
+            "primary-fixed": "#e2dfff",
+            "on-primary-fixed": "#0f0069",
+            "surface-tint": "#4d44e3",
+            "background": "#faf8ff",
+            "surface-container-low": "#f2f3ff",
+            "on-primary-fixed-variant": "#3323cc"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-md": "0.75rem",
+            "space-xl": "1.5rem",
+            "space-lg": "1rem",
+            "space-xs": "0.25rem",
+            "margin-desktop": "2rem",
+            "space-2xs": "0.125rem",
+            "gutter-desktop": "1.5rem",
+            "space-sm": "0.5rem",
+            "space-2xl": "2rem",
+            "margin": "1rem",
+            "space-3xl": "3rem",
+            "gutter": "1rem"
+          },
+          "fontFamily": {
+            "body-sm": ["Inter"],
+            "label-md": ["Inter"],
+            "label-sm": ["Inter"],
+            "headline-md": ["Plus Jakarta Sans"],
+            "body-md": ["Inter"],
+            "body-lg": ["Inter"],
+            "display-lg-mobile": ["Plus Jakarta Sans"],
+            "metric-num": ["Plus Jakarta Sans"],
+            "display-lg": ["Plus Jakarta Sans"],
+            "headline-lg": ["Plus Jakarta Sans"],
+            "title-sm": ["Plus Jakarta Sans"]
+          },
+          "fontSize": {
+            "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+            "label-md": ["13px", { "lineHeight": "18px", "fontWeight": "500" }],
+            "label-sm": ["11px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }],
+            "headline-md": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+            "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+            "display-lg-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "metric-num": ["28px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "display-lg": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+            "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "title-sm": ["16px", { "lineHeight": "24px", "fontWeight": "600" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #c7c4d8;
+      border-radius: 9999px;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body-md text-body-md antialiased min-h-screen">
+<!-- SIDEBAR (Shared Component: SideNavBar) -->
+<aside class="fixed left-0 top-0 h-screen w-60 z-40 flex flex-col justify-between p-4 bg-inverse-surface dark:bg-inverse-surface shadow-sm dark:shadow-none border-r border-outline-variant">
+<div class="flex flex-col gap-4">
+<!-- Header Brand -->
+<div class="flex items-center gap-3 px-2 py-1">
+<div class="w-9 h-9 rounded-lg bg-primary-container flex items-center justify-center text-on-primary shadow-sm">
+<span class="material-symbols-outlined text-[22px]">smart_toy</span>
+</div>
+<div class="flex flex-col">
+<span class="text-headline-md font-headline-md font-bold text-inverse-on-surface leading-tight">LiveOrder AI</span>
+<span class="text-[11px] text-outline-variant font-label-sm leading-tight">Hệ thống Livestream Bán hàng</span>
+</div>
+</div>
+<!-- Quick Action CTA -->
+<button class="w-full h-10 px-4 bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center justify-center gap-2 hover:bg-primary-container transition-all duration-150 active:scale-[0.99] shadow-sm">
+<span class="material-symbols-outlined text-[18px]">live_tv</span>
+<span>Bắt đầu Live</span>
+</button>
+<!-- Navigation Tabs (10 items, Tổng quan is active) -->
+<nav class="flex flex-col space-y-1 mt-1">
+<!-- 1. Tổng quan (ACTIVE) -->
+<a class="flex items-center gap-3 bg-primary text-on-primary rounded-lg px-3 py-2 font-label-md text-label-md transition-all duration-150 active:scale-[0.99]" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span>Tổng quan</span>
+</a>
+<!-- 2. Livestream -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">live_tv</span>
+<span class="flex-1">Livestream</span>
+<span class="w-2 h-2 rounded-full bg-error animate-pulse"></span>
+</a>
+<!-- 3. Đơn hàng -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">shopping_cart</span>
+<span class="flex-1">Đơn hàng</span>
+<span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-surface-container-highest/20 text-inverse-on-surface">142</span>
+</a>
+<!-- 4. Sản phẩm -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">inventory_2</span>
+<span>Sản phẩm</span>
+</a>
+<!-- 5. Tồn kho -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">warehouse</span>
+<span class="flex-1">Tồn kho</span>
+<span class="w-2 h-2 rounded-full bg-amber-400"></span>
+</a>
+<!-- 6. Thanh toán -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">payments</span>
+<span>Thanh toán</span>
+</a>
+<!-- 7. Vận chuyển -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">local_shipping</span>
+<span>Vận chuyển</span>
+</a>
+<!-- 8. Thông báo -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+<span class="flex-1">Thông báo</span>
+<span class="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary text-on-primary">5</span>
+</a>
+<!-- 9. Báo cáo -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">bar_chart</span>
+<span>Báo cáo</span>
+</a>
+<!-- 10. Cài đặt -->
+<a class="flex items-center gap-3 text-outline-variant dark:text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span>Cài đặt</span>
+</a>
+</nav>
+</div>
+<!-- Sidebar Footer -->
+<div class="pt-4 border-t border-outline-variant/20 flex flex-col gap-2">
+<a class="flex items-center gap-3 text-outline-variant hover:text-inverse-on-surface px-3 py-2 font-label-md text-label-md hover:bg-surface-container-highest/10 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+<span>Hỗ trợ kỹ thuật</span>
+</a>
+<div class="px-3 py-2 flex items-center gap-3 bg-surface-container-highest/5 rounded-lg">
+<div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+<div class="text-[11px] text-outline-variant font-label-sm">
+<span>Engine v3.4.2</span> • <span class="text-emerald-400">Live Active</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- TOPBAR (Shared Component: TopNavBar) -->
+<header class="fixed top-0 right-0 left-60 z-30 h-16 flex items-center justify-between px-6 bg-surface-container-lowest dark:bg-surface-container-lowest border-b border-outline-variant shadow-sm">
+<!-- Left: Search input -->
+<div class="flex items-center w-80">
+<div class="relative w-full">
+<span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[18px]">search</span>
+</span>
+<input class="w-full h-10 pl-9 pr-4 text-body-sm font-body-sm bg-surface rounded-lg border border-outline-variant/60 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-outline/70" placeholder="Tìm theo tên, SĐT, hoặc mã đơn..." type="text">
+</div>
+</div>
+<!-- Center: Architecture System Status Badges (IVS Live / Gemini AI / Amazon SQS) -->
+<div class="hidden xl:flex items-center gap-3 bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/40">
+<!-- IVS Live Stream Engine -->
+<div class="flex items-center gap-1.5">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+</span>
+<span class="text-label-sm font-label-sm text-on-surface">IVS Live:</span>
+<span class="text-label-sm font-label-sm text-emerald-600 font-semibold">Online</span>
+</div>
+<span class="text-outline-variant">|</span>
+<!-- Google Gemini AI Chat Parser -->
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span class="text-label-sm font-label-sm text-on-surface">Gemini AI:</span>
+<span class="text-label-sm font-label-sm text-emerald-600 font-semibold">98.2%</span>
+</div>
+<span class="text-outline-variant">|</span>
+<!-- Amazon SQS Buffer Queue -->
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span class="text-label-sm font-label-sm text-on-surface">Amazon SQS:</span>
+<span class="text-label-sm font-label-sm text-emerald-600 font-semibold">140ms</span>
+</div>
+</div>
+<!-- Right Controls: Action & Profile -->
+<div class="flex items-center gap-3">
+<!-- Trailing Primary Action -->
+<button class="h-9 px-3.5 bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center gap-2 hover:bg-primary-container transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[18px]">shopping_bag</span>
+<span>Chốt đơn ngay</span>
+</button>
+<!-- Trailing Icon Actions -->
+<div class="flex items-center gap-1 border-l border-outline-variant/50 pl-2">
+<button class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors duration-150 relative" title="Thông báo hệ thống">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full ring-2 ring-surface-container-lowest"></span>
+</button>
+<button class="p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors duration-150" title="Đồng bộ kho">
+<span class="material-symbols-outlined text-[20px]">sync_alt</span>
+</button>
+</div>
+<!-- Shop Profile / Avatar Quản trị -->
+<div class="flex items-center gap-2.5 pl-2 border-l border-outline-variant/50">
+<div class="flex items-center justify-center w-8 h-8 rounded-full bg-primary-fixed text-on-primary-fixed font-bold text-label-md">
+          QN
+        </div>
+<div class="flex flex-col text-left">
+<span class="text-label-md font-label-md text-on-surface font-semibold leading-tight">Quản trị viên kho</span>
+<span class="text-[11px] text-on-surface-variant leading-tight">Kiot Bến Thành • Kho A</span>
+</div>
+<span class="material-symbols-outlined text-outline text-[18px]">expand_more</span>
+</div>
+</div>
+</header>
+<!-- MAIN CANVAS -->
+<main class="ml-60 pt-20 pb-12 px-6">
+<div class="max-w-[1600px] mx-auto space-y-6">
+<!-- TITLE BAR & BREADCRUMB -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div>
+<div class="flex items-center gap-2 text-on-surface-variant text-label-sm font-label-sm mb-1">
+<span>Bảng điều khiển</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-primary font-semibold">Tổng quan hệ thống</span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight">
+            Tổng quan hoạt động Livestream &amp; Đơn hàng
+          </h1>
+<p class="text-body-sm font-body-sm text-on-surface-variant mt-0.5">
+            Dữ liệu thời gian thực đồng bộ từ phiên phát trực tiếp, phân tích tự động bởi Gemini AI và điều phối SQS.
+          </p>
+</div>
+<!-- Filter Quick Period -->
+<div class="flex items-center gap-2">
+<div class="inline-flex bg-surface-container-low p-1 rounded-lg border border-outline-variant/50">
+<button class="px-3 py-1.5 text-label-sm font-label-sm rounded-md bg-surface-container-lowest text-primary font-semibold shadow-xs">Hôm nay</button>
+<button class="px-3 py-1.5 text-label-sm font-label-sm rounded-md text-on-surface-variant hover:text-on-surface">Phiên sáng (09:00)</button>
+<button class="px-3 py-1.5 text-label-sm font-label-sm rounded-md text-on-surface-variant hover:text-on-surface">Phiên tối (19:30)</button>
+</div>
+<button class="h-9 px-3 bg-surface-container-lowest border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg flex items-center gap-1.5 hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">refresh</span>
+<span>Làm mới</span>
+</button>
+</div>
+</div>
+<!-- KPI METRIC CARDS (6 CARDS with 12px / xl radius & slim border) -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+<!-- KPI 1: Livestream đang phát -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-sm flex flex-col justify-between hover:border-primary/40 transition-all">
+<div class="flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-on-surface-variant">Livestream đang phát</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200">
+<span class="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse"></span>
+              TRỰC TIẾP
+            </span>
+</div>
+<div class="mt-3 flex items-baseline justify-between">
+<span class="text-metric-num font-metric-num text-on-surface">2 <span class="text-title-sm font-title-sm font-normal text-on-surface-variant">phiên</span></span>
+<div class="p-2 rounded-lg bg-surface-container-low text-primary">
+<span class="material-symbols-outlined text-[20px]">sensors</span>
+</div>
+</div>
+<div class="mt-2 pt-2 border-t border-outline-variant/30 flex items-center text-[11px] text-on-surface-variant">
+<span class="text-emerald-600 font-semibold flex items-center">
+<span class="material-symbols-outlined text-[14px]">trending_up</span> +3,420
+            </span>
+<span class="ml-1">người đang xem</span>
+</div>
+</div>
+<!-- KPI 2: Đơn hàng hôm nay -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-sm flex flex-col justify-between hover:border-primary/40 transition-all">
+<div class="flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-on-surface-variant">Đơn hàng hôm nay</span>
+<span class="p-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+<span class="material-symbols-outlined text-[16px]">shopping_cart_checkout</span>
+</span>
+</div>
+<div class="mt-3 flex items-baseline justify-between">
+<span class="text-metric-num font-metric-num text-on-surface tabular-nums">1,248</span>
+<span class="text-label-sm font-label-sm text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-200">+18.4%</span>
+</div>
+<div class="mt-2 pt-2 border-t border-outline-variant/30 text-[11px] text-on-surface-variant">
+            Tăng 215 đơn so với hôm qua
+          </div>
+</div>
+<!-- KPI 3: Chờ xác nhận -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-sm flex flex-col justify-between hover:border-amber-400/50 transition-all">
+<div class="flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-on-surface-variant">Chờ xác nhận</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              CẦN XỬ LÝ
+            </span>
+</div>
+<div class="mt-3 flex items-baseline justify-between">
+<span class="text-metric-num font-metric-num text-on-surface tabular-nums">142 <span class="text-title-sm font-title-sm font-normal text-on-surface-variant">đơn</span></span>
+<div class="p-2 rounded-lg bg-amber-50 text-amber-600">
+<span class="material-symbols-outlined text-[20px]">pending_actions</span>
+</div>
+</div>
+<div class="mt-2 pt-2 border-t border-outline-variant/30 text-[11px] text-amber-700 font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">warning</span>
+<span>28 khách gọi chốt ngay</span>
+</div>
+</div>
+<!-- KPI 4: Đã thanh toán -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-sm flex flex-col justify-between hover:border-primary/40 transition-all">
+<div class="flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-on-surface-variant">Đã thanh toán</span>
+<span class="p-1 rounded-md bg-indigo-50 text-primary border border-indigo-200">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+</span>
+</div>
+<div class="mt-3 flex items-baseline justify-between">
+<span class="text-metric-num font-metric-num text-on-surface tabular-nums">986</span>
+<span class="text-label-sm font-label-sm text-primary bg-primary-fixed px-1.5 py-0.5 rounded font-semibold">79% TL</span>
+</div>
+<div class="mt-2 pt-2 border-t border-outline-variant/30 text-[11px] text-on-surface-variant">
+            79% tỷ lệ thanh toán thành công
+          </div>
+</div>
+<!-- KPI 5: Doanh thu hôm nay -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-sm flex flex-col justify-between hover:border-primary/40 transition-all">
+<div class="flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-on-surface-variant">Doanh thu hôm nay</span>
+<span class="text-label-sm font-label-sm text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-200">+24.5%</span>
+</div>
+<div class="mt-3 flex flex-col">
+<span class="text-headline-md font-headline-md font-bold text-primary tabular-nums tracking-tight">348,500,000 ₫</span>
+</div>
+<div class="mt-2 pt-2 border-t border-outline-variant/30 text-[11px] text-on-surface-variant">
+            Mục tiêu ca: 400,000,000 ₫ (87%)
+          </div>
+</div>
+<!-- KPI 6: Cảnh báo tồn kho -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-sm flex flex-col justify-between hover:border-error/50 transition-all">
+<div class="flex items-center justify-between">
+<span class="text-label-sm font-label-sm text-on-surface-variant">Cảnh báo tồn kho</span>
+<span class="p-1 rounded-md bg-rose-50 text-error border border-rose-200">
+<span class="material-symbols-outlined text-[16px]">inventory</span>
+</span>
+</div>
+<div class="mt-3 flex items-baseline justify-between">
+<span class="text-metric-num font-metric-num text-error tabular-nums">6 <span class="text-title-sm font-title-sm font-normal text-on-surface-variant">SKU</span></span>
+<span class="text-[10px] font-bold uppercase tracking-wider bg-rose-100 text-error px-1.5 py-0.5 rounded">SẮP HẾT</span>
+</div>
+<div class="mt-2 pt-2 border-t border-outline-variant/30 text-[11px] text-error font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">notification_important</span>
+<span>Khóa chốt Live: Size L AO01</span>
+</div>
+</div>
+</section>
+<!-- 2 TECHNICAL SYSTEM WIDGETS (COMPACT, ARCHITECTURAL, REFINED) -->
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<!-- Widget 1: Google Gemini Chat Stream Parsing Engine -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/70 shadow-sm hover:shadow transition-shadow">
+<div class="flex items-center justify-between pb-3 border-b border-outline-variant/40">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">smart_toy</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="text-title-sm font-title-sm text-on-surface">AI xử lý Chat (Google Gemini)</h3>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+                    Độ chính xác: 98.2%
+                  </span>
+</div>
+<p class="text-[11px] text-on-surface-variant">Trích xuất cú pháp đặt hàng từ comment livestream thời gian thực</p>
+</div>
+</div>
+<span class="text-[11px] font-mono text-outline bg-surface-container-low px-2 py-1 rounded">Model: gemini-1.5-flash</span>
+</div>
+<div class="grid grid-cols-5 gap-2 mt-3 text-center">
+<div class="p-2.5 rounded-lg bg-surface-container-low/70 border border-outline-variant/30">
+<span class="text-[11px] text-on-surface-variant block">Tin nhắn đã nhận</span>
+<span class="text-body-lg font-headline-md font-bold text-on-surface tabular-nums">18,450</span>
+</div>
+<div class="p-2.5 rounded-lg bg-amber-50/70 border border-amber-200/50">
+<span class="text-[11px] text-amber-800 block">Đang phân tích</span>
+<span class="text-body-lg font-headline-md font-bold text-amber-700 tabular-nums">12</span>
+</div>
+<div class="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200/50">
+<span class="text-[11px] text-indigo-800 block">Ý định mua</span>
+<span class="text-body-lg font-headline-md font-bold text-primary tabular-nums">2,180</span>
+</div>
+<div class="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200/50">
+<span class="text-[11px] text-emerald-800 block">Đã tạo Pending</span>
+<span class="text-body-lg font-headline-md font-bold text-emerald-700 tabular-nums">1,840</span>
+</div>
+<div class="p-2.5 rounded-lg bg-surface-container-low/70 border border-outline-variant/30">
+<span class="text-[11px] text-on-surface-variant block">Lỗi / Bỏ qua</span>
+<span class="text-body-lg font-headline-md font-bold text-outline tabular-nums">85</span>
+</div>
+</div>
+</div>
+<!-- Widget 2: Amazon SQS Message Queue & Throttling -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/70 shadow-sm hover:shadow transition-shadow">
+<div class="flex items-center justify-between pb-3 border-b border-outline-variant/40">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
+<span class="material-symbols-outlined text-[20px]">layers</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="text-title-sm font-title-sm text-on-surface">Hàng đợi Amazon SQS</h3>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Độ trễ TB: 140ms
+                  </span>
+</div>
+<p class="text-[11px] text-on-surface-variant">Bộ đệm xử lý phân luồng chống nghẽn đơn cao điểm livestream</p>
+</div>
+</div>
+<span class="text-[11px] font-mono text-outline bg-surface-container-low px-2 py-1 rounded">FIFO: order-events.fifo</span>
+</div>
+<div class="grid grid-cols-3 gap-3 mt-3">
+<div class="p-2.5 rounded-lg bg-surface-container-low/70 border border-outline-variant/30 flex items-center justify-between">
+<div>
+<span class="text-[11px] text-on-surface-variant block">Đang chờ (Queue)</span>
+<span class="text-body-lg font-headline-md font-bold text-on-surface tabular-nums">24 <span class="text-[12px] font-normal text-on-surface-variant">msgs</span></span>
+</div>
+<span class="material-symbols-outlined text-outline text-[22px]">hourglass_top</span>
+</div>
+<div class="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200/50 flex items-center justify-between">
+<div>
+<span class="text-[11px] text-indigo-800 block">Đang xử lý</span>
+<span class="text-body-lg font-headline-md font-bold text-primary tabular-nums">8 <span class="text-[12px] font-normal text-indigo-600">msgs</span></span>
+</div>
+<span class="material-symbols-outlined text-primary text-[22px]">sync</span>
+</div>
+<div class="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200/50 flex items-center justify-between">
+<div>
+<span class="text-[11px] text-emerald-800 block">Thất bại (DLQ)</span>
+<span class="text-body-lg font-headline-md font-bold text-emerald-700 tabular-nums">0 <span class="text-[12px] font-normal text-emerald-600">msgs</span></span>
+</div>
+<span class="material-symbols-outlined text-emerald-600 text-[22px]">check_circle</span>
+</div>
+</div>
+</div>
+</section>
+<!-- ANALYTICS: CHARTS & CONVERSION FUNNEL -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Left: Hourly Livestream Sales & Orders Chart (7 cols) -->
+<div class="lg:col-span-7 bg-surface-container-lowest rounded-xl p-5 border border-outline-variant/60 shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-4">
+<div>
+<h3 class="text-headline-md font-headline-md text-on-surface">Doanh thu &amp; Lượng đơn theo giờ</h3>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Phân tích nhịp độ chốt đơn phiên Live từ 18:00 đến 23:00</p>
+</div>
+<div class="flex items-center gap-3 text-label-sm font-label-sm">
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="text-on-surface-variant">Doanh thu (triệu ₫)</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-full bg-secondary-container"></span>
+<span class="text-on-surface-variant">Số lượng đơn</span>
+</div>
+</div>
+</div>
+<!-- Custom SVG High-density Bar/Line Chart -->
+<div class="relative w-full h-64 mt-2">
+<svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 600 220">
+<defs>
+<linearGradient id="areaGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#4f46e5" stop-opacity="0.25"></stop>
+<stop offset="100%" stop-color="#4f46e5" stop-opacity="0.0"></stop>
+</linearGradient>
+</defs>
+<!-- Grid Horizontal Lines -->
+<line stroke="#E2E8F0" stroke-dasharray="4 4" stroke-width="1" x1="40" x2="580" y1="20" y2="20"></line>
+<line stroke="#E2E8F0" stroke-dasharray="4 4" stroke-width="1" x1="40" x2="580" y1="70" y2="70"></line>
+<line stroke="#E2E8F0" stroke-dasharray="4 4" stroke-width="1" x1="40" x2="580" y1="120" y2="120"></line>
+<line stroke="#E2E8F0" stroke-dasharray="4 4" stroke-width="1" x1="40" x2="580" y1="170" y2="170"></line>
+<line stroke="#CBD5E1" stroke-width="1" x1="40" x2="580" y1="195" y2="195"></line>
+<!-- Y-Axis Labels -->
+<text fill="#94A3B8" font-family="Inter" font-size="10" text-anchor="end" x="32" y="24">100M</text>
+<text fill="#94A3B8" font-family="Inter" font-size="10" text-anchor="end" x="32" y="74">75M</text>
+<text fill="#94A3B8" font-family="Inter" font-size="10" text-anchor="end" x="32" y="124">50M</text>
+<text fill="#94A3B8" font-family="Inter" font-size="10" text-anchor="end" x="32" y="174">25M</text>
+<!-- Hourly Bars (Number of Orders) -->
+<!-- 18:00 -->
+<rect fill="#8a4cfc" height="50" opacity="0.4" rx="3" width="22" x="70" y="145"></rect>
+<!-- 19:00 -->
+<rect fill="#8a4cfc" height="85" opacity="0.4" rx="3" width="22" x="155" y="110"></rect>
+<!-- 20:00 (Peak Flash Deal) -->
+<rect fill="#8a4cfc" height="150" opacity="0.6" rx="3" width="22" x="240" y="45"></rect>
+<!-- 21:00 (Second Wave) -->
+<rect fill="#8a4cfc" height="135" opacity="0.6" rx="3" width="22" x="325" y="60"></rect>
+<!-- 22:00 -->
+<rect fill="#8a4cfc" height="90" opacity="0.4" rx="3" width="22" x="410" y="105"></rect>
+<!-- 23:00 (Wrap up) -->
+<rect fill="#8a4cfc" height="45" opacity="0.3" rx="3" width="22" x="495" y="150"></rect>
+<!-- Revenue Line Area -->
+<polygon fill="url(#areaGradient)" points="81,155 166,120 251,35 336,55 421,110 506,160 506,195 81,195"></polygon>
+<!-- Revenue Smooth Polyline -->
+<polyline fill="none" points="81,155 166,120 251,35 336,55 421,110 506,160" stroke="#3525cd" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"></polyline>
+<!-- Node Points -->
+<circle cx="81" cy="155" fill="#3525cd" r="4" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="166" cy="120" fill="#3525cd" r="4" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="251" cy="35" fill="#3525cd" r="6" stroke="#ffffff" stroke-width="2.5"></circle>
+<circle cx="336" cy="55" fill="#3525cd" r="4" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="421" cy="110" fill="#3525cd" r="4" stroke="#ffffff" stroke-width="2"></circle>
+<circle cx="506" cy="160" fill="#3525cd" r="4" stroke="#ffffff" stroke-width="2"></circle>
+<!-- X-Axis Labels -->
+<text fill="#64748B" font-family="Inter" font-size="11" text-anchor="middle" x="81" y="212">18:00</text>
+<text fill="#64748B" font-family="Inter" font-size="11" text-anchor="middle" x="166" y="212">19:00</text>
+<text fill="#3525cd" font-family="Inter" font-size="11" font-weight="bold" text-anchor="middle" x="251" y="212">20:00 (Đỉnh)</text>
+<text fill="#64748B" font-family="Inter" font-size="11" text-anchor="middle" x="336" y="212">21:00</text>
+<text fill="#64748B" font-family="Inter" font-size="11" text-anchor="middle" x="421" y="212">22:00</text>
+<text fill="#64748B" font-family="Inter" font-size="11" text-anchor="middle" x="506" y="212">23:00</text>
+</svg>
+</div>
+<div class="flex items-center justify-between pt-3 border-t border-outline-variant/30 text-body-sm font-body-sm text-on-surface-variant">
+<span>Phiên cao điểm ghi nhận: <strong class="text-on-surface">364 đơn/giờ</strong> tại khung giờ 20:15</span>
+<span class="text-primary font-semibold hover:underline cursor-pointer flex items-center gap-1">
+              Xem báo cáo chi tiết <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</span>
+</div>
+</div>
+<!-- Right: Real-time Conversion Funnel (5 cols) -->
+<div class="lg:col-span-5 bg-surface-container-lowest rounded-xl p-5 border border-outline-variant/60 shadow-sm flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between">
+<h3 class="text-headline-md font-headline-md text-on-surface">Phễu chuyển đổi Live</h3>
+<span class="text-label-sm font-label-sm px-2 py-0.5 bg-surface-container text-primary font-semibold rounded-full">
+                Tổng 18,450 tương tác
+              </span>
+</div>
+<p class="text-body-sm font-body-sm text-on-surface-variant mt-0.5">Hiệu quả phân giải comment thành đơn thanh toán</p>
+</div>
+<!-- Funnel Stages -->
+<div class="space-y-3 my-3">
+<!-- Stage 1: Chat -->
+<div class="space-y-1">
+<div class="flex justify-between text-body-sm font-body-sm">
+<span class="font-medium text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                  1. Bình luận Chat
+                </span>
+<span class="tabular-nums font-semibold text-on-surface">18,450 <span class="text-on-surface-variant font-normal">(100%)</span></span>
+</div>
+<div class="w-full bg-surface-container-low h-2.5 rounded-full overflow-hidden">
+<div class="bg-slate-500 h-full rounded-full" style="width: 100%;"></div>
+</div>
+</div>
+<!-- Stage 2: Ý định mua -->
+<div class="space-y-1">
+<div class="flex justify-between text-body-sm font-body-sm">
+<span class="font-medium text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+                  2. Ý định mua hàng (AI detected)
+                </span>
+<span class="tabular-nums font-semibold text-on-surface">2,180 <span class="text-on-surface-variant font-normal">(11.8%)</span></span>
+</div>
+<div class="w-full bg-surface-container-low h-2.5 rounded-full overflow-hidden">
+<div class="bg-indigo-500 h-full rounded-full" style="width: 68%;"></div>
+</div>
+</div>
+<!-- Stage 3: Đơn Pending -->
+<div class="space-y-1">
+<div class="flex justify-between text-body-sm font-body-sm">
+<span class="font-medium text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary-container"></span>
+                  3. Tạo đơn tự động (Pending)
+                </span>
+<span class="tabular-nums font-semibold text-on-surface">1,840 <span class="text-on-surface-variant font-normal">(84.4%)</span></span>
+</div>
+<div class="w-full bg-surface-container-low h-2.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 55%;"></div>
+</div>
+</div>
+<!-- Stage 4: Đã xác nhận -->
+<div class="space-y-1">
+<div class="flex justify-between text-body-sm font-body-sm">
+<span class="font-medium text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                  4. Đã xác nhận (Confirmed)
+                </span>
+<span class="tabular-nums font-semibold text-on-surface">1,450 <span class="text-on-surface-variant font-normal">(78.8%)</span></span>
+</div>
+<div class="w-full bg-surface-container-low h-2.5 rounded-full overflow-hidden">
+<div class="bg-amber-500 h-full rounded-full" style="width: 44%;"></div>
+</div>
+</div>
+<!-- Stage 5: Đã thanh toán / Giao -->
+<div class="space-y-1">
+<div class="flex justify-between text-body-sm font-body-sm">
+<span class="font-medium text-emerald-800 flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  5. Đã thanh toán / Vận chuyển
+                </span>
+<span class="tabular-nums font-bold text-emerald-700">1,248 <span class="text-emerald-600 font-normal">(86.1%)</span></span>
+</div>
+<div class="w-full bg-surface-container-low h-2.5 rounded-full overflow-hidden">
+<div class="bg-emerald-500 h-full rounded-full" style="width: 38%;"></div>
+</div>
+</div>
+</div>
+<!-- Bottom Summary Stat -->
+<div class="p-3 bg-surface-container-low rounded-lg flex items-center justify-between border border-outline-variant/40 text-label-sm font-label-sm">
+<span class="text-on-surface">Tỉ lệ chuyển đổi chốt đơn thành công:</span>
+<span class="font-bold text-primary text-body-md">6.76% (Tổng chat)</span>
+</div>
+</div>
+</section>
+<!-- DATA TABLE: ĐƠN HÀNG LIVESTREAM GẦN ĐÂY -->
+<section class="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm overflow-hidden">
+<!-- Table Toolbar & Filters -->
+<div class="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-outline-variant/50">
+<div>
+<div class="flex items-center gap-2">
+<h3 class="text-headline-md font-headline-md text-on-surface">Đơn hàng livestream gần đây</h3>
+<span class="px-2 py-0.5 rounded-full bg-surface-container text-primary font-bold text-[11px]">Real-time stream</span>
+</div>
+<p class="text-body-sm font-body-sm text-on-surface-variant">Tự động bắt cú pháp comment, trừ kho tức thời và gửi mã thanh toán</p>
+</div>
+<div class="flex flex-wrap items-center gap-2.5">
+<!-- Search Inside Table -->
+<div class="relative">
+<span class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[16px]">filter_list</span>
+</span>
+<input class="h-9 pl-8 pr-3 text-body-sm font-body-sm bg-surface rounded-lg border border-outline-variant/60 focus:outline-none focus:border-primary w-48 lg:w-56" placeholder="Lọc theo khách, mã đơn..." type="text">
+</div>
+<!-- Filter Status -->
+<select class="h-9 px-3 text-body-sm font-body-sm bg-surface rounded-lg border border-outline-variant/60 focus:outline-none focus:border-primary text-on-surface">
+<option value="">Tất cả trạng thái</option>
+<option value="pending">Pending (Chờ)</option>
+<option value="confirmed">Confirmed (Đã chốt)</option>
+<option value="paid">Paid (Đã thanh toán)</option>
+<option value="ready">ReadyToShip (Chờ giao)</option>
+</select>
+<!-- Quick Export / Print Button -->
+<button class="h-9 px-3 bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md rounded-lg flex items-center gap-1.5 transition-colors border border-outline-variant/50">
+<span class="material-symbols-outlined text-[16px]">print</span>
+<span>In loạt đơn</span>
+</button>
+</div>
+</div>
+<!-- Table Content -->
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low text-on-surface-variant font-label-sm text-[11px] uppercase tracking-wider border-b border-outline-variant/60">
+<th class="py-3 px-4 w-10">
+<input class="rounded border-outline-variant text-primary focus:ring-0" type="checkbox">
+</th>
+<th class="py-3 px-4">Mã đơn</th>
+<th class="py-3 px-4">Khách hàng</th>
+<th class="py-3 px-4">Sản phẩm chốt</th>
+<th class="py-3 px-4 text-right">Tổng tiền</th>
+<th class="py-3 px-4 text-center">Phương thức</th>
+<th class="py-3 px-4 text-center">Trạng thái</th>
+<th class="py-3 px-4">Thời gian</th>
+<th class="py-3 px-4 text-right">Thao tác</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/30 text-body-md font-body-md">
+<!-- Row 1: ORD-8821 (Paid) -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="py-3 px-4">
+<input class="rounded border-outline-variant text-primary focus:ring-0" type="checkbox">
+</td>
+<td class="py-3 px-4 font-mono font-semibold text-primary">
+                  #ORD-8821
+                </td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-label-sm">
+                      LD
+                    </div>
+<div>
+<div class="font-medium text-on-surface">Lê Thuỳ Dung</div>
+<div class="text-[11px] text-on-surface-variant font-mono">0912.***.892</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="text-on-surface">Áo thun Oversize AO01 <span class="font-semibold text-primary">x2</span></div>
+<div class="text-[11px] text-outline">Màu Đen • Size L • Kho A</div>
+</td>
+<td class="py-3 px-4 text-right font-semibold text-on-surface tabular-nums">
+                  398,000 ₫
+                </td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                    VNPay QR
+                  </span>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    PAID
+                  </span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant text-[12px] tabular-nums">
+                  2 phút trước
+                </td>
+<td class="py-3 px-4 text-right">
+<div class="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="In phiếu vận đơn">
+<span class="material-symbols-outlined text-[18px]">print</span>
+</button>
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Chi tiết">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2: ORD-8820 (Confirmed) -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="py-3 px-4">
+<input class="rounded border-outline-variant text-primary focus:ring-0" type="checkbox">
+</td>
+<td class="py-3 px-4 font-mono font-semibold text-primary">
+                  #ORD-8820
+                </td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded-full bg-indigo-100 text-primary flex items-center justify-center font-bold text-label-sm">
+                      TB
+                    </div>
+<div>
+<div class="font-medium text-on-surface">Trần Quốc Bảo</div>
+<div class="text-[11px] text-on-surface-variant font-mono">0988.***.341</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="text-on-surface">Quần Jean Slimfit QJ02 <span class="font-semibold text-primary">x1</span></div>
+<div class="text-[11px] text-outline">Xanh Indigo • Size 31 • Kho A</div>
+</td>
+<td class="py-3 px-4 text-right font-semibold text-on-surface tabular-nums">
+                  450,000 ₫
+                </td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    COD
+                  </span>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-primary border border-indigo-200">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                    CONFIRMED
+                  </span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant text-[12px] tabular-nums">
+                  5 phút trước
+                </td>
+<td class="py-3 px-4 text-right">
+<div class="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Gọi khách">
+<span class="material-symbols-outlined text-[18px]">call</span>
+</button>
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Chi tiết">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3: ORD-8819 (ReadyToShip) -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="py-3 px-4">
+<input class="rounded border-outline-variant text-primary focus:ring-0" type="checkbox">
+</td>
+<td class="py-3 px-4 font-mono font-semibold text-primary">
+                  #ORD-8819
+                </td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-label-sm">
+                      NH
+                    </div>
+<div>
+<div class="font-medium text-on-surface">Nguyễn Hoàng Nam</div>
+<div class="text-[11px] text-on-surface-variant font-mono">0903.***.118</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="text-on-surface">Set Đồ Thể Thao Pro ST03 <span class="font-semibold text-primary">x1</span></div>
+<div class="text-[11px] text-outline">Xám Ghi • Size XL • Kho B</div>
+</td>
+<td class="py-3 px-4 text-right font-semibold text-on-surface tabular-nums">
+                  520,000 ₫
+                </td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                    Chuyển khoản
+                  </span>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+<span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                    READY_TO_SHIP
+                  </span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant text-[12px] tabular-nums">
+                  8 phút trước
+                </td>
+<td class="py-3 px-4 text-right">
+<div class="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="In vận đơn GHN">
+<span class="material-symbols-outlined text-[18px]">local_shipping</span>
+</button>
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Chi tiết">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4: ORD-8818 (Pending) -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="py-3 px-4">
+<input class="rounded border-outline-variant text-primary focus:ring-0" type="checkbox">
+</td>
+<td class="py-3 px-4 font-mono font-semibold text-primary">
+                  #ORD-8818
+                </td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-label-sm">
+                      PM
+                    </div>
+<div>
+<div class="font-medium text-on-surface">Phan Mỹ Linh</div>
+<div class="text-[11px] text-on-surface-variant font-mono">0977.***.654</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="text-on-surface">Váy Maxi Đi Biển VM08 <span class="font-semibold text-primary">x1</span></div>
+<div class="text-[11px] text-outline">Vàng Hoa Cúc • Size M • Kho A</div>
+</td>
+<td class="py-3 px-4 text-right font-semibold text-on-surface tabular-nums">
+                  315,000 ₫
+                </td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    COD
+                  </span>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    PENDING
+                  </span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant text-[12px] tabular-nums">
+                  11 phút trước
+                </td>
+<td class="py-3 px-4 text-right">
+<div class="flex items-center justify-end gap-1 opacity-90 group-hover:opacity-100">
+<button class="p-1.5 rounded hover:bg-emerald-50 text-on-surface-variant hover:text-emerald-600 transition-colors" title="Xác nhận ngay">
+<span class="material-symbols-outlined text-[18px]">check</span>
+</button>
+<button class="p-1.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Chi tiết">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Pagination -->
+<div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-outline-variant/40 bg-surface-container-low/30">
+<div class="text-body-sm font-body-sm text-on-surface-variant">
+            Hiển thị <span class="font-semibold text-on-surface">1 - 4</span> trên tổng số <span class="font-semibold text-on-surface">1,248</span> đơn hàng
+          </div>
+<div class="flex items-center gap-1.5">
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant/60 bg-surface text-outline hover:text-on-surface disabled:opacity-40" disabled="">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-on-primary font-semibold text-label-sm">
+              1
+            </button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant/60 bg-surface text-on-surface-variant hover:bg-surface-container text-label-sm">
+              2
+            </button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant/60 bg-surface text-on-surface-variant hover:bg-surface-container text-label-sm">
+              3
+            </button>
+<span class="px-1 text-outline">...</span>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant/60 bg-surface text-on-surface-variant hover:bg-surface-container text-label-sm">
+              312
+            </button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant/60 bg-surface text-on-surface-variant hover:text-on-surface">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+</main>
+</body></html>
