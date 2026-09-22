@@ -5,6 +5,14 @@
 > Cập nhật: 2026-09-22
 > Liên quan: `docs/ERD/ERD_LiveCommerce.docx`, UC *Chốt đơn tự động*, *Xác nhận đơn hàng*, *Tự động hủy đơn quá hạn*, *Quản lý tồn kho*
 
+## Tài liệu trong thư mục này
+
+| File | Nội dung | Dùng khi |
+|---|---|---|
+| **README.md** (file này) | Thiết kế đầy đủ: quyết định, DDL, giao dịch, bẫy nghiệp vụ, ca kiểm thử | Đọc trước khi code |
+| [erd.md](erd.md) | ERD sau cập nhật: bảng nào cần sửa/thêm, sơ đồ Mermaid, danh mục thuộc tính | Làm T0 và T2 |
+| [tasks.md](tasks.md) | Checklist T0–T12 có tiêu chí hoàn thành | Chia việc, theo dõi tiến độ |
+
 ---
 
 ## 1. Mục tiêu
@@ -551,6 +559,13 @@ Dùng `pytest` + `testcontainers-postgres` (**DB thật, không mock** — mấy
 ---
 
 ## 10. Thay đổi cần cập nhật vào ERD
+
+> 📄 **Bản ERD đầy đủ đã viết ra [erd.md](erd.md)** — có sơ đồ Mermaid, danh mục thuộc tính từng bảng, và bảng tổng hợp "bảng nào cần sửa / thêm mới / bổ sung cột".
+>
+> Khi viết `erd.md` phát hiện thêm **3 bảng nữa phải sửa** mà danh sách dưới đây còn thiếu:
+> - `PINNED_PRODUCT` thiếu `pinned_at` / `unpinned_at` → không tính được cửa sổ ghim → toàn bộ nhánh "khách không gõ mã sản phẩm" không chạy được (BẪY-02)
+> - `LIVE_SESSION` thiếu `hold_ttl_seconds` → TTL bị hard-code, trái QĐ-1
+> - `ACCOUNT` thiếu `risk_score` → không làm được BẪY-08 (bom hàng)
 
 - `INVENTORY`: `available_qty` → `on_hand_qty`; thêm `sellable_qty` (dẫn xuất), `version`
 - `ORDERS`: **bỏ** `sku_id`, **bỏ** `quantity`; thêm `code`, `confirm_token`, `hold_expires_at`, `source`
