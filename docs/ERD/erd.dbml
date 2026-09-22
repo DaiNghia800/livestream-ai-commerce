@@ -6,7 +6,8 @@
 // Xuất PNG   : Export > PNG/PDF  → lưu vào diagrams/
 // Xuất DDL   : Export > PostgreSQL → dùng cho migration T2
 //
-// Thiết kế   : README.md          Ghi chú thay đổi: erd-changes.md
+// Thiết kế   : ../design/draft-order-reservation/README.md
+// Thay đổi   : erd-changes.md  (cùng thư mục)
 // Cập nhật   : 2026-09-22
 // =====================================================================
 

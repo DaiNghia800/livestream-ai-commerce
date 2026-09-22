@@ -1,7 +1,7 @@
 # Task — Đơn nháp & Giữ hàng
 
 > **Nguồn duy nhất là [tasks.csv](tasks.csv).** Sửa CSV, đừng sửa file này hay sửa issue bằng tay — nếu không ba nơi sẽ lệch nhau sau vài tuần.
-> Thiết kế: [README.md](README.md) · ERD: [erd.dbml](erd.dbml)
+> Thiết kế: [README.md](README.md) · ERD: [erd.dbml](../../ERD/erd.dbml)
 
 ---
 

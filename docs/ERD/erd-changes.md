@@ -2,7 +2,7 @@
 
 > File này **không chứa schema**. Schema nằm ở [erd.dbml](erd.dbml) (nguồn chính) và [erd.mdj](erd.mdj).
 > Đây là chỗ ghi *cái gì đổi, đổi vì sao*, để nhóm không phải đọc diff.
-> Cập nhật: 2026-09-22 · Căn cứ: [README.md](README.md) mục 2 (3 quyết định thiết kế)
+> Cập nhật: 2026-09-22 · Căn cứ: [README.md](../design/draft-order-reservation/README.md) mục 2 (3 quyết định thiết kế)
 
 ---
 
@@ -11,13 +11,13 @@
 | File | Vai trò | Thao tác |
 |---|---|---|
 | [erd.dbml](erd.dbml) | **Nguồn chính** | Dán vào [dbdiagram.io/d](https://dbdiagram.io/d) → xem hình, `Export > PNG` lấy ảnh, `Export > PostgreSQL` lấy DDL cho migration T2 |
-| [erd.mdj](erd.mdj) | Bản StarUML | Mở bằng StarUML → model có sẵn 14 entity trong cây bên trái → tạo ERD Diagram mới → kéo thả entity vào |
+| [erd.mdj](erd.mdj) | Bản StarUML | Mở bằng StarUML → có sẵn diagram *ERD Live Commerce* với 14 entity đã bày sẵn |
 | `erd-changes.md` | File này | Đọc để biết đổi gì so với ERD cũ |
 | `diagrams/` | Hình đã xuất | Nơi để PNG/PDF xuất ra, dán vào docx |
 
 **Quy tắc:** sửa `erd.dbml` trước, rồi mới sinh lại hình và DDL. Đừng sửa hình rồi quên sửa dbml — đó là cách ERD và migration lệch nhau sau vài tuần.
 
-> ⚠️ `erd.mdj` sinh bằng script, mình chưa mở được bằng StarUML để kiểm chứng. Nếu StarUML báo lỗi khi mở thì nói mình sửa. Model có entity + column + relationship nhưng **chưa có diagram view** — bạn tạo ERD Diagram rồi kéo entity vào, StarUML tự dựng view chuẩn.
+> `erd.mdj` sinh bằng script rồi được chính StarUML mở và lưu lại một lần, nên cấu trúc đã qua chuẩn hóa của StarUML. Diagram *ERD Live Commerce* bày sẵn 14 entity theo nhóm nghiệp vụ (tài khoản/sản phẩm hàng trên, phiên live hàng giữa, đơn hàng hàng dưới). Vị trí các hộp là mình đặt tay, kéo lại cho đẹp rồi lưu là được.
 
 ---
 
@@ -60,7 +60,7 @@ Toàn bộ bảng cần có trước khi viết migration (T2).
 
 ## 3. Ba phát hiện phát sinh khi soát lại
 
-Không nằm trong checklist ban đầu ở [README.md](README.md) mục 10. Cả ba đều **làm chết một nhánh nghiệp vụ** nếu thiếu.
+Không nằm trong checklist ban đầu ở [README.md](../design/draft-order-reservation/README.md) mục 10. Cả ba đều **làm chết một nhánh nghiệp vụ** nếu thiếu.
 
 ### 3.1 `pinned_product` thiếu mốc thời gian — nghiêm trọng nhất
 

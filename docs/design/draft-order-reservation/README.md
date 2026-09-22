@@ -10,9 +10,9 @@
 | File | Nội dung | Dùng khi |
 |---|---|---|
 | **README.md** (file này) | Thiết kế đầy đủ: quyết định, DDL, giao dịch, bẫy nghiệp vụ, ca kiểm thử | Đọc trước khi code |
-| [erd.dbml](erd.dbml) | **Nguồn chính của schema.** Dán vào dbdiagram.io → xem hình, xuất PNG, xuất Postgres DDL | Làm T0 và T2 |
-| [erd.mdj](erd.mdj) | Cùng schema, dạng StarUML, để vẽ sơ đồ cho đồng bộ với use case | Vẽ hình cho báo cáo |
-| [erd-changes.md](erd-changes.md) | Ghi chú thay đổi: bảng nào cần sửa gì, vì sao | Đọc thay vì đọc diff |
+| [erd.dbml](../../ERD/erd.dbml) | **Nguồn chính của schema.** Dán vào dbdiagram.io → xem hình, xuất PNG, xuất Postgres DDL | Làm T0 và T2 |
+| [erd.mdj](../../ERD/erd.mdj) | Cùng schema, dạng StarUML, để vẽ sơ đồ cho đồng bộ với use case | Vẽ hình cho báo cáo |
+| [erd-changes.md](../../ERD/erd-changes.md) | Ghi chú thay đổi: bảng nào cần sửa gì, vì sao | Đọc thay vì đọc diff |
 | [tasks.csv](tasks.csv) | **Nguồn chính của task.** 13 task kèm checklist và tiêu chí nghiệm thu | Sinh GitHub Issues, import Jira/Trello |
 | [tasks.md](tasks.md) | Bảng tổng quan, đường găng, cách đưa task vào GitHub | Chia việc, theo dõi tiến độ |
 
@@ -565,7 +565,7 @@ Dùng `pytest` + `testcontainers-postgres` (**DB thật, không mock** — mấy
 
 ## 10. Thay đổi cần cập nhật vào ERD
 
-> 📄 **Schema đầy đủ nằm ở [erd.dbml](erd.dbml)** (nguồn chính, sinh được hình và Postgres DDL) và [erd.mdj](erd.mdj) (StarUML). Tóm tắt thay đổi: [erd-changes.md](erd-changes.md).
+> 📄 **Schema đầy đủ nằm ở [erd.dbml](../../ERD/erd.dbml)** (nguồn chính, sinh được hình và Postgres DDL) và [erd.mdj](../../ERD/erd.mdj) (StarUML). Tóm tắt thay đổi: [erd-changes.md](../../ERD/erd-changes.md).
 >
 > Khi soát lại ERD phát hiện thêm **3 bảng nữa phải sửa** mà danh sách dưới đây còn thiếu:
 > - `PINNED_PRODUCT` thiếu `pinned_at` / `unpinned_at` → không tính được cửa sổ ghim → toàn bộ nhánh "khách không gõ mã sản phẩm" không chạy được (BẪY-02)
