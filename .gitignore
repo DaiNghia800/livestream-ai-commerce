@@ -25,3 +25,6 @@ test-results/
 *.tfvars.json
 .DS_Store
 Thumbs.db
+
+# Office lock files
+~$*
