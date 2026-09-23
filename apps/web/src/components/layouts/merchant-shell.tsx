@@ -23,7 +23,7 @@ import styles from "./merchant-shell.module.css";
 
 const navigation = [
   { label: "Tổng quan", href: "/shop", icon: LayoutDashboard, exact: true },
-  { label: "Livestream", href: "/shop/livestream/live-2025-08", icon: Radio },
+  { label: "Livestream", href: "/shop/livestream", icon: Radio },
   { label: "Đơn hàng", icon: ShoppingCart },
   { label: "Sản phẩm", icon: Package },
   { label: "Tồn kho", icon: Warehouse },
@@ -76,15 +76,15 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         <Link className={styles.brandLink} href="/shop" onClick={() => setMenuOpen(false)}>
           <Brand />
         </Link>
-        <button
+        <Link
           className={styles.primaryAction}
-          type="button"
-          disabled
-          title="Bắt đầu livestream chưa khả dụng"
+          href="/shop/livestream"
+          title="Lối tắt truy cập quản lý livestream và Studio"
+          onClick={() => setMenuOpen(false)}
         >
           <Radio size={18} aria-hidden="true" />
-          Bắt đầu Live · Sắp có
-        </button>
+          Bắt đầu Live
+        </Link>
         <nav className={styles.navigation} aria-label="Điều hướng chủ shop">
           {navigation.map((item) => {
             const Icon = item.icon;

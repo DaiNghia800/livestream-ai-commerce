@@ -150,7 +150,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-success);
+  background: var(--color-muted, #94a3b8);
 }
 
 .profile {
