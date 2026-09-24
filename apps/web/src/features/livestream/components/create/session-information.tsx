@@ -23,6 +23,8 @@ interface SessionInformationProps {
     dates?: string;
     coverImage?: string;
   };
+  disabled?: boolean;
+  hideIvsNotice?: boolean;
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -44,6 +46,8 @@ export function SessionInformation({
   endTime,
   onEndTimeChange,
   errors = {},
+  disabled = false,
+  hideIvsNotice = false,
 }: SessionInformationProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -111,7 +115,8 @@ export function SessionInformation({
           </label>
           <input
             id="livestream-title"
-            className={`w-full rounded-lg border bg-surface-container-lowest px-3.5 py-2.5 text-sm text-on-surface transition-all placeholder:text-outline focus:outline-none ${
+            disabled={disabled}
+            className={`w-full rounded-lg border bg-surface-container-lowest px-3.5 py-2.5 text-sm text-on-surface transition-all placeholder:text-outline focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
               errors.title
                 ? "border-error focus:border-error focus:ring-2 focus:ring-error/20"
                 : "border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -146,6 +151,7 @@ export function SessionInformation({
             type="file"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
+            disabled={disabled}
             onChange={handleFileChange}
           />
 
@@ -166,37 +172,43 @@ export function SessionInformation({
                 <p className="text-[11px] text-outline">
                   Ảnh bìa sẽ hiển thị trên danh sách phiên phát sóng và thẻ chia sẻ livestream.
                 </p>
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-low"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-                    <span>Thay đổi ảnh</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-error transition-colors hover:bg-red-100/70"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>Xóa ảnh</span>
-                  </button>
-                </div>
+                {!disabled && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface transition-colors hover:bg-surface-container-low"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
+                      <span>Thay đổi ảnh</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-error transition-colors hover:bg-red-100/70"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>Xóa ảnh</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
             /* Upload Dropzone / Placeholder */
             <div
-              onClick={() => fileInputRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-outline-variant/70 p-5 text-center transition-all hover:border-primary/60 hover:bg-surface-container-low/40"
+              onClick={() => !disabled && fileInputRef.current?.click()}
+              className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-outline-variant/70 p-5 text-center transition-all ${
+                disabled
+                  ? "cursor-not-allowed bg-surface-container-low/30 opacity-60"
+                  : "cursor-pointer hover:border-primary/60 hover:bg-surface-container-low/40"
+              }`}
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <ImagePlus className="h-5 w-5" aria-hidden="true" />
               </div>
               <p className="mt-2 text-xs font-semibold text-on-surface">
-                Nhấn để tải lên ảnh bìa livestream
+                {disabled ? "Ảnh bìa chưa được cập nhật" : "Nhấn để tải lên ảnh bìa livestream"}
               </p>
               <p className="mt-0.5 text-[11px] text-outline">
                 Định dạng hỗ trợ: JPG, PNG, WebP (Tối đa 5MB, tỉ lệ 16:9 khuyến nghị)
@@ -223,7 +235,8 @@ export function SessionInformation({
           </label>
           <textarea
             id="livestream-description"
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-sm text-on-surface transition-all placeholder:text-outline focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            disabled={disabled}
+            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-sm text-on-surface transition-all placeholder:text-outline focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70"
             placeholder="Mục tiêu buổi live, chương trình freeship, mã voucher hoặc quà tặng kèm đơn..."
             rows={3}
             value={description}
@@ -246,7 +259,8 @@ export function SessionInformation({
               </label>
               <input
                 id="livestream-start-date"
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none ${
+                disabled={disabled}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
                   errors.dates
                     ? "border-error focus:border-error"
                     : "border-outline-variant focus:border-primary"
@@ -262,7 +276,8 @@ export function SessionInformation({
               </label>
               <input
                 id="livestream-start-time"
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none ${
+                disabled={disabled}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
                   errors.dates
                     ? "border-error focus:border-error"
                     : "border-outline-variant focus:border-primary"
@@ -290,7 +305,8 @@ export function SessionInformation({
               </label>
               <input
                 id="livestream-end-date"
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none ${
+                disabled={disabled}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
                   errors.dates
                     ? "border-error focus:border-error"
                     : "border-outline-variant focus:border-primary"
@@ -306,7 +322,8 @@ export function SessionInformation({
               </label>
               <input
                 id="livestream-end-time"
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none ${
+                disabled={disabled}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
                   errors.dates
                     ? "border-error focus:border-error"
                     : "border-outline-variant focus:border-primary"
@@ -328,22 +345,24 @@ export function SessionInformation({
         )}
 
         {/* Thiết lập kênh video: Amazon IVS Channel Pool Notice */}
-        <div className="pt-2 md:col-span-2">
-          <div className="flex items-start gap-3 rounded-lg border border-outline-variant/50 bg-surface-container-low/70 p-3.5">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Info className="h-4 w-4" aria-hidden="true" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-xs font-semibold text-on-surface">
-                Cấu hình truyền dẫn Video đám mây
-              </h3>
-              <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
-                Amazon IVS Channel sẽ được hệ thống tự động phân bổ khi bạn bắt đầu phát sóng tại
-                Studio.
-              </p>
+        {!hideIvsNotice && (
+          <div className="pt-2 md:col-span-2">
+            <div className="flex items-start gap-3 rounded-lg border border-outline-variant/50 bg-surface-container-low/70 p-3.5">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Info className="h-4 w-4" aria-hidden="true" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xs font-semibold text-on-surface">
+                  Cấu hình truyền dẫn Video đám mây
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
+                  Amazon IVS Channel sẽ được hệ thống tự động phân bổ khi bạn bắt đầu phát sóng tại
+                  Studio.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </section>
   );

@@ -7,12 +7,14 @@ interface SessionProductsProps {
   products: LiveProductItem[];
   onOpenPicker: () => void;
   onRemoveProduct: (sku: string) => void;
+  disabled?: boolean;
 }
 
 export function SessionProducts({
   products,
   onOpenPicker,
   onRemoveProduct,
+  disabled = false,
 }: SessionProductsProps) {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("vi-VN").format(price) + " đ";
@@ -35,14 +37,16 @@ export function SessionProducts({
         </div>
 
         {/* Add Product Button */}
-        <button
-          type="button"
-          onClick={onOpenPicker}
-          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-primary-container active:scale-[0.98]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          <span>Thêm sản phẩm vào Live</span>
-        </button>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={onOpenPicker}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-primary-container active:scale-[0.98]"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            <span>Thêm sản phẩm vào Live</span>
+          </button>
+        )}
       </div>
 
       {/* Table / Empty State */}
@@ -56,14 +60,16 @@ export function SessionProducts({
             Hãy thêm các sản phẩm từ danh mục của shop để thiết lập mã chốt đơn và đưa vào phiên bán
             hàng.
           </p>
-          <button
-            type="button"
-            onClick={onOpenPicker}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3.5 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-container-low"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            <span>Chọn sản phẩm từ danh mục</span>
-          </button>
+          {!disabled && (
+            <button
+              type="button"
+              onClick={onOpenPicker}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3.5 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-container-low"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              <span>Chọn sản phẩm từ danh mục</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-outline-variant/50">
@@ -152,15 +158,19 @@ export function SessionProducts({
 
                   {/* Actions */}
                   <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onRemoveProduct(item.sku)}
-                      className="rounded p-1 text-outline transition-colors hover:bg-red-50 hover:text-error"
-                      title="Xóa khỏi phiên"
-                      aria-label={`Xóa ${item.name} khỏi phiên`}
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    {!disabled ? (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveProduct(item.sku)}
+                        className="rounded p-1 text-outline transition-colors hover:bg-red-50 hover:text-error"
+                        title="Xóa khỏi phiên"
+                        aria-label={`Xóa ${item.name} khỏi phiên`}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-outline italic">Cố định</span>
+                    )}
                   </td>
                 </tr>
               ))}

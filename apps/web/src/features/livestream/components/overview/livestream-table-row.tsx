@@ -76,12 +76,22 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
 
           {/* Title & Host info */}
           <div className="flex min-w-0 flex-col">
-            <span
-              className="truncate text-[13px] font-semibold text-on-surface"
-              title={item.title}
-            >
-              {item.title}
-            </span>
+            {isDraft || isScheduled ? (
+              <Link
+                href={`/shop/livestream/${item.id}/edit`}
+                className="truncate text-[13px] font-semibold text-on-surface transition-colors hover:text-primary"
+                title={`Chỉnh sửa: ${item.title}`}
+              >
+                {item.title}
+              </Link>
+            ) : (
+              <span
+                className="truncate text-[13px] font-semibold text-on-surface"
+                title={item.title}
+              >
+                {item.title}
+              </span>
+            )}
             <div className="mt-0.5 flex items-center gap-2">
               <span className="font-mono text-[11px] font-medium text-outline">
                 {item.id}
@@ -353,7 +363,27 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
             </Link>
           )}
 
-          {(isScheduled || isStarting) && (
+          {isScheduled && (
+            <>
+              <Link
+                href="/shop/livestream/live-2025-08"
+                className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+              >
+                <Radio className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Vào Studio</span>
+              </Link>
+              <Link
+                href={`/shop/livestream/${item.id}/edit`}
+                title="Chỉnh sửa phiên"
+                aria-label={`Chỉnh sửa phiên ${item.title}`}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant text-outline transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+              >
+                <FileEdit className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </>
+          )}
+
+          {isStarting && (
             <Link
               href="/shop/livestream/live-2025-08"
               className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
@@ -365,11 +395,11 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
 
           {isDraft && (
             <Link
-              href="/shop/livestream/live-2025-08"
+              href={`/shop/livestream/${item.id}/edit`}
               className="inline-flex items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2.5 py-1 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-low"
             >
               <FileEdit className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-              <span>Hoàn thiện</span>
+              <span>Chỉnh sửa</span>
             </Link>
           )}
 
