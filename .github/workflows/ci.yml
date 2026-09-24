@@ -34,14 +34,11 @@ jobs:
         with:
           node-version: 22
 
-      # Cài commitlint đã có sẵn trong devDependencies của apps/web
       - name: Install commitlint
-        working-directory: apps/web
-        run: npm ci --ignore-scripts
+        run: npm install @commitlint/cli @commitlint/config-conventional
 
       # Lint tất cả commit trong PR này (từ base đến HEAD)
       - name: Lint commits in this PR
-        working-directory: apps/web
         run: |
           npx commitlint \
             --from ${{ github.event.pull_request.base.sha }} \
