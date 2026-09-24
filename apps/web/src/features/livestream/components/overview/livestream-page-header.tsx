@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CalendarDays, ChevronRight, CirclePlus } from "lucide-react";
 
 export function LivestreamPageHeader() {
@@ -36,14 +37,15 @@ export function LivestreamPageHeader() {
           <span>Lịch phát sóng</span>
         </button>
 
-        <button
-          type="button"
+        <Link
+          href="/shop/livestream/create"
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4.5 text-sm font-medium text-white shadow-xs transition-all hover:bg-primary-container active:scale-[0.98]"
         >
           <CirclePlus className="h-4 w-4" aria-hidden="true" />
           <span>Tạo phiên Livestream</span>
-        </button>
+        </Link>
       </div>
     </header>
   );
 }
+
