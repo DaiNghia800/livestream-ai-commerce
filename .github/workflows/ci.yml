@@ -1,14 +1,14 @@
 # CI pipeline — livestream-ai-commerce
-# Trigger: mọi push và pull_request vào develop hoặc main
+# Trigger: mọi push và pull_request vào dev hoặc main
 # Jobs chạy song song để tiết kiệm thời gian
 
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
 
 # Nếu có push mới lên cùng branch đang có CI chạy → hủy CI cũ, chạy CI mới
 concurrency:
@@ -21,7 +21,7 @@ jobs:
   # Áp dụng Conventional Commits: feat/fix/docs/refactor/test/chore
   # ─────────────────────────────────────────────────────────────────
   commit-lint:
-    name: "📝 Commit message lint"
+    name: "Commit message lint"
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -53,7 +53,7 @@ jobs:
   # Dùng Gitleaks — tool phổ biến nhất, free, chạy trên toàn history
   # ─────────────────────────────────────────────────────────────────
   secret-scan:
-    name: "🔍 Secret scan (Gitleaks)"
+    name: "Secret scan (Gitleaks)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
   # TypeScript strict mode + ESLint (Next.js core-web-vitals rules)
   # ─────────────────────────────────────────────────────────────────
   web-quality:
-    name: "🌐 Web — TypeScript & ESLint"
+    name: "Web — TypeScript & ESLint"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -102,7 +102,7 @@ jobs:
   # Playwright tự khởi động Next.js server -> chạy test -> tắt
   # ─────────────────────────────────────────────────────────────────
   web-e2e:
-    name: "🎭 Web — Playwright E2E"
+    name: "Web — Playwright E2E"
     runs-on: ubuntu-latest
     defaults:
       run:
