@@ -1,0 +1,151 @@
+# CI pipeline — livestream-ai-commerce
+# Trigger: mọi push và pull_request vào develop hoặc main
+# Jobs chạy song song để tiết kiệm thời gian
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Nếu có push mới lên cùng branch đang có CI chạy → hủy CI cũ, chạy CI mới
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 1: Kiểm tra format commit message
+  # Áp dụng Conventional Commits: feat/fix/docs/refactor/test/chore
+  # ─────────────────────────────────────────────────────────────────
+  commit-lint:
+    name: "📝 Commit message lint"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Cần fetch đủ commit history để commitlint so sánh được
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Cài commitlint đã có sẵn trong devDependencies của apps/web
+      - name: Install commitlint
+        working-directory: apps/web
+        run: npm ci --ignore-scripts
+
+      # Lint tất cả commit trong PR này (từ base đến HEAD)
+      - name: Lint commits in this PR
+        working-directory: apps/web
+        run: |
+          npx commitlint \
+            --from ${{ github.event.pull_request.base.sha }} \
+            --to   ${{ github.event.pull_request.head.sha }} \
+            --verbose
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 2: Quét lộ secret (API key, password, token...)
+  # Dùng Gitleaks — tool phổ biến nhất, free, chạy trên toàn history
+  # ─────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: "🔍 Secret scan (Gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Cần full history để quét toàn bộ git log
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Không cần GITHUB_TOKEN trả phí, chỉ dùng để post comment PR
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 3: Kiểm tra chất lượng code Next.js
+  # TypeScript strict mode + ESLint (Next.js core-web-vitals rules)
+  # ─────────────────────────────────────────────────────────────────
+  web-quality:
+    name: "🌐 Web — TypeScript & ESLint"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Kiểm tra TypeScript: không có any lỗi type nào được phép
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      # ESLint: áp dụng rules của Next.js (core-web-vitals + typescript)
+      - name: ESLint
+        run: npm run lint
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 4: Build Next.js + chạy Playwright E2E tests
+  # Playwright tự khởi động Next.js server -> chạy test -> tắt
+  # ─────────────────────────────────────────────────────────────────
+  web-e2e:
+    name: "🎭 Web — Playwright E2E"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cache Playwright browsers để không tải lại mỗi lần (~300MB)
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/web/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      # Build production bundle trước khi test
+      # (playwright.config.ts chạy `npm run start` chứ không phải `npm run dev`)
+      - name: Build Next.js
+        run: npm run build
+
+      # Chạy tất cả test trong tests/ trên 2 project: desktop + mobile
+      - name: Run Playwright tests
+        run: npm test
+
+      # Upload kết quả test (screenshots, traces) để xem khi fail
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
