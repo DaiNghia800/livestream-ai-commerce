@@ -76,22 +76,13 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
 
           {/* Title & Host info */}
           <div className="flex min-w-0 flex-col">
-            {isDraft || isScheduled ? (
-              <Link
-                href={`/shop/livestream/${item.id}/edit`}
-                className="truncate text-[13px] font-semibold text-on-surface transition-colors hover:text-primary"
-                title={`Chỉnh sửa: ${item.title}`}
-              >
-                {item.title}
-              </Link>
-            ) : (
-              <span
-                className="truncate text-[13px] font-semibold text-on-surface"
-                title={item.title}
-              >
-                {item.title}
-              </span>
-            )}
+            <Link
+              href={`/shop/livestream/${item.id}`}
+              className="truncate text-[13px] font-semibold text-on-surface transition-colors hover:text-primary"
+              title={`Xem chi tiết: ${item.title}`}
+            >
+              {item.title}
+            </Link>
             <div className="mt-0.5 flex items-center gap-2">
               <span className="font-mono text-[11px] font-medium text-outline">
                 {item.id}
@@ -352,25 +343,25 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
       {/* 10. Thao tác chuẩn theo trạng thái phiên */}
       <td className="py-3 px-3.5 text-right min-w-[145px]">
         <div className="flex items-center justify-end gap-1.5">
-          {/* Nút chính theo bảng: DRAFT: Hoàn thiện | SCHEDULED: Vào Studio | STARTING: Vào Studio | LIVE: Vào Studio | ENDED: Xem tổng kết */}
+          {/* Nút chính theo bảng: DRAFT: Chỉnh sửa | SCHEDULED: Chi tiết & Chỉnh sửa | STARTING/LIVE: Chi tiết | ENDED: Chi tiết */}
           {isLive && (
             <Link
-              href="/shop/livestream/live-2025-08"
+              href={`/shop/livestream/${item.id}`}
               className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-primary-container"
             >
               <RadioTower className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Vào Studio</span>
+              <span>Chi tiết</span>
             </Link>
           )}
 
           {isScheduled && (
             <>
               <Link
-                href="/shop/livestream/live-2025-08"
+                href={`/shop/livestream/${item.id}`}
                 className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
               >
                 <Radio className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Vào Studio</span>
+                <span>Chi tiết</span>
               </Link>
               <Link
                 href={`/shop/livestream/${item.id}/edit`}
@@ -385,11 +376,11 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
 
           {isStarting && (
             <Link
-              href="/shop/livestream/live-2025-08"
+              href={`/shop/livestream/${item.id}`}
               className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
             >
               <Radio className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Vào Studio</span>
+              <span>Chi tiết</span>
             </Link>
           )}
 
@@ -405,11 +396,11 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
 
           {isEnded && (
             <Link
-              href="/shop/livestream/live-2025-08"
+              href={`/shop/livestream/${item.id}`}
               className="inline-flex items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2.5 py-1 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-low"
             >
               <BarChart3 className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-              <span>Xem tổng kết</span>
+              <span>Chi tiết</span>
             </Link>
           )}
 

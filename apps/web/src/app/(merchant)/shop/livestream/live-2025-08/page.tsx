@@ -1,7 +1,6 @@
-import { MerchantLiveDetail } from "@/features/livestream/merchant-live-detail";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Chi tiết phiên livestream" };
-
-export default function Page() {
-  return <MerchantLiveDetail />;
+export default function LegacyLiveDetailPage() {
+  redirect("/shop/livestream/LIVE-2025-08");
 }
+

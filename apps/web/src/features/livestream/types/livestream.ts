@@ -47,6 +47,7 @@ export interface LiveProductItem {
     stock: number;
     image?: string;
     isPinned?: boolean;
+    chatOrders?: number; // Số đơn chốt từ chat trong phiên
 }
 
 export interface LivestreamFormData {
