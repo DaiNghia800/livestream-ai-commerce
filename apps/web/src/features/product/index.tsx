@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { ProductKpiCards } from "@/components/ui/product-metrics-bar";
 import { ProductTable } from "@/components/ui/product-table";
 import { AddProductDialog } from "@/components/ui/add-product-dialog";
@@ -11,6 +12,7 @@ import {
 } from "@/mocks/product";
 
 export function MerchantProduct() {
+  const router = useRouter();
   const [products, setProducts] = useState<ProductItem[]>(productMockList);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -142,7 +144,7 @@ export function MerchantProduct() {
           <button
             className="h-10 px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-label-md font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer"
             type="button"
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => router.push("/shop/products/new")}
           >
             <span className="material-symbols-outlined text-[18px]" data-icon="add">
               add
