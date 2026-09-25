@@ -3,7 +3,7 @@
 // Tài liệu: https://commitlint.js.org
 
 // Extends từ bộ quy tắc Conventional Commits chuẩn của cộng đồng
-module.exports = {
+export default {
   extends: ["@commitlint/config-conventional"],
 
   rules: {
