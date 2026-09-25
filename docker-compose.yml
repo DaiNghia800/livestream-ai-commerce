@@ -1,0 +1,63 @@
+# docker-compose.yml — Local development environment
+# ============================================================
+# Khởi động toàn bộ infrastructure để dev local:
+#   - PostgreSQL (database dùng chung)
+#   - pgAdmin (GUI quản lý DB trên browser)
+#
+# CÁCH DÙNG:
+#   1. Copy .env.example thành .env và điền giá trị
+#   2. docker compose up -d          → khởi động nền
+#   3. docker compose logs -f        → xem log
+#   4. docker compose down           → dừng
+#   5. docker compose down -v        → dừng + xóa data
+#
+# Lưu ý: Các service Python (commerce, realtime, ai-worker) và
+#         Next.js chạy trực tiếp trên máy bằng uvicorn/npm run dev
+#         để dev nhanh hơn. Docker chỉ chạy infrastructure.
+# ============================================================
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine          # Alpine nhẹ hơn ~50%
+    container_name: liveorder-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-liveorder}
+    ports:
+      - "5432:5432"                    # Truy cập từ máy host
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # Persist data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-liveorder}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── pgAdmin — GUI quản lý PostgreSQL trên browser ──────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: liveorder-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"    # Single-user mode
+    ports:
+      - "5050:80"                            # Mở http://localhost:5050
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ── Named Volumes ───────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
