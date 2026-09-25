@@ -29,3 +29,5 @@ Thumbs.db
 # Office lock files
 ~$*
 *.tsbuildinfo
+
+docs/design/draft-order-reservation

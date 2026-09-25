@@ -24,10 +24,10 @@ import styles from "./merchant-shell.module.css";
 const navigation = [
   { label: "Tổng quan", href: "/shop", icon: LayoutDashboard, exact: true },
   { label: "Livestream", href: "/shop/livestream/live-2025-08", icon: Radio },
-  { label: "Đơn hàng", icon: ShoppingCart },
+  { label: "Đơn hàng", href: "/shop/orders", icon: ShoppingCart },
   { label: "Sản phẩm", icon: Package },
   { label: "Tồn kho", icon: Warehouse },
-  { label: "Thanh toán", icon: CreditCard },
+  { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
   { label: "Vận chuyển", icon: Truck },
   { label: "Báo cáo", icon: BarChart3 },
   { label: "Trợ lý AI", icon: Sparkles },
