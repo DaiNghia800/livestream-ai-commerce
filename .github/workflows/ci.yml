@@ -1,14 +1,14 @@
 # CI pipeline — livestream-ai-commerce
-# Trigger: mọi push và pull_request vào develop hoặc main
+# Trigger: mọi push và pull_request vào dev hoặc main
 # Jobs chạy song song để tiết kiệm thời gian
 
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
 
 # Nếu có push mới lên cùng branch đang có CI chạy → hủy CI cũ, chạy CI mới
 concurrency:
@@ -21,7 +21,7 @@ jobs:
   # Áp dụng Conventional Commits: feat/fix/docs/refactor/test/chore
   # ─────────────────────────────────────────────────────────────────
   commit-lint:
-    name: "📝 Commit message lint"
+    name: "Commit message lint"
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -34,14 +34,11 @@ jobs:
         with:
           node-version: 22
 
-      # Cài commitlint đã có sẵn trong devDependencies của apps/web
       - name: Install commitlint
-        working-directory: apps/web
-        run: npm ci --ignore-scripts
+        run: npm install @commitlint/cli @commitlint/config-conventional
 
       # Lint tất cả commit trong PR này (từ base đến HEAD)
       - name: Lint commits in this PR
-        working-directory: apps/web
         run: |
           npx commitlint \
             --from ${{ github.event.pull_request.base.sha }} \
@@ -53,7 +50,7 @@ jobs:
   # Dùng Gitleaks — tool phổ biến nhất, free, chạy trên toàn history
   # ─────────────────────────────────────────────────────────────────
   secret-scan:
-    name: "🔍 Secret scan (Gitleaks)"
+    name: "Secret scan (Gitleaks)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +68,7 @@ jobs:
   # TypeScript strict mode + ESLint (Next.js core-web-vitals rules)
   # ─────────────────────────────────────────────────────────────────
   web-quality:
-    name: "🌐 Web — TypeScript & ESLint"
+    name: "Web — TypeScript & ESLint"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -102,7 +99,7 @@ jobs:
   # Playwright tự khởi động Next.js server -> chạy test -> tắt
   # ─────────────────────────────────────────────────────────────────
   web-e2e:
-    name: "🎭 Web — Playwright E2E"
+    name: "Web — Playwright E2E"
     runs-on: ubuntu-latest
     defaults:
       run:
