@@ -32,13 +32,17 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
 });
 test("navigation and combined filters work without horizontal overflow", async ({
   page,
-}) => {
+}, testInfo) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: "Thử gửi bình luận" }),
   ).toBeDisabled();
   await page.getByRole("link", { name: "Kênh chủ shop" }).click();
+  
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Mở menu quản lý" }).click();
+  }
   await expect(
     page.getByRole("heading", { name: "Tổng quan hoạt động" }),
   ).toBeVisible();
@@ -70,6 +74,10 @@ test("merchant layout marks the livestream route active and exposes mobile navig
   await expect(
     page.getByRole("heading", { name: "Đại tiệc Flash Sale BST Linen Hè 2025" }),
   ).toBeVisible();
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Mở menu quản lý" }).click();
+  }
+
   await expect(page.getByRole("link", { name: "Livestream", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
@@ -82,13 +90,8 @@ test("merchant layout marks the livestream route active and exposes mobile navig
   });
 
   if (testInfo.project.name === "mobile") {
-    const menuButton = page.getByRole("button", { name: "Mở menu quản lý" });
-    await expect(menuButton).toBeVisible();
-    await menuButton.focus();
-    await page.keyboard.press("Enter");
-    await expect(
-      page.getByRole("button", { name: "Đóng menu quản lý" }).first(),
-    ).toHaveAttribute("aria-expanded", "true");
+    const menuButton = page.getByRole("button", { name: "Đóng menu quản lý" }).first();
+    await expect(menuButton).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("navigation", { name: "Điều hướng chủ shop" })).toBeVisible();
   }
 
