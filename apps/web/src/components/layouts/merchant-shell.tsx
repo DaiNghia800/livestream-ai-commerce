@@ -127,6 +127,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                   key={item.label}
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 px-3 py-2 font-label-md text-label-md rounded-lg transition-colors duration-150 hover:no-underline ${
                     active
                       ? "bg-primary text-on-primary shadow-sm font-semibold"

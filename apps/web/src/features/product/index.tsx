@@ -144,8 +144,7 @@ export function MerchantProduct() {
           <button
             className="h-10 px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-label-md font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer"
             type="button"
-            onClick={() => router.push("/shop/products/new")}
-          >
+onClick={() => setIsAddModalOpen(true)}          >
             <span className="material-symbols-outlined text-[18px]" data-icon="add">
               add
             </span>
@@ -220,8 +219,7 @@ export function MerchantProduct() {
           </div>
 
           {/* Quick Filter Chips */}
-          <div className="hidden xl:flex items-center gap-1.5 pl-2 border-l border-outline-variant/60">
-            <button
+<div className="flex items-center gap-1.5 pl-2 border-l border-outline-variant/60">            <button
               className={`px-2.5 py-1.5 rounded-full text-label-sm font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${
                 filterBestSellerOnly
                   ? "bg-primary text-on-primary shadow-sm"
