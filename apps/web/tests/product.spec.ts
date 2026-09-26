@@ -49,24 +49,20 @@ test("product management page renders correctly and matches Stitch design", asyn
   await expect(page.getByText("Quần Jean Ống Suông Lưng Cao Vintage")).toBeVisible();
 
   // Test quick filter chips
-  const bestSellerChip = page.getByRole("button", { name: "Best Seller" });
+  const bestSellerChip = page.getByTestId("best-seller-filter");
   await bestSellerChip.click();
   await expect(page.getByText("AO01")).toBeVisible();
   await expect(page.getByText("DM05")).toBeVisible();
   await expect(page.getByText("PK03")).not.toBeVisible();
   await bestSellerChip.click(); // toggle off
 
-  // Test Add product modal
+  // Test navigation to the new product form
   const addBtn = page.getByRole("button", { name: /Thêm sản phẩm mới/ });
   await addBtn.click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page).toHaveURL(/\/shop\/products\/new$/);
   await expect(
-    page.getByRole("heading", { name: "Thêm sản phẩm mới vào Livestream" })
+    page.getByRole("heading", { name: "Tạo sản phẩm mới" })
   ).toBeVisible();
-
-  // Close modal
-  await page.getByRole("button", { name: "Đóng" }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // Check no horizontal overflow
   expect(

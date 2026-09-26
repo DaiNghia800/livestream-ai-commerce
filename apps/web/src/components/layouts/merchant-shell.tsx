@@ -91,18 +91,22 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
           {/* Live Broadcast CTA Trigger */}
           <button
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-primary hover:bg-primary/90 text-on-primary font-headline-md text-[13px] font-semibold tracking-wide transition-all shadow-md active:scale-[0.98]"
-            type="button"
-            onClick={() => {
-              alert("Bắt đầu buổi livestream phát sóng!");
-            }}
-          >
-            <Radio size={18} aria-hidden="true" />
-            <span>Bắt đầu Live</span>
-          </button>
+  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-primary hover:bg-primary/90 text-on-primary font-headline-md text-[13px] font-semibold tracking-wide transition-all shadow-md active:scale-[0.98]"
+  type="button"
+  disabled
+  onClick={() => {
+    alert("Bắt đầu buổi livestream phát sóng!");
+  }}
+>
+  <Radio size={18} aria-hidden="true" />
+  <span>Bắt đầu Live</span>
+</button>
 
           {/* Main Navigation Menu (10 Tabs from JSON, Tab 3 'Sản phẩm' ACTIVE) */}
-          <nav className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-250px)] pr-1 custom-scrollbar">
+          <nav
+            aria-label="Điều hướng chủ shop"
+            className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-250px)] pr-1 custom-scrollbar"
+          >
             {navigation.map((item) => {
               const Icon = item.icon;
               if (!("href" in item)) {

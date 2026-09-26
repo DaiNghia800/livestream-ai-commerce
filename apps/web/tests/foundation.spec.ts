@@ -13,7 +13,6 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
 }) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/");
-  await page.screenshot({ path: test.info().outputPath("customer.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const trigger = page.getByRole("button", { name: "Xem A001" });
   await trigger.focus();
@@ -28,6 +27,7 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(trigger).toBeFocused();
+  await page.screenshot({ path: test.info().outputPath("customer.png"), fullPage: true });
   expect(consoleErrors).toEqual([]);
 });
 test("navigation and combined filters work without horizontal overflow", async ({
