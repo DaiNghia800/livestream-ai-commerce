@@ -163,7 +163,7 @@ export function MerchantOrderList() {
                 <tr>
                   <th scope="col">Mã đơn</th>
                   <th scope="col">Khách hàng</th>
-                  <th scope="col">Sản phẩm</th>
+                  <th scope="col" className="col-secondary">Sản phẩm</th>
                   <th scope="col">Tổng tiền</th>
                   <th scope="col">Thanh toán</th>
                   <th scope="col">Trạng thái</th>
@@ -189,7 +189,7 @@ export function MerchantOrderList() {
                         <strong>{order.customer.name}</strong>
                         <p className="muted">{order.customer.phone}</p>
                       </td>
-                      <td>
+                      <td className="col-secondary">
                         {order.items.map((item) => (
                           <p key={item.sku}>
                             {item.name} × {item.quantity}
@@ -199,7 +199,7 @@ export function MerchantOrderList() {
                       <td className="num">
                         <strong>{formatMoney(order.total)}</strong>
                       </td>
-                      <td>{order.payment.method}</td>
+                      <td className="col-secondary">{order.payment.method}</td>
                       <td>
                         <Badge tone={orderStatuses[order.status].tone}>
                           {orderStatuses[order.status].label}

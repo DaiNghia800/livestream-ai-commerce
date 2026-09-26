@@ -158,11 +158,11 @@ export function MerchantPaymentList() {
                   <th scope="col">Mã giao dịch</th>
                   <th scope="col">Đơn hàng</th>
                   <th scope="col">Khách hàng</th>
-                  <th scope="col">Cổng</th>
+                  <th scope="col" className="col-secondary">Cổng</th>
                   <th scope="col">Số tiền</th>
                   <th scope="col">Trạng thái</th>
                   <th scope="col">Giữ hàng</th>
-                  <th scope="col">Thời gian</th>
+                  <th scope="col" className="col-secondary">Thời gian</th>
                   <th scope="col">
                     <span className="sr-only">Xem chi tiết</span>
                   </th>

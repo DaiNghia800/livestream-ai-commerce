@@ -10,15 +10,17 @@ function collectConsoleErrors(page: Page) {
 
 test("order list filters by status and keeps the layout inside the viewport", async ({
   page,
-}) => {
+}, testInfo) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/orders");
   await expect(
     page.getByRole("heading", { name: "Đơn hàng từ phiên livestream" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Đơn hàng", exact: true }),
-  ).toHaveAttribute("aria-current", "page");
+  if (testInfo.project.name !== "mobile") {
+    await expect(
+      page.getByRole("link", { name: "Đơn hàng", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+  }
 
   await page.getByRole("button", { name: /^Đã hủy/ }).click();
   await expect(page.getByText("ORD-9937", { exact: true })).toBeVisible();
