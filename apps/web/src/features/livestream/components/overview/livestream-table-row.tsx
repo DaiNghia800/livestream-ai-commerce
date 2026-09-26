@@ -346,22 +346,22 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
           {/* Nút chính theo bảng: DRAFT: Chỉnh sửa | SCHEDULED: Chi tiết & Chỉnh sửa | STARTING/LIVE: Chi tiết | ENDED: Chi tiết */}
           {isLive && (
             <Link
-              href={`/shop/livestream/${item.id}`}
-              className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-primary-container"
+              href={`/shop/livestream/${item.id}/studio`}
+              className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-red-700"
             >
               <RadioTower className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Chi tiết</span>
+              <span>Vào Studio</span>
             </Link>
           )}
 
           {isScheduled && (
             <>
               <Link
-                href={`/shop/livestream/${item.id}`}
+                href={`/shop/livestream/${item.id}/studio`}
                 className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
               >
                 <Radio className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Chi tiết</span>
+                <span>Vào Studio</span>
               </Link>
               <Link
                 href={`/shop/livestream/${item.id}/edit`}
@@ -376,11 +376,11 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
 
           {isStarting && (
             <Link
-              href={`/shop/livestream/${item.id}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+              href={`/shop/livestream/${item.id}/studio`}
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-600/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500 transition-colors hover:bg-amber-500/20"
             >
               <Radio className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Chi tiết</span>
+              <span>Vào Studio</span>
             </Link>
           )}
 

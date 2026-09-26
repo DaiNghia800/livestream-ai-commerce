@@ -94,7 +94,7 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
           </Link>
         )}
 
-        {/* SCHEDULED: Chỉnh sửa phiên & Vào Studio (khi có route) */}
+        {/* SCHEDULED: Chỉnh sửa phiên & Vào Studio */}
         {session.status === "SCHEDULED" && (
           <>
             <Link
@@ -104,29 +104,25 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
               <Pencil className="h-4 w-4 text-primary" aria-hidden="true" />
               <span>Chỉnh sửa phiên</span>
             </Link>
-            <button
-              type="button"
-              disabled
-              title="Broadcast Studio sẽ mở trước giờ lên sóng 30 phút"
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold rounded-lg cursor-not-allowed"
+            <Link
+              href={`/shop/livestream/${session.id}/studio`}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 text-xs font-semibold rounded-lg transition-all active:scale-[0.98]"
             >
-              <Radio className="h-4 w-4" aria-hidden="true" />
-              <span>Vào Studio (Chưa mở)</span>
-            </button>
+              <Radio className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span>Vào Studio</span>
+            </Link>
           </>
         )}
 
-        {/* STARTING or LIVE: Studio navigation status */}
+        {/* STARTING or LIVE: Vào Studio phát sóng */}
         {(session.status === "LIVE" || session.status === "STARTING") && (
-          <button
-            type="button"
-            disabled
-            title="Broadcast Studio đang được phát triển ở bước tiếp theo"
-            className="inline-flex items-center gap-2 h-9 px-4 bg-primary/10 text-primary border border-primary/20 text-xs font-semibold rounded-lg cursor-not-allowed"
+          <Link
+            href={`/shop/livestream/${session.id}/studio`}
+            className="inline-flex items-center gap-2 h-9 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all active:scale-[0.98]"
           >
-            <Radio className="h-4 w-4 text-red-500 animate-pulse" aria-hidden="true" />
-            <span>Vào Studio (Sắp ra mắt)</span>
-          </button>
+            <Radio className="h-4 w-4 text-white animate-pulse" aria-hidden="true" />
+            <span>Vào Studio (Đang phát)</span>
+          </Link>
         )}
 
         {/* ENDED: Kết thúc & tổng kết */}
