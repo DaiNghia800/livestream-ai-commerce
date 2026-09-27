@@ -395,13 +395,21 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
           )}
 
           {isEnded && (
-            <Link
-              href={`/shop/livestream/${item.id}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2.5 py-1 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-low"
-            >
-              <BarChart3 className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-              <span>Chi tiết</span>
-            </Link>
+            <>
+              <Link
+                href={`/shop/livestream/${item.id}/report`}
+                className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 transition-colors hover:bg-purple-100"
+              >
+                <BarChart3 className="h-3.5 w-3.5 text-purple-600" aria-hidden="true" />
+                <span>Báo cáo</span>
+              </Link>
+              <Link
+                href={`/shop/livestream/${item.id}`}
+                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2.5 py-1 text-xs font-medium text-on-surface transition-colors hover:bg-surface-container-low"
+              >
+                <span>Chi tiết</span>
+              </Link>
+            </>
           )}
 
           {/* Thao tác phụ: Xóa bản nháp cho DRAFT, menu tùy chọn cho các trạng thái khác */}

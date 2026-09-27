@@ -5,6 +5,7 @@ import {
   Radio,
   CheckCircle2,
   Activity,
+  BarChart3,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
 
@@ -138,6 +139,13 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
         {/* ENDED: Kết thúc & tổng kết */}
         {session.status === "ENDED" && (
           <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/shop/livestream/${session.id}/report`}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary text-white hover:bg-primary-container text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
+            >
+              <BarChart3 className="h-4 w-4" aria-hidden="true" />
+              <span>Xem báo cáo tổng kết</span>
+            </Link>
             <Link
               href={`/shop/livestream/${session.id}/monitoring`}
               className="inline-flex items-center gap-1.5 h-9 px-3 bg-white border border-outline-variant hover:bg-surface-container text-on-surface text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
