@@ -125,26 +125,28 @@ h3,
   font-family: var(--font-heading);
 }
 
-h1 {
-  font-size: var(--text-xl);
-  letter-spacing: -0.03em;
-  line-height: 1.4;
-  margin: 0 0 var(--space-2);
-}
+@layer base {
+  h1 {
+    font-size: var(--text-xl);
+    letter-spacing: -0.03em;
+    line-height: 1.4;
+    margin: 0 0 var(--space-2);
+  }
 
-h2 {
-  font-size: var(--text-lg);
-  line-height: 1.4;
-  margin: 0 0 var(--space-3);
-}
+  h2 {
+    font-size: var(--text-lg);
+    line-height: 1.4;
+    margin: 0 0 var(--space-3);
+  }
 
-h3 {
-  font-size: var(--text-base);
-  margin-bottom: var(--space-2);
-}
+  h3 {
+    font-size: var(--text-base);
+    margin-bottom: var(--space-2);
+  }
 
-p {
-  margin: var(--space-2) 0 var(--space-4);
+  p {
+    margin: var(--space-2) 0 var(--space-4);
+  }
 }
 
 .muted {

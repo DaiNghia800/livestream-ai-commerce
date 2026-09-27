@@ -4,6 +4,7 @@ import {
   Pencil,
   Radio,
   CheckCircle2,
+  Activity,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
 
@@ -114,22 +115,40 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
           </>
         )}
 
-        {/* STARTING or LIVE: Vào Studio phát sóng */}
+        {/* STARTING or LIVE: Vào Studio phát sóng & Giám sát */}
         {(session.status === "LIVE" || session.status === "STARTING") && (
-          <Link
-            href={`/shop/livestream/${session.id}/studio`}
-            className="inline-flex items-center gap-2 h-9 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all active:scale-[0.98]"
-          >
-            <Radio className="h-4 w-4 text-white animate-pulse" aria-hidden="true" />
-            <span>Vào Studio (Đang phát)</span>
-          </Link>
+          <>
+            <Link
+              href={`/shop/livestream/${session.id}/monitoring`}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white border border-outline-variant hover:bg-surface-container text-on-surface text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
+            >
+              <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span>Theo dõi Live</span>
+            </Link>
+            <Link
+              href={`/shop/livestream/${session.id}/studio`}
+              className="inline-flex items-center gap-2 h-9 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all active:scale-[0.98]"
+            >
+              <Radio className="h-4 w-4 text-white animate-pulse" aria-hidden="true" />
+              <span>Vào Studio (Đang phát)</span>
+            </Link>
+          </>
         )}
 
         {/* ENDED: Kết thúc & tổng kết */}
         {session.status === "ENDED" && (
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-            <span>Phiên đã hoàn tất phát sóng</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/shop/livestream/${session.id}/monitoring`}
+              className="inline-flex items-center gap-1.5 h-9 px-3 bg-white border border-outline-variant hover:bg-surface-container text-on-surface text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
+            >
+              <Activity className="h-4 w-4 text-purple-600" aria-hidden="true" />
+              <span>Nhật ký giám sát</span>
+            </Link>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+              <span>Phiên đã hoàn tất phát sóng</span>
+            </div>
           </div>
         )}
       </div>

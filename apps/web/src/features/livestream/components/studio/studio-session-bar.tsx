@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Sparkles,
   ArrowLeft,
+  Activity,
 } from "lucide-react";
 import type { LivestreamStatus } from "../../types/livestream";
 
@@ -137,6 +138,16 @@ export function StudioSessionBar({
             {typeof aiOrdersCount === "number" ? aiOrdersCount.toLocaleString("vi-VN") : aiOrdersCount}
           </span>
         </div>
+
+        {/* Live Monitoring Link */}
+        <Link
+          href={`/shop/livestream/${sessionId}/monitoring`}
+          className="hidden sm:inline-flex items-center gap-1 bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 hover:text-white px-2 py-0.5 rounded text-[10px] font-semibold transition-colors"
+          title="Mở màn Theo dõi Livestream (Live Monitoring)"
+        >
+          <Activity className="h-3 w-3 text-indigo-400" aria-hidden="true" />
+          <span>Giám sát</span>
+        </Link>
       </div>
     </div>
   );

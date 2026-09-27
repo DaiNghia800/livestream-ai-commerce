@@ -42,6 +42,8 @@ export function MerchantShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const navigationId = useId();
 
+  const isMonitoring = pathname ? /\/monitoring\/?$/.test(pathname) : false;
+
   return (
     <div className={styles.shell}>
       <div className={styles.mobileBar}>
@@ -125,7 +127,9 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         </p>
       </aside>
 
-      <div className={styles.content}>
+      <div
+        className={`${styles.content} ${isMonitoring ? styles.contentMonitoring : ""}`}
+      >
         <header className={styles.header}>
           <label className={styles.search}>
             <span className="sr-only">Tìm kiếm trong khu vực quản lý</span>
@@ -144,7 +148,10 @@ export function MerchantShell({ children }: { children: ReactNode }) {
             </span>
           </div>
         </header>
-        <main id="main-content" className={styles.main}>
+        <main
+          id="main-content"
+          className={`${styles.main} ${isMonitoring ? styles.mainMonitoring : ""}`}
+        >
           {children}
         </main>
       </div>
