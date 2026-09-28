@@ -6,19 +6,23 @@
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  z-index: 30;
+  z-index: 40;
   width: var(--merchant-sidebar-width);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  justify-content: space-between;
   overflow-y: auto;
-  padding: var(--space-6) var(--space-4);
+  padding: var(--space-4);
   background: var(--color-sidebar);
   color: var(--color-on-dark);
+  border-right: 1px solid rgba(199, 196, 216, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .brandLink {
   color: inherit;
+  display: block;
+  margin-bottom: var(--space-4);
 }
 
 .brandLink:hover {
@@ -26,7 +30,8 @@
 }
 
 .primaryAction {
-  min-height: 42px;
+  width: 100%;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -35,63 +40,85 @@
   background: var(--color-primary);
   border: 0;
   color: var(--color-on-dark);
+  font-family: var(--font-heading);
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 4px rgba(53, 37, 205, 0.2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: var(--space-4);
 }
 
-.primaryAction:hover:not(:disabled) {
+.primaryAction:hover {
   background: var(--color-primary-hover);
   text-decoration: none;
 }
 
+.primaryAction:active {
+  transform: scale(0.98);
+}
+
 .navigation {
-  display: grid;
-  gap: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
 }
 
 .navLink,
 .navUnavailable {
-  min-height: 44px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--color-on-dark-muted);
-  text-align: left;
-  font-weight: 600;
+  color: #c7c4d8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .navLink:hover {
-  background: rgb(255 255 255 / 8%);
-  color: var(--color-on-dark);
+  background: rgba(218, 226, 253, 0.1);
+  color: #ffffff;
   text-decoration: none;
 }
 
 .active {
   background: var(--color-primary);
-  color: var(--color-on-dark);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .active:hover {
   background: var(--color-primary);
+  color: #ffffff;
 }
 
 .navUnavailable {
   width: 100%;
-  opacity: 0.62;
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .navUnavailable small {
   margin-left: auto;
-  font-size: 0.625rem;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
 }
 
 .support {
   margin-top: auto;
   padding-top: var(--space-4);
-  border-top: 1px solid rgb(255 255 255 / 16%);
+  border-top: 1px solid rgba(199, 196, 216, 0.2);
   color: var(--color-on-dark-muted);
   font-size: var(--text-xs);
 }
@@ -101,17 +128,25 @@
   vertical-align: -3px;
 }
 
+/* Main Content Wrapper */
 .content {
   min-width: 0;
   margin-left: var(--merchant-sidebar-width);
 }
 
+.contentMonitoring {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header & Search */
 .header {
   position: sticky;
   top: 0;
   z-index: 20;
   min-height: var(--merchant-header-height);
-  flex-shrink: 0;
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto;
   align-items: center;
@@ -127,16 +162,45 @@
   max-width: 420px;
 }
 
-.search svg {
+.searchBox {
+  position: relative;
+  width: 320px;
+}
+
+.search svg,
+.searchIcon {
   position: absolute;
   top: 50%;
   left: var(--space-3);
   transform: translateY(-50%);
   color: var(--color-muted);
+  pointer-events: none;
 }
 
-.search input {
-  padding-left: var(--space-8);
+.search input,
+.searchInput {
+  width: 100%;
+  height: 36px;
+  padding: 0 16px 0 36px;
+  background: var(--color-subtle);
+  border: 1px solid rgba(199, 196, 216, 0.5);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  color: var(--color-text);
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.search input:focus,
+.searchInput:focus {
+  border-color: var(--color-primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(53, 37, 205, 0.15);
+}
+
+.search input::placeholder,
+.searchInput::placeholder {
+  color: var(--color-muted);
 }
 
 .systemStatus {
@@ -154,6 +218,43 @@
   background: var(--color-muted, #94a3b8);
 }
 
+.statusBadge {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-control);
+  background: var(--color-subtle);
+  border: 1px solid rgba(199, 196, 216, 0.4);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+@media (min-width: 1024px) {
+  .statusBadge {
+    display: flex;
+  }
+}
+
+.pulseDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
 .profile {
   display: flex;
   align-items: center;
@@ -169,6 +270,7 @@
   background: var(--color-subtle);
   color: var(--color-primary);
   font-weight: 700;
+  font-size: 13px;
 }
 
 .profileCopy {
@@ -176,21 +278,21 @@
   line-height: 1.35;
 }
 
-.profileCopy small {
-  color: var(--color-muted);
+.profileCopy strong {
+  font-size: 13px;
+  font-weight: 600;
 }
 
+.profileCopy small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+/* Scrollable Main Area */
 .main {
   width: min(100%, 1600px);
   margin: 0 auto;
   padding: var(--space-6) var(--space-8) var(--space-8);
-}
-
-.contentMonitoring {
-  height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 .mainMonitoring {
@@ -235,6 +337,7 @@
     border-radius: var(--radius-control);
     background: var(--color-surface);
     color: var(--color-text);
+    cursor: pointer;
   }
 
   .sidebar {
@@ -251,7 +354,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    z-index: 29;
+    z-index: 39;
     display: block;
     border: 0;
     background: rgb(15 23 42 / 48%);

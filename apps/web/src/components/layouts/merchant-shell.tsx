@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Bell,
   CircleHelp,
   CreditCard,
   LayoutDashboard,
@@ -11,8 +12,8 @@ import {
   Package,
   Radio,
   Search,
+  Settings,
   ShoppingCart,
-  Sparkles,
   Truck,
   Warehouse,
   X,
@@ -25,12 +26,13 @@ const navigation = [
   { label: "Tổng quan", href: "/shop", icon: LayoutDashboard, exact: true },
   { label: "Livestream", href: "/shop/livestream", icon: Radio },
   { label: "Đơn hàng", href: "/shop/orders", icon: ShoppingCart },
-  { label: "Sản phẩm", icon: Package },
+  { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", icon: Warehouse },
   { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
   { label: "Vận chuyển", icon: Truck },
+  { label: "Thông báo", icon: Bell },
   { label: "Báo cáo", icon: BarChart3 },
-  { label: "Trợ lý AI", icon: Sparkles },
+  { label: "Cài đặt", icon: Settings },
 ] as const;
 
 function isActivePath(pathname: string, href: string, exact?: boolean) {
@@ -46,6 +48,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={styles.shell}>
+      {/* Mobile Top Bar */}
       <div className={styles.mobileBar}>
         <Link className={styles.brandLink} href="/shop" onClick={() => setMenuOpen(false)}>
           <Brand />
@@ -58,10 +61,11 @@ export function MerchantShell({ children }: { children: ReactNode }) {
           aria-controls={navigationId}
           onClick={() => setMenuOpen((open) => !open)}
         >
-          {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          {menuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
         </button>
       </div>
 
+      {/* Mobile Overlay */}
       {menuOpen && (
         <button
           className={styles.backdrop}
@@ -71,6 +75,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         />
       )}
 
+      {/* Sidebar */}
       <aside
         id={navigationId}
         className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""}`}
@@ -85,7 +90,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
           onClick={() => setMenuOpen(false)}
         >
           <Radio size={18} aria-hidden="true" />
-          Bắt đầu Live
+          <span>Bắt đầu Live</span>
         </Link>
         <nav className={styles.navigation} aria-label="Điều hướng chủ shop">
           {navigation.map((item) => {
@@ -100,7 +105,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                   title={`${item.label} chưa khả dụng`}
                 >
                   <Icon size={18} aria-hidden="true" />
-                  {item.label}
+                  <span>{item.label}</span>
                   <small>Sắp có</small>
                 </button>
               );
@@ -115,7 +120,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                 onClick={() => setMenuOpen(false)}
               >
                 <Icon size={18} aria-hidden="true" />
-                {item.label}
+                <span>{item.label}</span>
               </Link>
             );
           })}
@@ -127,6 +132,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         </p>
       </aside>
 
+      {/* Content wrapper */}
       <div
         className={`${styles.content} ${isMonitoring ? styles.contentMonitoring : ""}`}
       >

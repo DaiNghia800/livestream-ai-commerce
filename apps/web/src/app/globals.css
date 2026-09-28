@@ -5,6 +5,7 @@
   /* Colors */
   --color-primary: #3525cd;
   --color-primary-container: #4f46e5;
+  --color-on-primary: #ffffff;
   --color-secondary: #712ae2;
 
   --color-surface: #faf8ff;
@@ -13,12 +14,16 @@
   --color-surface-container: #eaedff;
   --color-surface-container-high: #e2e7ff;
   --color-surface-container-highest: #dae2fd;
+  --color-inverse-surface: #283044;
+  --color-inverse-on-surface: #eef0ff;
 
   --color-on-surface: #131b2e;
   --color-on-surface-variant: #464555;
 
   --color-outline: #777587;
   --color-outline-variant: #c7c4d8;
+
+  --color-tertiary: #00505f;
 
   --color-error: #ba1a1a;
   --color-error-container: #ffdad6;
