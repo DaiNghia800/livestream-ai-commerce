@@ -306,10 +306,11 @@ select:disabled {
   color: rgba(212, 214, 255, 0.9);
 }
 .auth-hero h2 {
-  font-size: clamp(3.1rem, 4.35vw, 5rem);
-  line-height: 0.92;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 35px;
+  line-height: calc(35px + 0.5cm);
   margin: 0 0 1.3rem;
-  letter-spacing: -0.075em;
+  letter-spacing: 0.05em;
   font-weight: 700;
   color: #ffffff;
   max-width: 620px;
