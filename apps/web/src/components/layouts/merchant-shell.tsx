@@ -31,7 +31,7 @@ const navigation = [
   { label: "Đơn hàng", icon: ShoppingCart },
   { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", icon: Warehouse },
-  { label: "Thanh toán", icon: CreditCard },
+  { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
   { label: "Vận chuyển", icon: Truck },
   { label: "Thông báo", icon: Bell },
   { label: "Báo cáo", icon: BarChart3 },

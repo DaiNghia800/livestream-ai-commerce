@@ -37,13 +37,38 @@ jobs:
       - name: Install commitlint
         run: npm install @commitlint/cli @commitlint/config-conventional
 
-      # Lint tất cả commit trong PR này (từ base đến HEAD)
+      # # Lint tất cả commit trong PR này (từ base đến HEAD)
+      # - name: Lint commits in this PR
+      #   run: |
+      #     npx commitlint \
+      #       --from ${{ github.event.pull_request.base.sha }} \
+      #       --to   ${{ github.event.pull_request.head.sha }} \
+      #       --verbose
+
+      # đoạn này thay cho code đã comment lại ở trên
+      # Chỉ lint commit thực sự viết trên nhánh này.
+      # Commit đã có trên main là lịch sử khởi tạo repo, có từ trước khi
+      # nhóm áp Conventional Commits và đã publish nên không sửa được.
       - name: Lint commits in this PR
         run: |
-          npx commitlint \
-            --from ${{ github.event.pull_request.base.sha }} \
-            --to   ${{ github.event.pull_request.head.sha }} \
-            --verbose
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+          COMMITS=$(git log --format=%H \
+            ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} \
+            --not origin/main --no-merges)
+
+          if [ -z "$COMMITS" ]; then
+            echo "Không có commit mới nào cần kiểm tra."
+            exit 0
+          fi
+
+          FAILED=0
+          for sha in $COMMITS; do
+            echo "── $(git log -1 --format='%h %s' "$sha")"
+            git log -1 --format=%B "$sha" | npx commitlint --verbose || FAILED=1
+          done
+          exit $FAILED
+
 
   # ─────────────────────────────────────────────────────────────────
   # JOB 2: Quét lộ secret (API key, password, token...)
