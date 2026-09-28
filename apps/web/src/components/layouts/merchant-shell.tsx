@@ -28,7 +28,7 @@ import { Brand } from "./brand";
 const navigation = [
   { label: "Tổng quan", href: "/shop", icon: LayoutDashboard, exact: true },
   { label: "Livestream", href: "/shop/livestream/live-2025-08", icon: Radio },
-  { label: "Đơn hàng", icon: ShoppingCart },
+  { label: "Đơn hàng", href: "/shop/orders", icon: ShoppingCart },
   { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", icon: Warehouse },
   { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
