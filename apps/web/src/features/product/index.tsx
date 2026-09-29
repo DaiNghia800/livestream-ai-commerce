@@ -1,7 +1,20 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  Download,
+  Upload,
+  Plus,
+  Search,
+  ChevronDown,
+  Star,
+  Pin,
+  ChevronLeft,
+  ChevronRight,
+  Bot,
+  ArrowRight,
+} from "lucide-react";
 import { ProductKpiCards } from "@/components/ui/product-metrics-bar";
 import { ProductTable } from "@/components/ui/product-table";
 import {
@@ -11,7 +24,6 @@ import {
 } from "@/mocks/product";
 
 export function MerchantProduct() {
-  const router = useRouter();
   const [products, setProducts] = useState<ProductItem[]>(productMockList);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -120,9 +132,7 @@ export function MerchantProduct() {
             type="button"
             onClick={() => alert("Đang xuất danh sách sản phẩm...")}
           >
-            <span className="material-symbols-outlined text-[18px]" data-icon="download">
-              download
-            </span>
+            <Download size={18} aria-hidden="true" />
             <span>Xuất danh sách</span>
           </button>
           <button
@@ -130,21 +140,17 @@ export function MerchantProduct() {
             type="button"
             onClick={() => alert("Nhập tệp Excel sản phẩm...")}
           >
-            <span className="material-symbols-outlined text-[18px]" data-icon="upload_file">
-              upload_file
-            </span>
+            <Upload size={18} aria-hidden="true" />
             <span>Nhập file Excel</span>
           </button>
-          <button
-            className="h-10 px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-label-md font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer"
-            type="button"
-            onClick={() => router.push("/shop/products/new")}
+          <Link
+            role="button"
+            href="/shop/products/new"
+            className="h-10 px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-label-md font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer hover:no-underline"
           >
-            <span className="material-symbols-outlined text-[18px]" data-icon="add">
-              add
-            </span>
+            <Plus size={18} aria-hidden="true" />
             <span>+ Thêm sản phẩm mới</span>
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -155,12 +161,11 @@ export function MerchantProduct() {
       <div className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Search Multi-Criteria */}
         <div className="w-full md:w-96 relative">
-          <span
-            className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-outline pointer-events-none"
-            data-icon="search"
-          >
-            search
-          </span>
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none"
+            aria-hidden="true"
+          />
           <input
             className="w-full h-10 pl-9 pr-4 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
             placeholder="Tìm theo Tên SP, SKU, Mã chốt đơn (VD: AO01, SP-LINEN)..."
@@ -185,12 +190,11 @@ export function MerchantProduct() {
               <option value="quan-jean">Quần jean</option>
               <option value="phu-kien">Phụ kiện</option>
             </select>
-            <span
-              className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-[18px] text-outline pointer-events-none"
-              data-icon="expand_more"
-            >
-              expand_more
-            </span>
+            <ChevronDown
+              size={18}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none"
+              aria-hidden="true"
+            />
           </div>
 
           {/* Status Filter */}
@@ -205,51 +209,40 @@ export function MerchantProduct() {
               <option value="het-hang">Hết hàng</option>
               <option value="ngung-ban">Ngừng bán</option>
             </select>
-            <span
-              className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-[18px] text-outline pointer-events-none"
-              data-icon="expand_more"
-            >
-              expand_more
-            </span>
+            <ChevronDown
+              size={18}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline pointer-events-none"
+              aria-hidden="true"
+            />
           </div>
 
-          {/* Quick Filter Chips */}
           {/* Quick Filter Chips */}
           <div className="w-full sm:w-auto flex items-center justify-start gap-1.5 pt-2 sm:pt-0 sm:pl-2 sm:border-l border-outline-variant/60 overflow-visible">
             <button
               type="button"
               aria-label="Best Seller"
               data-testid="best-seller-filter"
-              className={`shrink-0 px-2.5 py-1.5 rounded-full text-label-sm font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${filterBestSellerOnly
+              className={`shrink-0 px-2.5 py-1.5 rounded-full text-label-sm font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${
+                filterBestSellerOnly
                   ? "bg-primary text-on-primary shadow-sm"
                   : "bg-surface-container-high text-primary hover:bg-surface-container"
-                }`}
+              }`}
               onClick={() => setFilterBestSellerOnly((v) => !v)}
             >
-              <span
-                className="material-symbols-outlined text-[14px]"
-                data-icon="star"
-                aria-hidden="true"
-              >
-                star
-              </span>
+              <Star size={14} aria-hidden="true" />
               <span>Best Seller</span>
             </button>
 
             <button
-              className={`shrink-0 px-2.5 py-1.5 rounded-full text-label-sm font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${filterLivePinOnly
-                ? "bg-primary text-on-primary shadow-sm"
-                : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
-                }`}
+              className={`shrink-0 px-2.5 py-1.5 rounded-full text-label-sm font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${
+                filterLivePinOnly
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
+              }`}
               type="button"
               onClick={() => setFilterLivePinOnly((v) => !v)}
             >
-              <span
-                className="material-symbols-outlined text-[14px]"
-                data-icon="push_pin"
-              >
-                push_pin
-              </span>
+              <Pin size={14} aria-hidden="true" />
               <span>Live Pin</span>
             </button>
           </div>
@@ -299,36 +292,37 @@ export function MerchantProduct() {
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             >
-              <span className="material-symbols-outlined text-[16px]" data-icon="chevron_left">
-                chevron_left
-              </span>
+              <ChevronLeft size={16} aria-hidden="true" />
               <span className="hidden sm:inline">Trước</span>
             </button>
             <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${currentPage === 1
-                ? "bg-primary text-on-primary shadow-sm"
-                : "text-on-surface-variant hover:bg-surface-container transition-colors"
-                }`}
+              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${
+                currentPage === 1
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
+              }`}
               type="button"
               onClick={() => setCurrentPage(1)}
             >
               1
             </button>
             <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${currentPage === 2
-                ? "bg-primary text-on-primary shadow-sm"
-                : "text-on-surface-variant hover:bg-surface-container transition-colors"
-                }`}
+              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${
+                currentPage === 2
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
+              }`}
               type="button"
               onClick={() => setCurrentPage(2)}
             >
               2
             </button>
             <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${currentPage === 3
-                ? "bg-primary text-on-primary shadow-sm"
-                : "text-on-surface-variant hover:bg-surface-container transition-colors"
-                }`}
+              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${
+                currentPage === 3
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
+              }`}
               type="button"
               onClick={() => setCurrentPage(3)}
             >
@@ -336,10 +330,11 @@ export function MerchantProduct() {
             </button>
             <span className="w-6 text-center text-outline text-label-sm font-semibold">...</span>
             <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${currentPage === 25
-                ? "bg-primary text-on-primary shadow-sm"
-                : "text-on-surface-variant hover:bg-surface-container transition-colors"
-                }`}
+              className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center cursor-pointer border-none ${
+                currentPage === 25
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
+              }`}
               type="button"
               onClick={() => setCurrentPage(25)}
             >
@@ -351,9 +346,7 @@ export function MerchantProduct() {
               onClick={() => setCurrentPage((p) => Math.min(25, p + 1))}
             >
               <span className="hidden sm:inline">Sau</span>
-              <span className="material-symbols-outlined text-[16px]" data-icon="chevron_right">
-                chevron_right
-              </span>
+              <ChevronRight size={16} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -363,9 +356,7 @@ export function MerchantProduct() {
       <div className="p-4 rounded-xl bg-surface-container border border-primary/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-body-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary-container text-on-primary flex items-center justify-center flex-shrink-0">
-            <span className="material-symbols-outlined text-[20px]" data-icon="smart_toy">
-              smart_toy
-            </span>
+            <Bot size={20} aria-hidden="true" />
           </div>
           <div>
             <span className="font-semibold text-primary block">AI Parser Đang Hoạt Động (Độ nhạy: 99.4%)</span>
@@ -381,12 +372,9 @@ export function MerchantProduct() {
           onClick={() => alert("Cấu hình bộ quy tắc AI")}
         >
           <span>Cấu hình bộ quy tắc AI</span>
-          <span className="material-symbols-outlined text-[16px]" data-icon="arrow_forward">
-            arrow_forward
-          </span>
+          <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
-
     </>
   );
 }

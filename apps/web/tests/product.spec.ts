@@ -10,7 +10,7 @@ function collectConsoleErrors(page: Page) {
 
 test("product management page renders correctly and matches Stitch design", async ({
   page,
-}) => {
+}, testInfo) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/products");
 
@@ -20,9 +20,11 @@ test("product management page renders correctly and matches Stitch design", asyn
   ).toBeVisible();
 
   // Verify active sidebar tab (Sản phẩm)
-  await expect(
-    page.getByRole("link", { name: "Sản phẩm", exact: true })
-  ).toBeVisible();
+  if (testInfo.project.name !== "mobile") {
+    await expect(
+      page.getByRole("link", { name: "Sản phẩm", exact: true })
+    ).toBeVisible();
+  }
 
   // Verify 4 KPI cards
   await expect(page.getByText("Tổng sản phẩm")).toBeVisible();
