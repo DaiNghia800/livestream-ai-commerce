@@ -15,8 +15,8 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: { default: "LiveOrder AI", template: "%s | LiveOrder AI" },
-  description: "Nền tảng livestream thương mại — bản mẫu frontend",
+  title: { default: "Quản lý Sản phẩm - LiveOrder AI", template: "%s | LiveOrder AI" },
+  description: "Cấu hình danh mục hàng hóa, phân bổ số lượng chốt trực tiếp và kiểm soát tồn kho trong buổi phát trực tiếp.",
 };
 
 export default function RootLayout({
