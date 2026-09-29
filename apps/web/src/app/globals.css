@@ -137,6 +137,10 @@
   border: 0;
 }
 
+html {
+  scroll-padding-top: 64px;
+}
+
 body {
   margin: 0;
   background: var(--color-background);
