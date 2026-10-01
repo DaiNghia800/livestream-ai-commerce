@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Download,
   Upload,
@@ -24,6 +25,7 @@ import {
 } from "@/mocks/product";
 
 export function MerchantProduct() {
+  const router = useRouter();
   const [products, setProducts] = useState<ProductItem[]>(productMockList);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -111,7 +113,7 @@ export function MerchantProduct() {
   };
 
   const handleEdit = (product: ProductItem) => {
-    alert(`Chỉnh sửa thông tin sản phẩm: ${product.name} (${product.id})`);
+    router.push(`/shop/products/${product.id}/edit`);
   };
 
   return (

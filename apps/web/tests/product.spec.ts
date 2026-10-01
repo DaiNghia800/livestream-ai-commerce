@@ -73,3 +73,23 @@ test("product management page renders correctly and matches Stitch design", asyn
 
   expect(consoleErrors).toEqual([]);
 });
+
+test("product edit route matches the editing workflow on desktop and mobile", async ({ page }) => {
+  await page.goto("/shop/products");
+  await page.getByTitle("Chỉnh sửa").first().click();
+
+  await expect(page).toHaveURL(/\/shop\/products\/AO01\/edit$/);
+  await expect(
+    page.getByRole("heading", { name: "Chỉnh sửa sản phẩm" })
+  ).toBeVisible();
+  await expect(page.locator("#product-name")).toHaveValue(
+    "Áo Sơ Mi Linen Cổ Tàu Cao Cấp"
+  );
+  await expect(page.getByText("4. Bảng cấu hình biến thể & SKU riêng")).toBeVisible();
+
+  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
+  await expect(page.getByText("Đã lưu thay đổi thành công")).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+  ).toBe(true);
+});
