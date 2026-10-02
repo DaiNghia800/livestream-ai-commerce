@@ -97,3 +97,27 @@ test("inventory adjustment opens from inventory and can be canceled", async ({
     }),
   ).toBeVisible();
 });
+
+test("inventory history can be opened and filtered", async ({ page }) => {
+  await page.goto("/shop/inventory");
+  await page.getByRole("link", { name: "Nhật ký biến động" }).click();
+
+  await expect(page).toHaveURL("/shop/inventory/history");
+  await expect(
+    page.getByRole("heading", {
+      name: "Nhật ký Biến động Tồn kho & Audit Log",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("#ORD-9942")).toBeVisible();
+  await expect(page.getByText("#ADJ-2025-0842")).toBeVisible();
+
+  await page.getByRole("button", { name: /Hoàn tồn tự động/ }).click();
+  await expect(page.getByText("#ORD-9925")).toBeVisible();
+  await expect(page.getByText("#ORD-9942")).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Đặt lại mặc định" }).click();
+  await expect(page.getByText("#ORD-9942")).toBeVisible();
+
+  await page.getByRole("link", { name: "Tạo phiếu điều chỉnh" }).click();
+  await expect(page).toHaveURL("/shop/inventory/adjustment");
+});

@@ -277,6 +277,13 @@ export function InventoryManagement() {
           </p>
         </div>
         <div className={styles.headerActions}>
+          <Link
+            className={styles.secondaryButton}
+            href="/shop/inventory/history"
+          >
+            <History size={15} aria-hidden="true" />
+            Nhật ký biến động
+          </Link>
           <button
             className={styles.secondaryButton}
             onClick={() => setNotice("Đã đồng bộ dữ liệu kho mẫu mới nhất.")}
