@@ -187,7 +187,9 @@ export function MerchantPaymentList() {
                         </Link>
                       </td>
                       <td>{payment.customer}</td>
-                      <td>{paymentGateways[payment.gateway]}</td>
+                      <td className="col-secondary">
+                        {paymentGateways[payment.gateway]}
+                      </td>
                       <td className="num">
                         <strong
                           style={
@@ -219,7 +221,9 @@ export function MerchantPaymentList() {
                           </span>
                         )}
                       </td>
-                      <td className="num">{formatClock(payment.createdAt)}</td>
+                      <td className="num col-secondary">
+                        {formatClock(payment.createdAt)}
+                      </td>
                       <td>
                         <Link
                           href={`/shop/payments/${payment.txnRef.toLowerCase()}`}
