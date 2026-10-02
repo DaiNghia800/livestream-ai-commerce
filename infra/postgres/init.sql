@@ -1,19 +1,46 @@
+-- =============================================================
 -- infra/postgres/init.sql
--- Script này tự động chạy khi PostgreSQL container khởi động lần đầu
--- Tạo database schema cơ bản cho cả 3 service dùng chung
+-- PostgreSQL Initialization Script for Livestream AI Commerce
+-- =============================================================
+-- Script này tự động chạy KHI VÀ CHỈ KHI PostgreSQL container
+-- khởi động LẦN ĐẦU TIÊN (volume trống).
+--
+-- Kiến trúc database:
+--   ┌─────────────────────────────────────────┐
+--   │         PostgreSQL Server (1 máy)       │
+--   │  ┌─────────────┐  ┌──────────────────┐  │
+--   │  │ commerce_db │  │  realtime_db     │  │
+--   │  │  (tables)   │  │   (tables)       │  │
+--   │  └─────────────┘  └──────────────────┘  │
+--   └─────────────────────────────────────────┘
+--
+-- Mỗi service connect vào database riêng:
+--   - Commerce Service  → commerce_db
+--   - Realtime Service  → realtime_db
+--   - AI Worker         → không có DB riêng
+-- =============================================================
 
--- ── Extensions ─────────────────────────────────────────────────
--- uuid-ossp: sinh UUID làm primary key (chuẩn hơn integer autoincrement)
+
+-- ── BƯỚC 1: Tạo 2 database ────────────────────────────────────
+-- Script này chạy trong context của default database (POSTGRES_DB).
+-- Ta tạo 2 database mới từ đây.
+-- =============================================================
+
+CREATE DATABASE commerce_db;
+CREATE DATABASE realtime_db;
+
+
+-- =============================================================
+-- ── BƯỚC 2: Khởi tạo commerce_db ──────────────────────────────
+-- =============================================================
+
+\c commerce_db
+
+-- Extension: sinh UUID làm primary key
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- ── Schema phân tách theo service ──────────────────────────────
--- Mỗi service có schema riêng trong cùng 1 database
--- Lý do: đơn giản hóa dev local, khi scale lên có thể tách DB riêng
-CREATE SCHEMA IF NOT EXISTS commerce;
-CREATE SCHEMA IF NOT EXISTS realtime;
-
--- ── Commerce: Bảng sản phẩm ────────────────────────────────────
-CREATE TABLE IF NOT EXISTS commerce.products (
+-- Bảng sản phẩm
+CREATE TABLE IF NOT EXISTS products (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     sku         VARCHAR(50)  NOT NULL UNIQUE,
     name        VARCHAR(255) NOT NULL,
@@ -24,8 +51,8 @@ CREATE TABLE IF NOT EXISTS commerce.products (
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- ── Commerce: Bảng phiên livestream ────────────────────────────
-CREATE TABLE IF NOT EXISTS commerce.live_sessions (
+-- Bảng phiên livestream
+CREATE TABLE IF NOT EXISTS live_sessions (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title       VARCHAR(255) NOT NULL,
     status      VARCHAR(20)  NOT NULL DEFAULT 'draft'
@@ -35,20 +62,20 @@ CREATE TABLE IF NOT EXISTS commerce.live_sessions (
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- ── Commerce: Bảng sản phẩm trong phiên live ───────────────────
-CREATE TABLE IF NOT EXISTS commerce.session_products (
-    session_id  UUID NOT NULL REFERENCES commerce.live_sessions(id) ON DELETE CASCADE,
-    product_id  UUID NOT NULL REFERENCES commerce.products(id),
+-- Bảng sản phẩm trong phiên live (bảng trung gian N-N)
+CREATE TABLE IF NOT EXISTS session_products (
+    session_id  UUID NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+    product_id  UUID NOT NULL REFERENCES products(id),
     order_code  VARCHAR(20) NOT NULL,   -- Mã khách gõ để chốt: "A001"
     pinned      BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (session_id, product_id)
 );
 
--- ── Commerce: Bảng đơn hàng ────────────────────────────────────
-CREATE TABLE IF NOT EXISTS commerce.orders (
+-- Bảng đơn hàng
+CREATE TABLE IF NOT EXISTS orders (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id      UUID REFERENCES commerce.live_sessions(id),
-    product_id      UUID NOT NULL REFERENCES commerce.products(id),
+    session_id      UUID REFERENCES live_sessions(id),
+    product_id      UUID NOT NULL REFERENCES products(id),
     customer_name   VARCHAR(255),
     customer_phone  VARCHAR(20),
     quantity        INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
@@ -61,30 +88,42 @@ CREATE TABLE IF NOT EXISTS commerce.orders (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Realtime: Bảng chat comments (lưu để audit AI) ─────────────
-CREATE TABLE IF NOT EXISTS realtime.chat_comments (
-    id          BIGSERIAL PRIMARY KEY,
-    session_id  UUID NOT NULL,
-    platform    VARCHAR(20) NOT NULL DEFAULT 'web',
-    username    VARCHAR(100),
-    content     TEXT NOT NULL,
-    ai_intent   VARCHAR(50),       -- 'order', 'question', 'other'
-    order_id    UUID,              -- Nếu AI tạo đơn từ comment này
-    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- Index tăng tốc query
+CREATE INDEX IF NOT EXISTS idx_orders_session    ON orders(session_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status     ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created    ON orders(created_at DESC);
 
--- ── Index để tăng tốc query phổ biến ───────────────────────────
-CREATE INDEX IF NOT EXISTS idx_orders_session    ON commerce.orders(session_id);
-CREATE INDEX IF NOT EXISTS idx_orders_status     ON commerce.orders(status);
-CREATE INDEX IF NOT EXISTS idx_orders_created    ON commerce.orders(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_comments_session  ON realtime.chat_comments(session_id);
-CREATE INDEX IF NOT EXISTS idx_comments_received ON realtime.chat_comments(received_at DESC);
-
--- ── Seed data mẫu (khớp với mock data của frontend) ────────────
-INSERT INTO commerce.products (sku, name, price, stock) VALUES
+-- Seed data mẫu
+INSERT INTO products (sku, name, price, stock) VALUES
     ('LIN-CU-25',   'Áo sơ mi Linen cổ cuba thoáng khí',     289000, 84),
     ('PAN-LNN-02',  'Quần ống suông Linen lưng thun unisex',  345000, 142),
     ('DRS-TIER-08', 'Váy đầm Linen dáng suông thắt nơ lưng', 399000, 18),
     ('VST-SAF-11',  'Áo gile khoác ngoài Safari Linen',       260000, 95),
     ('BLZ-OAT-09',  'Áo Blazer Linen một lớp công sở',        495000, 61)
 ON CONFLICT (sku) DO NOTHING;
+
+
+-- =============================================================
+-- ── BƯỚC 3: Khởi tạo realtime_db ──────────────────────────────
+-- =============================================================
+
+\c realtime_db
+
+-- Extension: sinh UUID (dùng cho session_id reference)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Bảng chat comments (lưu để audit AI)
+CREATE TABLE IF NOT EXISTS chat_comments (
+    id          BIGSERIAL PRIMARY KEY,
+    session_id  UUID NOT NULL,          -- FK logic tới commerce_db.live_sessions
+    platform    VARCHAR(20) NOT NULL DEFAULT 'web',
+    username    VARCHAR(100),
+    content     TEXT NOT NULL,
+    ai_intent   VARCHAR(50),            -- 'order', 'question', 'other'
+    order_id    UUID,                   -- Nếu AI tạo đơn từ comment này
+    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index tăng tốc query
+CREATE INDEX IF NOT EXISTS idx_comments_session  ON chat_comments(session_id);
+CREATE INDEX IF NOT EXISTS idx_comments_received ON chat_comments(received_at DESC);
