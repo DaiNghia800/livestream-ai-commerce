@@ -1205,3 +1205,965 @@
     animation: none;
   }
 }
+
+.inventoryPage {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 36px;
+  overflow-x: clip;
+}
+
+.adjustmentWorkspace {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  color: #131b2e;
+}
+
+.adjustmentHeader,
+.productAdjustmentCard,
+.adjustmentMetric,
+.variantsCard,
+.approvalCard {
+  border: 1px solid #c7c4d8;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(19 27 46 / 4%);
+}
+
+.adjustmentHeader {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+}
+
+.adjustmentTitle {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.adjustmentTitleIcon,
+.approvalIcon {
+  width: 29px;
+  height: 29px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #e2dfff;
+  color: #3525cd;
+}
+
+.adjustmentTitle h1 {
+  margin: 0;
+  color: #131b2e;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.adjustmentTitle p {
+  max-width: 540px;
+  margin: 3px 0 0;
+  color: #62647b;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.adjustmentHeaderActions,
+.variantsActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.adjustmentHeaderActions button,
+.adjustmentHeaderActions a,
+.variantsActions button,
+.draftButton {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #d1cfe0;
+  border-radius: 6px;
+  background: #fff;
+  color: #25263a;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.adjustmentHeaderActions button:hover,
+.adjustmentHeaderActions a:hover,
+.variantsActions button:hover,
+.draftButton:hover {
+  border-color: #8c83e8;
+  background: #f8f7ff;
+}
+
+.adjustmentHeaderActions .cancelButton {
+  color: #c33131;
+}
+
+.adjustmentHeaderActions a {
+  text-decoration: none;
+}
+
+.adjustmentHeaderActions a:hover {
+  text-decoration: none;
+}
+
+.adjustmentHeaderActions .adjustmentPrimaryButton,
+.approvalFooter .adjustmentPrimaryButton {
+  border-color: #4f46e5;
+  background: #4f46e5;
+  color: #fff;
+}
+
+.adjustmentHeaderActions .adjustmentPrimaryButton:hover,
+.approvalFooter .adjustmentPrimaryButton:hover {
+  border-color: #3525cd;
+  background: #3525cd;
+}
+
+.adjustmentNotice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: -4px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 10px;
+}
+
+.adjustmentNotice button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.adjustmentSummary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr);
+  gap: 13px;
+}
+
+.productAdjustmentCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px;
+}
+
+.selectedProduct {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.adjustmentProductImage {
+  width: 53px;
+  height: 53px;
+  flex: 0 0 auto;
+  border: 1px solid #d1cfe0;
+  border-radius: 5px;
+  background: #f2f3ff;
+  object-fit: cover;
+}
+
+.selectedProductCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  color: #606176;
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.selectedProductCopy > strong {
+  overflow: hidden;
+  color: #16182b;
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectedProductCopy b {
+  color: #282a3c;
+  font-weight: 600;
+}
+
+.productBadges {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.editingBadge,
+.locationBadge,
+.variantCount {
+  display: inline-flex;
+  min-height: 15px;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e2dfff;
+  color: #3525cd;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.locationBadge {
+  background: #f0f0f6;
+  color: #42445b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 7px;
+}
+
+.productDescription {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adjustmentPrice {
+  align-self: flex-start;
+  margin-left: 63px;
+  color: #3525cd;
+  font-family: var(--font-heading);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.wmsCallout {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid #d5d0ff;
+  border-radius: 6px;
+  background: #f5f4ff;
+  color: #35358a;
+}
+
+.wmsCallout > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #3525cd;
+}
+
+.wmsCallout p {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.wmsCallout strong {
+  color: #3525cd;
+}
+
+.adjustmentMetrics {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.adjustmentMetric {
+  display: flex;
+  min-width: 0;
+  min-height: 78px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px;
+}
+
+.adjustmentMetric > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adjustmentMetric > div > span {
+  overflow: hidden;
+  color: #464555;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adjustmentMetric > div > strong {
+  color: #131b2e;
+  font-family: var(--font-heading);
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.adjustmentMetric > div > small {
+  overflow: hidden;
+  color: #777587;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: #e2e7ff;
+  color: #3525cd;
+}
+
+.liveMetric {
+  border-color: #dfd2ff;
+}
+
+.liveMetric > div > span,
+.liveMetric > div > strong,
+.liveMetric .metricIcon {
+  color: #8b42f6;
+}
+
+.liveMetric .metricIcon {
+  background: #f0e9ff;
+}
+
+.availableMetric {
+  border-color: #4f46e5;
+  background: #4f46e5;
+}
+
+.availableMetric > div > span,
+.availableMetric > div > strong,
+.availableMetric > div > small,
+.availableMetric .metricIcon {
+  color: #fff;
+}
+
+.availableMetric .metricIcon {
+  background: rgb(255 255 255 / 17%);
+}
+
+.thresholdMetric {
+  border-color: #f6d9bf;
+}
+
+.thresholdMetric > div > span,
+.thresholdMetric > div > strong,
+.thresholdMetric .metricIcon {
+  color: #b54708;
+}
+
+.thresholdMetric .metricIcon {
+  background: #fff3e8;
+}
+
+.variantsCard {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.variantsHeader {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #d8d7e8;
+}
+
+.variantsHeader > div:first-child {
+  min-width: 0;
+}
+
+.variantsHeader h2,
+.approvalHeader h2 {
+  margin: 0;
+  color: #171a2c;
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.variantsHeader p,
+.approvalHeader p {
+  margin: 2px 0 0;
+  color: #6e6f82;
+  font-size: 7px;
+  line-height: 1.4;
+}
+
+.variantsActions {
+  gap: 5px;
+}
+
+.variantCount {
+  flex: 0 0 auto;
+  background: #e2dfff;
+  font-size: 7px;
+}
+
+.variantsActions button {
+  min-height: 24px;
+  gap: 4px;
+  padding: 0 7px;
+  font-size: 7px;
+}
+
+.variantsActions button:last-child {
+  border-color: #4f46e5;
+  background: #4f46e5;
+  color: #fff;
+}
+
+.adjustmentTableWrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.adjustmentTable {
+  width: 100%;
+  min-width: 940px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.adjustmentTable thead {
+  background: #f2f3ff;
+}
+
+.adjustmentTable th {
+  height: 40px;
+  padding: 7px 8px;
+  border-bottom: 1px solid #dad9e9;
+  color: #52566e;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.adjustmentTable td {
+  height: 48px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #e5e4ef;
+  color: #25283b;
+  font-size: 8px;
+}
+
+.adjustmentTable tbody tr:nth-child(even) {
+  background: #fbfbff;
+}
+
+.adjustmentTable td:first-child {
+  white-space: nowrap;
+}
+
+.adjustmentTable td:first-child strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+}
+
+.variantStatus {
+  display: inline-flex;
+  margin-right: 5px;
+  color: #059669;
+  vertical-align: -2px;
+}
+
+.negativeStatus {
+  color: #e11d48;
+}
+
+.adjustmentTable .numericValue {
+  color: #52566e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+}
+
+.adjustmentTable .availableValue {
+  color: #3525cd;
+  font-weight: 700;
+}
+
+.adjustmentTable select,
+.adjustmentTable input {
+  height: 25px;
+  border: 1px solid #d5d4e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #27293c;
+  font-size: 7px;
+}
+
+.adjustmentTable select {
+  width: 100%;
+  min-width: 94px;
+  padding: 0 16px 0 6px;
+}
+
+.adjustmentTable td:nth-child(5) select {
+  min-width: 105px;
+}
+
+.adjustmentTable td:nth-child(8) select {
+  min-width: 125px;
+}
+
+.adjustmentTable input {
+  width: 100%;
+  min-width: 44px;
+  padding: 0 4px;
+}
+
+.adjustmentTable .quantityInput {
+  border-color: #c9f1df;
+  background: #ecfdf5;
+  color: #00865b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  text-align: center;
+}
+
+.adjustmentTable .positiveInput {
+  border-color: #b9ebd7;
+  background: #e7fbf2;
+}
+
+.adjustmentTable .negativeInput {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #e11d48;
+}
+
+.newStock {
+  display: inline-flex;
+  min-width: 27px;
+  min-height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #52566e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+}
+
+.positiveStock {
+  background: #dcfce7;
+  color: #047857;
+}
+
+.adjustmentTableFooter {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 6px 12px;
+  background: #f2f3ff;
+  color: #55576e;
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.adjustmentTableFooter strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #3525cd;
+  font-size: 7px;
+}
+
+.footerPositive {
+  color: #059669 !important;
+}
+
+.footerNegative {
+  color: #e11d48 !important;
+}
+
+.approvalCard {
+  padding: 13px 14px;
+}
+
+.approvalHeader {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #d8d7e8;
+}
+
+.approvalHeader > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.approvalHeader h2 {
+  font-size: 10px;
+}
+
+.approvalHeader p {
+  font-size: 7px;
+}
+
+.approvalIcon {
+  width: 25px;
+  height: 25px;
+}
+
+.documentCode {
+  flex: 0 0 auto;
+  color: #45465b;
+  font-size: 7px;
+}
+
+.documentCode b {
+  margin-left: 3px;
+  padding: 4px 6px;
+  border: 1px solid #d5d0ff;
+  border-radius: 4px;
+  background: #f5f4ff;
+  color: #3525cd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.approvalDetails {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 11px 0;
+}
+
+.approvalDetails > div {
+  display: flex;
+  min-width: 0;
+  min-height: 38px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 7px;
+  border: 1px solid #d4d3e4;
+  border-radius: 5px;
+  background: #f7f7ff;
+}
+
+.approvalDetails > div > span {
+  color: #55576e;
+  font-size: 7px;
+  font-weight: 600;
+}
+
+.approvalDetails strong {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  color: #24263a;
+  font-size: 7px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.approvalDetails strong svg {
+  flex: 0 0 auto;
+  color: #55576e;
+}
+
+.approvalDetails small {
+  color: #777587;
+  font-size: 7px;
+}
+
+.approverAvatar {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e2dfff;
+  color: #3525cd;
+  font-size: 6px;
+}
+
+.impactSummary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid #d5d0ff;
+  border-radius: 6px;
+  background: #f0f1ff;
+  color: #55576e;
+  font-size: 8px;
+}
+
+.impactSummary > span:not(.readyBadge) {
+  padding-right: 11px;
+  border-right: 1px solid #d7d8e8;
+  white-space: nowrap;
+}
+
+.impactSummary strong {
+  margin-left: 3px;
+  color: #24263a;
+}
+
+.impactSummary .impactValue {
+  color: #7c2df2;
+}
+
+.readyBadge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #d1fae5;
+  color: #047857;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.approvalFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.approvalFooter > label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+  gap: 6px;
+  color: #25263a;
+}
+
+.approvalFooter > label > input {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: #4f46e5;
+}
+
+.approvalFooter > label span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.approvalFooter > label strong {
+  font-size: 7px;
+  font-weight: 600;
+}
+
+.approvalFooter > label small {
+  color: #777587;
+  font-size: 7px;
+  line-height: 1.4;
+}
+
+.approvalFooter .draftButton {
+  min-width: 62px;
+  min-height: 31px;
+}
+
+.approvalFooter .adjustmentPrimaryButton {
+  min-height: 31px;
+  max-width: 245px;
+  padding: 0 11px;
+  font-size: 8px;
+  text-align: center;
+}
+
+@media (max-width: 1050px) {
+  .adjustmentHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .adjustmentHeaderActions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 720px) {
+  .inventoryPage {
+    gap: 26px;
+  }
+
+  .adjustmentSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .adjustmentMetrics {
+    grid-template-rows: auto;
+  }
+
+  .variantsHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .variantsActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .approvalDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .impactSummary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .impactSummary > span:not(.readyBadge) {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .readyBadge {
+    margin-left: 0;
+  }
+
+  .approvalFooter {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .approvalFooter > label {
+    flex-basis: 100%;
+  }
+
+  .approvalFooter .adjustmentPrimaryButton {
+    flex: 1;
+  }
+}
+
+@media (max-width: 520px) {
+  .adjustmentHeaderActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adjustmentHeaderActions button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .adjustmentHeaderActions button,
+  .adjustmentHeaderActions a {
+    min-height: 34px;
+    padding: 0 6px;
+    font-size: 8px;
+  }
+
+  .productAdjustmentCard,
+  .approvalCard {
+    padding: 10px;
+  }
+
+  .selectedProduct {
+    align-items: flex-start;
+  }
+
+  .productBadges {
+    flex-wrap: wrap;
+  }
+
+  .adjustmentMetrics {
+    gap: 6px;
+  }
+
+  .adjustmentMetric {
+    min-height: 74px;
+    padding: 8px;
+  }
+
+  .approvalHeader {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .documentCode {
+    margin-left: 34px;
+  }
+}
+
+@media print {
+  .adjustmentHeaderActions,
+  .approvalFooter {
+    display: none;
+  }
+
+  .adjustmentWorkspace {
+    gap: 8px;
+  }
+
+  .adjustmentHeader,
+  .productAdjustmentCard,
+  .adjustmentMetric,
+  .variantsCard,
+  .approvalCard {
+    box-shadow: none;
+  }
+}

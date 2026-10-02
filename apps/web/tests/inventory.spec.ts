@@ -76,3 +76,24 @@ test("inventory dashboard renders and filters stock rows", async ({
     ),
   ).toBe(true);
 });
+
+test("inventory adjustment opens from inventory and can be canceled", async ({
+  page,
+}) => {
+  await page.goto("/shop/inventory");
+  await page.getByRole("link", { name: "Điều chỉnh tồn kho" }).click();
+
+  await expect(page).toHaveURL("/shop/inventory/adjustment");
+  await expect(
+    page.getByRole("heading", { name: "Điều chỉnh Tồn kho & Cân đối WMS" }),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "Hủy bỏ" }).click();
+
+  await expect(page).toHaveURL("/shop/inventory");
+  await expect(
+    page.getByRole("heading", {
+      name: "Quản lý Tồn kho & Giữ chỗ Livestream",
+    }),
+  ).toBeVisible();
+});
