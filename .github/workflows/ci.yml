@@ -188,9 +188,9 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      # Install pytest (only dependency needed for now)
+      # Install dependencies from requirements.txt
       - name: Install test dependencies
-        run: pip install pytest
+        run: pip install -r services/ai-worker/requirements.txt
 
       # Run all AI Worker tests with verbose output
       - name: Run AI Worker tests
