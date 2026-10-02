@@ -1,7 +1,11 @@
-import { MerchantLiveDetail } from "@/features/livestream/merchant-live-detail";
+import type { Metadata } from "next";
+import { LivestreamDetail } from "@/features/livestream/components/detail/livestream-detail";
 
-export const metadata = { title: "Chi tiết phiên livestream" };
+export const metadata: Metadata = {
+  title: "Đại tiệc Flash Sale BST Linen Hè 2025 – Chi tiết phiên Livestream",
+  description: "Chi tiết phiên bán hàng trực tiếp trên LiveOrder AI",
+};
 
-export default function Page() {
-  return <MerchantLiveDetail />;
+export default function LegacyLiveDetailPage() {
+  return <LivestreamDetail livestreamId="LIVE-2025-08" />;
 }

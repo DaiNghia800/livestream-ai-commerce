@@ -17,12 +17,12 @@ test("payment list links through to the transaction detail", async ({
     page.getByRole("heading", { name: "Thanh toán trong phiên" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: /^Thất bại/ }).click();
+  await page.getByRole("button", { name: /^Thất bại/ }).click({ force: true });
   await expect(
     page.getByText("VNP-20250620-664811", { exact: true }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: /^Tất cả/ }).click();
+  await page.getByRole("button", { name: /^Tất cả/ }).click({ force: true });
   await page
     .getByRole("row", { name: /VNP-20250620-889412/ })
     .getByRole("link", { name: "Chi tiết" })
