@@ -501,9 +501,18 @@ test("inventory history can be opened and filtered", async ({ page }, testInfo) 
       whiteSpace: getComputedStyle(element).whiteSpace,
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
+      descriptionTextOverflow: getComputedStyle(
+        element.querySelector("span")!,
+      ).textOverflow,
+      descriptionWidth: element.querySelector("span")!.clientWidth,
+      descriptionScrollWidth: element.querySelector("span")!.scrollWidth,
     }));
     expect(footerLayout.whiteSpace).toBe("nowrap");
     expect(footerLayout.scrollWidth).toBeLessThanOrEqual(footerLayout.clientWidth);
+    expect(footerLayout.descriptionTextOverflow).toBe("ellipsis");
+    expect(footerLayout.descriptionScrollWidth).toBeGreaterThanOrEqual(
+      footerLayout.descriptionWidth,
+    );
   }
   await expect(page.getByText("#ORD-9942")).toBeVisible();
   await expect(page.getByText("#ADJ-2025-0842")).toBeVisible();

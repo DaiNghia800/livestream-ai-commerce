@@ -2664,6 +2664,13 @@
   white-space: nowrap;
 }
 
+.historyKpiFooter > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .historyKpiAccent {
   position: absolute;
   right: 0;

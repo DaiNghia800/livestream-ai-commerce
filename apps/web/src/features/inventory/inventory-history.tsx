@@ -359,7 +359,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><RefreshCw size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>1.840 <small>lượt biến động</small></div>
-          <div className={styles.historyKpiFooter}><strong>↗ +12.8%</strong> so với cùng giờ phiên trước</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>↗ +12.8%</strong>
+            <span title="so với cùng giờ phiên trước">
+              so với cùng giờ phiên trước
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentPrimary}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.reserveKpi}`}>
@@ -368,7 +373,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><LockKeyhole size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>1.150 <small>lượt (Reserved)</small></div>
-          <div className={styles.historyKpiFooter}><strong>↗ +24%</strong> tốc độ xử lý bot 0.18s/comment</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>↗ +24%</strong>
+            <span title="tốc độ xử lý bot 0.18s/comment">
+              tốc độ xử lý bot 0.18s/comment
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentPurple}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.releaseKpi}`}>
@@ -377,7 +387,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><RotateCcw size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>185 <small>lượt (Released)</small></div>
-          <div className={styles.historyKpiFooter}><strong>✓ An toàn</strong> Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>✓ An toàn</strong>
+            <span title="Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)">
+              Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentAmber}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.deductKpi}`}>
@@ -386,7 +401,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><Truck size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>505 <small>lượt (Deducted)</small></div>
-          <div className={styles.historyKpiFooter}><strong>▣ Đã đồng bộ</strong> Tự động trừ Total tồn kho</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>▣ Đã đồng bộ</strong>
+            <span title="Tự động trừ Total tồn kho">
+              Tự động trừ Total tồn kho
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentBlue}`} />
         </article>
       </section>
