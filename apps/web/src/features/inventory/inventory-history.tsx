@@ -182,6 +182,29 @@ const quickFilters = [
   { id: "adjust", label: "Phiếu chỉnh thủ kho", count: "42" },
 ] as const;
 
+const historyFilterLabels = {
+  action: {
+    all: "Tất cả hành động (Hold, Release, Deduct...)",
+    reserve: "AI Giữ chỗ (Hold / Reserve)",
+    release: "Hoàn tồn (Release)",
+    deduct: "Bán hoàn tất (Deduct / Shipped)",
+    adjust: "Điều chỉnh thủ công (Manual Adjustment)",
+  },
+  source: {
+    all: "Tất cả nguồn phát sinh",
+    live: "Livestream Chat Engine",
+    admin: "Web Admin thủ công",
+    cron: "Hệ thống tự động hết hạn (15p Cron)",
+    shipper: "Bưu cục GHN/GHTK Sync Webhook",
+  },
+  time: {
+    today: "Hôm nay (00:00 - 23:59)",
+    "7days": "7 ngày qua",
+    "30days": "30 ngày qua",
+    custom: "Khoảng tùy chỉnh...",
+  },
+};
+
 export function InventoryHistory() {
   const [query, setQuery] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
@@ -336,7 +359,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><RefreshCw size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>1.840 <small>lượt biến động</small></div>
-          <div className={styles.historyKpiFooter}><strong>↗ +12.8%</strong> so với cùng giờ phiên trước</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>↗ +12.8%</strong>
+            <span title="so với cùng giờ phiên trước">
+              so với cùng giờ phiên trước
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentPrimary}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.reserveKpi}`}>
@@ -345,7 +373,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><LockKeyhole size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>1.150 <small>lượt (Reserved)</small></div>
-          <div className={styles.historyKpiFooter}><strong>↗ +24%</strong> tốc độ xử lý bot 0.18s/comment</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>↗ +24%</strong>
+            <span title="tốc độ xử lý bot 0.18s/comment">
+              tốc độ xử lý bot 0.18s/comment
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentPurple}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.releaseKpi}`}>
@@ -354,7 +387,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><RotateCcw size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>185 <small>lượt (Released)</small></div>
-          <div className={styles.historyKpiFooter}><strong>✓ An toàn</strong> Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>✓ An toàn</strong>
+            <span title="Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)">
+              Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentAmber}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.deductKpi}`}>
@@ -363,7 +401,12 @@ export function InventoryHistory() {
             <span className={styles.historyKpiIcon}><Truck size={17} aria-hidden="true" /></span>
           </div>
           <div className={styles.historyKpiValue}>505 <small>lượt (Deducted)</small></div>
-          <div className={styles.historyKpiFooter}><strong>▣ Đã đồng bộ</strong> Tự động trừ Total tồn kho</div>
+          <div className={styles.historyKpiFooter}>
+            <strong>▣ Đã đồng bộ</strong>
+            <span title="Tự động trừ Total tồn kho">
+              Tự động trừ Total tồn kho
+            </span>
+          </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentBlue}`} />
         </article>
       </section>
@@ -381,6 +424,7 @@ export function InventoryHistory() {
               <input
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Mã SKU, Tên SP, #ORD-xxxx, #ADJ-xxxx..."
+                title={query || "Mã SKU, Tên SP, #ORD-xxxx, #ADJ-xxxx..."}
                 type="search"
                 value={query}
               />
@@ -392,6 +436,7 @@ export function InventoryHistory() {
               <select
                 aria-label="Loại hành động biến động"
                 onChange={(event) => setActionFilter(event.target.value)}
+                title={historyFilterLabels.action[actionFilter as keyof typeof historyFilterLabels.action]}
                 value={actionFilter}
               >
                 <option value="all">Tất cả hành động (Hold, Release, Deduct...)</option>
@@ -409,6 +454,7 @@ export function InventoryHistory() {
               <select
                 aria-label="Kho hoặc nguồn phát sinh"
                 onChange={(event) => setSourceFilter(event.target.value)}
+                title={historyFilterLabels.source[sourceFilter as keyof typeof historyFilterLabels.source]}
                 value={sourceFilter}
               >
                 <option value="all">Tất cả nguồn phát sinh</option>
@@ -426,6 +472,7 @@ export function InventoryHistory() {
               <select
                 aria-label="Khoảng thời gian"
                 onChange={(event) => setTimeFilter(event.target.value)}
+                title={historyFilterLabels.time[timeFilter as keyof typeof historyFilterLabels.time]}
                 value={timeFilter}
               >
                 <option value="today">Hôm nay (00:00 - 23:59)</option>
@@ -445,10 +492,11 @@ export function InventoryHistory() {
               className={`${styles.quickFilter} ${styles[`quick-${filter.id}`]} ${quickFilter === filter.id ? styles.quickActive : ""}`}
               key={filter.id}
               onClick={() => setQuickFilter(filter.id)}
+              title={filter.label}
               type="button"
             >
               {filter.id !== "all" && <span aria-hidden="true" />}
-              {filter.label}
+              <span>{filter.label}</span>
               <small>{filter.count}</small>
             </button>
           ))}

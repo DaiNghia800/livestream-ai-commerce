@@ -357,7 +357,9 @@ export function InventoryManagement() {
           <div className={styles.kpiTop}>
             <div>
               <div className={styles.labelWithTag}>
-                <span className={styles.kpiLabel}>Đang giữ chỗ Live</span>
+                <span className={styles.kpiLabel} title="Đang giữ chỗ Live">
+                  Đang giữ chỗ Live
+                </span>
                 <span className={styles.miniTag}>RESERVED</span>
               </div>
               <div className={styles.kpiValue}>
@@ -369,9 +371,12 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span className={styles.reservedText}>
+            <span
+              className={styles.reservedText}
+              title="Tự động khóa bởi AI chốt đơn phiên #05"
+            >
               <Bolt size={14} aria-hidden="true" />
-              Tự động khóa bởi AI chốt đơn phiên #05
+              <span>Tự động khóa bởi AI chốt đơn phiên #05</span>
             </span>
           </div>
         </article>
@@ -380,7 +385,9 @@ export function InventoryManagement() {
           <div className={styles.kpiTop}>
             <div>
               <div className={styles.labelWithTag}>
-                <span className={styles.kpiLabel}>Tồn khả dụng</span>
+                <span className={styles.kpiLabel} title="Tồn khả dụng">
+                  Tồn khả dụng
+                </span>
                 <span className={`${styles.miniTag} ${styles.availableTag}`}>
                   AVAILABLE
                 </span>
@@ -394,9 +401,12 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span className={styles.availableText}>
+            <span
+              className={styles.availableText}
+              title="Sẵn sàng bán trên Live & Web"
+            >
               <Store size={14} aria-hidden="true" />
-              Sẵn sàng bán trên Live &amp; Web
+              <span>Sẵn sàng bán trên Live &amp; Web</span>
             </span>
           </div>
         </article>
@@ -405,7 +415,12 @@ export function InventoryManagement() {
           <div className={styles.kpiTop}>
             <div>
               <div className={styles.labelWithTag}>
-                <span className={styles.kpiLabel}>Cảnh báo sắp hết hàng</span>
+                <span
+                  className={styles.kpiLabel}
+                  title="Cảnh báo sắp hết hàng"
+                >
+                  Cảnh báo sắp hết hàng
+                </span>
                 <span className={`${styles.miniTag} ${styles.alertTag}`}>
                   ALERT
                 </span>
@@ -419,7 +434,9 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span>Cần nhập bổ sung gấp &lt; 10 cái</span>
+            <span title="Cần nhập bổ sung gấp < 10 cái">
+              Cần nhập bổ sung gấp &lt; 10 cái
+            </span>
             <a href="#inventory-table">Xem ngay</a>
           </div>
         </article>
@@ -433,6 +450,7 @@ export function InventoryManagement() {
             <input
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Tìm theo tên, SKU, hoặc mã SKU..."
+              title="Tìm theo tên, SKU, hoặc mã SKU..."
               type="search"
               value={query}
             />
