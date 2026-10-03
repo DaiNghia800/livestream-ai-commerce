@@ -19,6 +19,7 @@
 
 .pageHeader {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -26,7 +27,8 @@
 }
 
 .headingCopy {
-  min-width: 220px;
+  min-width: 0;
+  flex: 1 1 280px;
 }
 
 .titleLine {
@@ -39,7 +41,7 @@
 .titleLine h1 {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.35;
@@ -62,7 +64,7 @@
   border-radius: 999px;
   background: #e2dfff;
   color: #3323cc;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -77,7 +79,8 @@
 
 .headerActions {
   display: flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 1 1 640px;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -104,7 +107,7 @@
   border-radius: 8px;
   background: #fff;
   color: var(--color-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   transition: background 0.15s ease, transform 0.15s ease;
@@ -200,10 +203,15 @@
   gap: 6px;
 }
 
+.kpiTop > div {
+  min-width: 0;
+  flex: 1;
+}
+
 .kpiLabel {
   display: block;
   color: var(--color-muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1.45;
@@ -224,17 +232,27 @@
 
 .labelWithTag {
   display: flex;
+  width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 5px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.labelWithTag .kpiLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .miniTag {
+  flex: 0 0 auto;
   padding: 2px 5px;
   border-radius: 999px;
   background: #fef3c7;
   color: #92400e;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -252,7 +270,7 @@
   margin-top: 4px;
   color: var(--color-text);
   font-family: var(--font-heading);
-  font-size: 23px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.1;
@@ -274,7 +292,7 @@
 .kpiValue small {
   color: var(--color-muted);
   font-family: var(--font-body);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -307,18 +325,23 @@
 
 .kpiFooter {
   justify-content: flex-start;
+  flex-wrap: nowrap;
   min-width: 0;
   gap: 4px;
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid rgb(199 196 216 / 40%);
   color: #777587;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
 .kpiFooter > span:first-child {
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kpiFooter a {
@@ -347,6 +370,14 @@
   color: #047857;
 }
 
+.reservedText > span,
+.availableText > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .filterCard {
   display: flex;
   align-items: center;
@@ -368,6 +399,7 @@
 .selectBox {
   position: relative;
   height: 36px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   flex: 1 1 150px;
@@ -388,16 +420,21 @@
 .selectBox select {
   width: 100%;
   height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: 7px;
   background: #fff;
   color: var(--color-text);
-  font-size: 10px;
+  font-size: 12px;
   outline: none;
 }
 
 .searchBox input {
   padding: 0 10px 0 31px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .searchBox input::placeholder {
@@ -428,7 +465,9 @@
 }
 
 .resetButton {
+  height: 36px;
   min-height: 36px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -437,7 +476,7 @@
   border-radius: 7px;
   background: #fff;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -452,7 +491,7 @@
   align-items: center;
   gap: 10px;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -501,7 +540,7 @@
   padding: 8px 10px;
   border-bottom: 1px solid var(--color-border);
   color: #52617a;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.045em;
   text-transform: uppercase;
@@ -511,7 +550,7 @@
 .inventoryTable td {
   padding: 9px 10px;
   border-bottom: 1px solid rgb(199 196 216 / 55%);
-  font-size: 10px;
+  font-size: 12px;
   vertical-align: middle;
 }
 
@@ -586,7 +625,7 @@
   max-width: 220px;
   overflow: hidden;
   color: var(--color-text);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -602,7 +641,7 @@
   gap: 5px;
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 9px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -612,7 +651,7 @@
   background: var(--color-subtle);
   color: var(--color-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -625,7 +664,7 @@
 
 .warehouseName {
   margin-bottom: 4px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -633,7 +672,7 @@
   gap: 3px;
   color: var(--color-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .numberHeading,
@@ -649,7 +688,7 @@
 
 .numberCell {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px !important;
+  font-size: 12px !important;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -667,7 +706,7 @@
   gap: 4px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.25;
   white-space: nowrap;
@@ -718,19 +757,19 @@
 }
 
 .priceCell strong {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .priceCell span {
   margin-top: 3px;
   color: #777587;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .safetyBadge {
   padding: 4px 6px;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .safeSafety {
@@ -741,7 +780,7 @@
 
 .updatedCell {
   color: var(--color-muted);
-  font-size: 9px !important;
+  font-size: 11px !important;
   white-space: nowrap;
 }
 
@@ -803,7 +842,7 @@
   gap: 14px;
   padding: 10px 14px;
   border-top: 1px solid var(--color-border);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .tableFooter > div {
@@ -835,7 +874,7 @@
   border: 0;
   background: transparent;
   color: var(--color-text);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .pagination {
@@ -853,7 +892,7 @@
   border-radius: 6px;
   background: #fff;
   color: var(--color-text);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .pagination button:hover:not(:disabled, .currentPage) {
@@ -919,7 +958,7 @@
 .aiHeading h2 {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1.45;
 }
@@ -929,7 +968,7 @@
   border-radius: 4px;
   background: var(--color-primary);
   color: #fff;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -937,13 +976,13 @@
   margin-left: auto;
   color: var(--color-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .aiCard p {
   margin: 7px 0 0;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -963,7 +1002,7 @@
   flex-wrap: wrap;
   margin-top: 10px;
   color: var(--color-muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .aiBenefits span {
@@ -993,7 +1032,7 @@
   align-items: center;
   gap: 7px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .liveDot {
@@ -1010,7 +1049,7 @@
   border-radius: 999px;
   background: #ffdad6;
   color: #93000a;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1018,7 +1057,7 @@
 .liveCard p {
   margin: 10px 0 0;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -1039,13 +1078,13 @@
 
 .liveFooter > div span {
   color: #777587;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .liveFooter > div strong {
   color: var(--color-primary);
   font-family: var(--font-heading);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .liveFooter a {
@@ -1053,7 +1092,7 @@
   align-items: center;
   gap: 4px;
   color: var(--color-primary);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -1071,6 +1110,7 @@
   }
 
   .headerActions {
+    width: 100%;
     justify-content: flex-start;
   }
 }
@@ -1106,7 +1146,7 @@
   }
 
   .titleLine h1 {
-    font-size: 18px;
+    font-size: 24px;
   }
 
   .headerActions {
@@ -1118,7 +1158,7 @@
   .headerActions button {
     width: 100%;
     padding: 0 7px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .kpiGrid {
@@ -1132,7 +1172,7 @@
   }
 
   .kpiValue {
-    font-size: 20px;
+    font-size: 22px;
   }
 
   .kpiIcon {
@@ -1246,7 +1286,7 @@
 .adjustmentTitle {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
 }
 
@@ -1266,17 +1306,17 @@
   margin: 0;
   color: #131b2e;
   font-family: var(--font-heading);
-  font-size: 16px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.3;
 }
 
 .adjustmentTitle p {
-  max-width: 540px;
   margin: 3px 0 0;
+  max-width: 540px;
   color: #62647b;
-  font-size: 9px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -1292,7 +1332,7 @@
 .adjustmentHeaderActions a,
 .variantsActions button,
 .draftButton {
-  min-height: 30px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1302,7 +1342,7 @@
   border-radius: 6px;
   background: #fff;
   color: #25263a;
-  font-size: 9px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.25;
   cursor: pointer;
@@ -1352,7 +1392,7 @@
   border-radius: 6px;
   background: #ecfdf5;
   color: #047857;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .adjustmentNotice button {
@@ -1383,16 +1423,16 @@
 .selectedProduct {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 
 .adjustmentProductImage {
-  width: 53px;
-  height: 53px;
+  width: 104px;
+  height: 104px;
   flex: 0 0 auto;
   border: 1px solid #d1cfe0;
-  border-radius: 5px;
+  border-radius: 8px;
   background: #f2f3ff;
   object-fit: cover;
 }
@@ -1405,14 +1445,14 @@
   gap: 4px;
   overflow: hidden;
   color: #606176;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
 .selectedProductCopy > strong {
   overflow: hidden;
   color: #16182b;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1441,7 +1481,7 @@
   border-radius: 999px;
   background: #e2dfff;
   color: #3525cd;
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -1451,7 +1491,7 @@
   background: #f0f0f6;
   color: #42445b;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .productDescription {
@@ -1462,11 +1502,119 @@
 
 .adjustmentPrice {
   align-self: flex-start;
-  margin-left: 63px;
   color: #3525cd;
   font-family: var(--font-heading);
-  font-size: 10px;
+  font-size: 14px;
   white-space: nowrap;
+}
+
+.selectedProductAside {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.changeProductButton {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #c7c4d8;
+  border-radius: 7px;
+  background: #fff;
+  color: #3525cd;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.changeProductButton:hover {
+  border-color: #8c83e8;
+  background: #f5f4ff;
+}
+
+.productPickerHint {
+  margin: 0;
+  color: #62647b;
+  font-size: 14px;
+}
+
+.productPickerList {
+  display: grid;
+  max-height: min(55vh, 520px);
+  gap: 8px;
+  overflow-y: auto;
+  margin-top: 14px;
+}
+
+.productChoice {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #d1cfe0;
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.productChoice:hover,
+.productChoiceSelected {
+  border-color: #8c83e8;
+  background: #f8f7ff;
+}
+
+.productChoiceImage {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid #d1cfe0;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.productChoiceDetails {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.productChoiceDetails strong,
+.productChoiceDetails small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productChoiceDetails strong {
+  color: #16182b;
+  font-size: 14px;
+}
+
+.productChoiceDetails small {
+  color: #62647b;
+  font-size: 12px;
+}
+
+.productChoiceCurrent {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .wmsCallout {
@@ -1488,7 +1636,7 @@
 
 .wmsCallout p {
   margin: 0;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -1524,7 +1672,7 @@
 .adjustmentMetric > div > span {
   overflow: hidden;
   color: #464555;
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
@@ -1534,7 +1682,7 @@
 .adjustmentMetric > div > strong {
   color: #131b2e;
   font-family: var(--font-heading);
-  font-size: 23px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
 }
@@ -1542,7 +1690,7 @@
 .adjustmentMetric > div > small {
   overflow: hidden;
   color: #777587;
-  font-size: 7px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1617,8 +1765,23 @@
   border-bottom: 1px solid #d8d7e8;
 }
 
-.variantsHeader > div:first-child {
+.variantsTitleCopy {
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.variantsTitleRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.variantsTitleRow h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .variantsHeader h2,
@@ -1626,7 +1789,7 @@
   margin: 0;
   color: #171a2c;
   font-family: var(--font-heading);
-  font-size: 10px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1.4;
 }
@@ -1635,8 +1798,14 @@
 .approvalHeader p {
   margin: 2px 0 0;
   color: #6e6f82;
-  font-size: 7px;
+  font-size: 12px;
   line-height: 1.4;
+}
+
+.variantsHeader p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .variantsActions {
@@ -1646,14 +1815,15 @@
 .variantCount {
   flex: 0 0 auto;
   background: #e2dfff;
-  font-size: 7px;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .variantsActions button {
-  min-height: 24px;
+  min-height: 32px;
   gap: 4px;
   padding: 0 7px;
-  font-size: 7px;
+  font-size: 12px;
 }
 
 .variantsActions button:last-child {
@@ -1684,7 +1854,7 @@
   padding: 7px 8px;
   border-bottom: 1px solid #dad9e9;
   color: #52566e;
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
   text-transform: uppercase;
@@ -1695,7 +1865,7 @@
   padding: 5px 8px;
   border-bottom: 1px solid #e5e4ef;
   color: #25283b;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .adjustmentTable tbody tr:nth-child(even) {
@@ -1708,7 +1878,7 @@
 
 .adjustmentTable td:first-child strong {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .variantStatus {
@@ -1740,13 +1910,16 @@
   border-radius: 4px;
   background: #fff;
   color: #27293c;
-  font-size: 7px;
+  font-size: 12px;
 }
 
 .adjustmentTable select {
   width: 100%;
   min-width: 94px;
   padding: 0 16px 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .adjustmentTable td:nth-child(5) select {
@@ -1761,6 +1934,9 @@
   width: 100%;
   min-width: 44px;
   padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .adjustmentTable .quantityInput {
@@ -1809,7 +1985,7 @@
   padding: 6px 12px;
   background: #f2f3ff;
   color: #55576e;
-  font-size: 7px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1818,7 +1994,7 @@
   align-items: center;
   gap: 3px;
   color: #3525cd;
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .footerPositive {
@@ -1847,11 +2023,11 @@
 }
 
 .approvalHeader h2 {
-  font-size: 10px;
+  font-size: 16px;
 }
 
 .approvalHeader p {
-  font-size: 7px;
+  font-size: 12px;
 }
 
 .approvalIcon {
@@ -1862,7 +2038,7 @@
 .documentCode {
   flex: 0 0 auto;
   color: #45465b;
-  font-size: 7px;
+  font-size: 12px;
 }
 
 .documentCode b {
@@ -1897,7 +2073,7 @@
 
 .approvalDetails > div > span {
   color: #55576e;
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1908,7 +2084,7 @@
   gap: 5px;
   overflow: hidden;
   color: #24263a;
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1921,7 +2097,7 @@
 
 .approvalDetails small {
   color: #777587;
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .approverAvatar {
@@ -1933,7 +2109,7 @@
   border-radius: 50%;
   background: #e2dfff;
   color: #3525cd;
-  font-size: 6px;
+  font-size: 10px;
 }
 
 .impactSummary {
@@ -1946,7 +2122,7 @@
   border-radius: 6px;
   background: #f0f1ff;
   color: #55576e;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .impactSummary > span:not(.readyBadge) {
@@ -1974,24 +2150,25 @@
   border-radius: 999px;
   background: #d1fae5;
   color: #047857;
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 700;
 }
 
 .approvalFooter {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 245px);
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   padding-top: 10px;
 }
 
 .approvalFooter > label {
   display: flex;
   min-width: 0;
-  flex: 1;
   align-items: flex-start;
   gap: 6px;
   color: #25263a;
+  text-align: left;
 }
 
 .approvalFooter > label > input {
@@ -2010,27 +2187,42 @@
 }
 
 .approvalFooter > label strong {
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .approvalFooter > label small {
   color: #777587;
-  font-size: 7px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
 .approvalFooter .draftButton {
-  min-width: 62px;
-  min-height: 31px;
+  min-width: 100px;
+  min-height: 40px;
 }
 
 .approvalFooter .adjustmentPrimaryButton {
-  min-height: 31px;
-  max-width: 245px;
+  display: inline-flex;
+  width: 100%;
+  min-height: 40px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   padding: 0 11px;
-  font-size: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
   text-align: center;
+}
+
+.approvalFooter .adjustmentPrimaryButton svg {
+  flex: 0 0 auto;
+}
+
+.approvalFooter .adjustmentPrimaryButton span {
+  min-width: 0;
 }
 
 @media (max-width: 1050px) {
@@ -2087,16 +2279,20 @@
   }
 
   .approvalFooter {
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
-    flex-wrap: wrap;
   }
 
   .approvalFooter > label {
-    flex-basis: 100%;
+    grid-column: auto;
   }
 
   .approvalFooter .adjustmentPrimaryButton {
-    flex: 1;
+    width: 100%;
+  }
+
+  .approvalFooter .draftButton {
+    width: 100%;
   }
 }
 
@@ -2112,9 +2308,9 @@
 
   .adjustmentHeaderActions button,
   .adjustmentHeaderActions a {
-    min-height: 34px;
-    padding: 0 6px;
-    font-size: 8px;
+    min-height: 36px;
+    padding: 0 8px;
+    font-size: 14px;
   }
 
   .productAdjustmentCard,
@@ -2123,7 +2319,43 @@
   }
 
   .selectedProduct {
-    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .adjustmentProductImage {
+    width: 96px;
+    height: 96px;
+  }
+
+  .selectedProductCopy {
+    flex: 1 1 calc(100% - 100px);
+  }
+
+  .selectedProductAside {
+    width: calc(100% - 106px);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-left: 106px;
+  }
+
+  .productChoice {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .productChoiceImage {
+    width: 48px;
+    height: 48px;
+  }
+
+  .productChoiceCurrent {
+    font-size: 0;
+  }
+
+  .productChoiceCurrent svg {
+    width: 18px;
+    height: 18px;
   }
 
   .productBadges {
@@ -2191,10 +2423,10 @@
 .historyHeader {
   display: flex;
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 15px 18px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  padding: 18px 20px;
 }
 
 .historyHeading {
@@ -2229,17 +2461,17 @@
   margin: 0;
   color: #131b2e;
   font-family: var(--font-heading);
-  font-size: 19px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.3;
 }
 
 .historyHeading p {
-  max-width: 720px;
+  max-width: 820px;
   margin: 4px 0 0;
   color: #55576e;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -2252,7 +2484,7 @@
   border-radius: 999px;
   background: #e2dfff;
   color: #3525cd;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2268,6 +2500,7 @@
 
 .historyHeaderActions {
   display: flex;
+  width: 100%;
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
@@ -2287,7 +2520,7 @@
   border-radius: 7px;
   background: #fff;
   color: #25263a;
-  font-size: 9px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.3;
   text-decoration: none;
@@ -2324,7 +2557,7 @@
   border-radius: 7px;
   background: #ecfdf5;
   color: #047857;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .historyNotice button {
@@ -2377,7 +2610,7 @@
 
 .historyKpiTop > span:first-child {
   color: #464555;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -2396,7 +2629,7 @@
 .historyKpiValue {
   color: #131b2e;
   font-family: var(--font-heading);
-  font-size: 23px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1.1;
@@ -2406,7 +2639,7 @@
 .historyKpiValue small {
   color: #55576e;
   font-family: var(--font-body);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -2419,14 +2652,16 @@
   padding-top: 7px;
   border-top: 1px solid rgb(199 196 216 / 40%);
   color: #55576e;
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 .historyKpiFooter strong {
   flex: 0 0 auto;
   color: #059669;
-  font-size: 8px;
+  font-size: inherit;
+  white-space: nowrap;
 }
 
 .historyKpiAccent {
@@ -2503,7 +2738,7 @@
 
 .historyField > span {
   color: #414359;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.035em;
 }
@@ -2512,7 +2747,7 @@
   position: relative;
   display: flex;
   min-width: 0;
-  height: 34px;
+  height: 32px;
   align-items: center;
 }
 
@@ -2520,16 +2755,21 @@
 .historyField select {
   width: 100%;
   height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
   border: 1px solid rgb(199 196 216 / 75%);
   border-radius: 7px;
   background: #fff;
   color: #25263a;
-  font-size: 9px;
+  font-size: 12px;
   outline: none;
 }
 
 .historyField input {
   padding: 0 9px 0 29px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .historyField input::placeholder {
@@ -2538,8 +2778,11 @@
 
 .historyField select {
   padding: 0 26px 0 9px;
+  overflow: hidden;
   appearance: none;
   cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .historyField > div > svg {
@@ -2564,23 +2807,25 @@
   display: flex;
   min-width: 0;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 7px;
-  overflow-x: auto;
+  overflow: visible;
   padding: 2px 0 3px;
-  scrollbar-width: thin;
 }
 
 .quickFilterLabel {
   flex: 0 0 auto;
+  white-space: nowrap;
   color: #464555;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .quickFilter {
   min-height: 27px;
   display: inline-flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -2589,11 +2834,23 @@
   border-radius: 999px;
   background: #f2f3ff;
   color: #3525cd;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.quickFilter > span:not([aria-hidden="true"]) {
+  width: auto;
+  height: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  background: transparent;
+  border-radius: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quickFilter:hover {
@@ -2608,7 +2865,7 @@
   padding: 1px 5px;
   border-radius: 999px;
   background: rgb(255 255 255 / 35%);
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .quickFilter > span {
@@ -2653,7 +2910,7 @@
   border: 0;
   background: transparent;
   color: #3525cd;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -2685,7 +2942,7 @@
   align-items: center;
   gap: 7px;
   color: #303348;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2713,7 +2970,7 @@
   align-items: center;
   gap: 7px;
   color: #55576e;
-  font-size: 8px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -2753,7 +3010,7 @@
   padding: 9px 10px;
   border-bottom: 1px solid #d6d8e4;
   color: #464a60;
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.35;
@@ -2765,7 +3022,7 @@
   padding: 12px 10px;
   border-bottom: 1px solid rgb(199 196 216 / 35%);
   color: #25263a;
-  font-size: 9px;
+  font-size: 12px;
   vertical-align: middle;
 }
 
@@ -2790,7 +3047,7 @@
   display: block;
   margin-top: 4px;
   color: #777587;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1.4;
 }
 
@@ -2823,14 +3080,14 @@
 .eventTime strong {
   color: #25263a;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .auditTable .eventTime small {
   display: inline;
   margin-left: 3px;
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .eventTransaction {
@@ -2841,7 +3098,7 @@
 .eventTransaction a {
   color: #3525cd;
   font-family: var(--font-heading);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -2869,7 +3126,7 @@
 .eventProduct strong {
   display: block;
   color: #25263a;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -2877,7 +3134,7 @@
 .eventProduct small,
 .eventStock small {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .eventChanges {
@@ -2891,7 +3148,7 @@
   padding: 3px 5px;
   border: 1px solid transparent;
   border-radius: 4px;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -2937,7 +3194,7 @@
   display: block;
   color: #55576e;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .eventStock > span strong {
@@ -2945,7 +3202,7 @@
 }
 
 .eventStock small {
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .eventStock small b {
@@ -2968,7 +3225,7 @@
   padding: 3px 8px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.025em;
   white-space: nowrap;
@@ -3014,7 +3271,7 @@
   display: block;
   max-width: 220px;
   color: #25263a;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -3043,7 +3300,7 @@
   padding: 4px 7px;
   border: 1px solid transparent;
   border-radius: 6px;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -3079,31 +3336,37 @@
 
 .auditFooter {
   display: flex;
-  min-height: 59px;
+  min-height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-top: 1px solid rgb(199 196 216 / 50%);
 }
 
 .auditPaginationInfo {
   display: flex;
-  min-width: 0;
+  min-width: max-content;
   align-items: center;
   gap: 7px;
   color: #55576e;
-  font-size: 8px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .auditPaginationInfo select {
+  width: 48px;
+  min-width: 48px;
+  min-height: 0;
   height: 26px;
+  flex: 0 0 48px;
+  box-sizing: border-box;
   padding: 0 6px;
   border: 1px solid #c7c4d8;
   border-radius: 5px;
   background: #f7f7ff;
   color: #25263a;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .auditPaginationInfo strong {
@@ -3131,7 +3394,7 @@
   border-radius: 6px;
   background: #fff;
   color: #464555;
-  font-size: 8px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -3154,7 +3417,7 @@
 .auditPagination > span {
   padding: 0 2px;
   color: #777587;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .auditLegend {
@@ -3165,7 +3428,7 @@
   padding: 10px 12px;
   background: rgb(255 255 255 / 75%);
   color: #55576e;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .auditLegend > div {
@@ -3210,7 +3473,7 @@
   gap: 4px;
   margin: 0;
   color: #777587;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .auditLegend > p svg {
@@ -3255,7 +3518,7 @@
   }
 
   .historyKpiValue {
-    font-size: 21px;
+    font-size: 24px;
   }
 
   .auditStreamBar {
@@ -3265,16 +3528,34 @@
   }
 
   .auditFooter {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
   }
 
   .auditPaginationInfo {
-    flex-wrap: wrap;
+    min-width: 0;
+    gap: 4px;
+    font-size: 9px;
+    white-space: nowrap;
   }
 
   .auditPagination {
     align-self: center;
+    gap: 2px;
+  }
+
+  .auditPagination button {
+    width: 23px;
+    height: 23px;
+    font-size: 9px;
+  }
+
+  .auditPaginationInfo select {
+    width: 38px;
+    min-width: 38px;
+    flex-basis: 38px;
+    height: 23px;
+    font-size: 9px;
   }
 }
 
@@ -3289,11 +3570,11 @@
   }
 
   .historyTitleLine h1 {
-    font-size: 16px;
+    font-size: 24px;
   }
 
   .historyHeading p {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .historyHeaderActions {
@@ -3305,7 +3586,7 @@
     width: 100%;
     min-height: 34px;
     padding: 0 6px;
-    font-size: 8px;
+    font-size: 12px;
     white-space: normal;
     text-align: center;
   }
@@ -3318,6 +3599,10 @@
     grid-template-columns: 1fr;
   }
 
+  .historyKpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .historyFilters {
     padding: 11px;
   }
@@ -3327,7 +3612,7 @@
   }
 
   .resetHistoryButton {
-    margin-left: 0;
+    margin-left: auto;
   }
 
   .auditLegend {

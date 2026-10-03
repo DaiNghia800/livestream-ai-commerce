@@ -12,6 +12,7 @@ import {
   CirclePlus,
   ClipboardList,
   Clock3,
+  ImagePlus,
   LockKeyhole,
   PackageCheck,
   Printer,
@@ -22,76 +23,100 @@ import {
   X,
 } from "lucide-react";
 import { productMockList } from "@/mocks/product";
+import type { ProductItem } from "@/features/product/types";
 import { formatMoney } from "@/lib/format";
+import { Dialog } from "@/components/ui/dialog";
 import styles from "./inventory.module.css";
 
+type AdjustmentVariant = {
+  sku: string;
+  variant: string;
+  stock: number;
+  available: number;
+  adjustment: number;
+  reason: string;
+  note: string;
+};
+
+const ao01AdjustmentVariants: AdjustmentVariant[] = [
+    { sku: "A001-WHT-M", variant: "Trắng / Size M", stock: 85, available: 65, adjustment: 2, reason: "Kiểm kê định kỳ chênh lệch", note: "Hàng mẫu trưng bày tại phòng Live" },
+    { sku: "A001-WHT-L", variant: "Trắng / Size L", stock: 95, available: 72, adjustment: -3, reason: "Hàng rách/lỗi may", note: "Hàng rách đường chỉ sau sản xuất" },
+    { sku: "A001-BLK-M", variant: "Đen / Size M", stock: 100, available: 75, adjustment: 20, reason: "Nhập hàng bổ sung", note: "Lô hàng may bổ sung từ xưởng" },
+    { sku: "A001-BLK-XL", variant: "Đen / Size XL", stock: 70, available: 53, adjustment: 0, reason: "Kiểm đếm thực tế", note: "Không có biến động" },
+];
+
+function getAdjustmentVariants(product: ProductItem): AdjustmentVariant[] {
+  if (product.id === "AO01") return ao01AdjustmentVariants;
+  return [{
+    sku: product.sku,
+    variant: `Tồn tổng hợp · ${product.variantDetails}`,
+    stock: product.availableStock + product.reservedStock,
+    available: product.availableStock,
+    adjustment: 0,
+    reason: "Kiểm đếm thực tế",
+    note: "Số liệu tổng hợp từ danh mục sản phẩm",
+  }];
+}
+
 export function InventoryAdjustment() {
-  const adjustmentVariants = [
-    {
-      sku: "A001-WHT-M",
-      variant: "Trắng / Size M",
-      stock: 50,
-      available: 38,
-      adjustment: 2,
-      reason: "Kiểm kê định kỳ chênh lệch",
-      note: "Hàng mẫu trưng bày tại phòng Live",
-    },
-    {
-      sku: "A001-WHT-L",
-      variant: "Trắng / Size L",
-      stock: 65,
-      available: 50,
-      adjustment: -3,
-      reason: "Hàng rách/lỗi may",
-      note: "Hàng rách đường chỉ sau sản xuất",
-    },
-    {
-      sku: "A001-BLK-M",
-      variant: "Đen / Size M",
-      stock: 80,
-      available: 62,
-      adjustment: 20,
-      reason: "Nhập hàng bổ sung",
-      note: "Lô hàng may bổ sung từ xưởng",
-    },
-    {
-      sku: "A001-BLK-XL",
-      variant: "Đen / Size XL",
-      stock: 45,
-      available: 35,
-      adjustment: 0,
-      reason: "Kiểm đếm thực tế",
-      note: "Không có biến động",
-    },
-  ] as const;
-
-  const initialAdjustments = Object.fromEntries(
-    adjustmentVariants.map((variant) => [variant.sku, variant.adjustment]),
+  const [selectedProductId, setSelectedProductId] = useState("AO01");
+  const [adjustments, setAdjustments] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      ao01AdjustmentVariants.map((variant) => [
+        variant.sku,
+        variant.adjustment,
+      ]),
+    ),
   );
-
-  function getAdjustmentProductImage() {
-    const product = productMockList.find((item) => item.id === "AO01");
-    if (!product) {
-      throw new Error("Missing product image for inventory adjustment product AO01.");
-    }
-    return product.imageUrl;
-  }
-
-  const [adjustments, setAdjustments] =
-    useState<Record<string, number>>(initialAdjustments);
   const [adjustmentNotice, setAdjustmentNotice] = useState("");
   const [notifyLive, setNotifyLive] = useState(true);
+  const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
+  const selectedProduct = productMockList.find(
+    (product) => product.id === selectedProductId,
+  );
+  if (!selectedProduct) {
+    throw new Error(`Missing inventory adjustment product "${selectedProductId}".`);
+  }
+  const adjustmentVariants = getAdjustmentVariants(selectedProduct);
+  const totalStock = adjustmentVariants.reduce((sum, variant) => sum + variant.stock, 0);
+  const availableStock = adjustmentVariants.reduce(
+    (sum, variant) => sum + variant.available,
+    0,
+  );
+  const reservedStock = totalStock - availableStock;
   const adjustmentTotal = adjustmentVariants.reduce(
     (total, variant) => total + (adjustments[variant.sku] ?? 0),
     0,
   );
 
-    function resetAdjustments() {
-      setAdjustments(initialAdjustments);
-      setAdjustmentNotice("Đã khôi phục số liệu điều chỉnh ban đầu.");
+  function resetAdjustments() {
+    setAdjustments(
+      Object.fromEntries(
+        adjustmentVariants.map((variant) => [
+          variant.sku,
+          variant.adjustment,
+        ]),
+      ),
+    );
+    setAdjustmentNotice("Đã khôi phục số liệu điều chỉnh ban đầu.");
+  }
+
+  function selectProduct(productId: string) {
+    const product = productMockList.find((item) => item.id === productId);
+    if (!product) {
+      throw new Error(`Missing inventory adjustment product "${productId}".`);
     }
+    const variants = getAdjustmentVariants(product);
+    setSelectedProductId(productId);
+    setAdjustments(
+      Object.fromEntries(variants.map((variant) => [variant.sku, variant.adjustment])),
+    );
+    setIsProductPickerOpen(false);
+    setAdjustmentNotice("Đã đổi sản phẩm và cập nhật dữ liệu biến thể tương ứng.");
+  }
 
     return (
+      <>
         <section className={styles.adjustmentWorkspace} aria-labelledby="adjustment-title">
           <header className={styles.adjustmentHeader}>
             <div className={styles.adjustmentTitle}>
@@ -151,32 +176,49 @@ export function InventoryAdjustment() {
             <article className={styles.productAdjustmentCard}>
               <div className={styles.selectedProduct}>
                 <Image
-                  alt="Áo Sơ Mi Linen Cổ Tàu Cao Cấp"
+                  alt={selectedProduct.name}
                   className={styles.adjustmentProductImage}
-                  height={62}
-                  src={getAdjustmentProductImage()}
+                  height={112}
+                  src={selectedProduct.imageUrl}
                   unoptimized
-                  width={62}
+                  width={112}
                 />
                 <div className={styles.selectedProductCopy}>
                   <div className={styles.productBadges}>
                     <span className={styles.editingBadge}>SẢN PHẨM ĐANG ĐIỀU CHỈNH</span>
-                    <span className={styles.locationBadge}>Vị trí: Kệ A1-04-HN</span>
+                    <span className={styles.locationBadge}>
+                      Vị trí: {selectedProduct.id === "AO01" ? "Kệ A1-04-HN" : `Kho tổng ${selectedProduct.id}`}
+                    </span>
                   </div>
-                  <strong>Áo Sơ Mi Linen Cổ Tàu Cao Cấp</strong>
-                  <span>Mã SKU cha: LINEN-CUS-25 · Mã chốt đơn Live: <b>#A001</b></span>
-                  <span>Nhóm hàng: <b>Thời trang Nam / Áo sơ mi</b></span>
-                  <span className={styles.productDescription}>
-                    Chất liệu linen tự nhiên, form suông rộng, may chỉ cổ cao cấp, hàng chính hãng...
+                  <strong>{selectedProduct.name}</strong>
+                  <span>Mã SKU cha: {selectedProduct.sku} · Mã chốt đơn Live: <b>#{selectedProduct.id}</b></span>
+                  <span>Nhóm hàng: <b>{selectedProduct.category}</b></span>
+                  <span
+                    className={styles.productDescription}
+                    title={selectedProduct.variantDetails}
+                  >
+                    {selectedProduct.variantDetails}
                   </span>
                 </div>
-                <strong className={styles.adjustmentPrice}>289.000 đ</strong>
+                <div className={styles.selectedProductAside}>
+                  <strong className={styles.adjustmentPrice}>
+                    {formatMoney(selectedProduct.id === "AO01" ? 289_000 : selectedProduct.livePrice)}
+                  </strong>
+                  <button
+                    className={styles.changeProductButton}
+                    onClick={() => setIsProductPickerOpen(true)}
+                    type="button"
+                  >
+                    <ImagePlus size={14} aria-hidden="true" />
+                    Đổi sản phẩm khác
+                  </button>
+                </div>
               </div>
               <div className={styles.wmsCallout}>
                 <CircleCheck size={15} aria-hidden="true" />
                 <p>
                   <strong>Cảnh báo quy tắc nghiệp vụ WMS:</strong> Số lượng giảm tồn
-                  không được vượt quá số lượng Tồn khả dụng (265 cái) để bảo đảm
+                  không được vượt quá số lượng Tồn khả dụng ({availableStock} cái) để bảo đảm
                   hàng đang ghi nhớ cho Livestream không bị thiếu hụt hoặc hủy tự động.
                 </p>
               </div>
@@ -186,23 +228,23 @@ export function InventoryAdjustment() {
               <article className={styles.adjustmentMetric}>
                 <div>
                   <span>TỔNG TỒN HỆ THỐNG</span>
-                  <strong>350</strong>
-                  <small>Bao gồm 4 biến thể</small>
+                  <strong>{totalStock}</strong>
+                  <small>Bao gồm {adjustmentVariants.length} biến thể</small>
                 </div>
                 <span className={styles.metricIcon}><ClipboardList size={15} aria-hidden="true" /></span>
               </article>
               <article className={`${styles.adjustmentMetric} ${styles.liveMetric}`}>
                 <div>
                   <span>ĐANG GIỮ CHỖ LIVE</span>
-                  <strong>85</strong>
-                  <small>Reserved 12 giờ pending</small>
+                  <strong>{reservedStock}</strong>
+                  <small>Đang giữ chỗ trên phiên Live</small>
                 </div>
                 <span className={styles.metricIcon}><LockKeyhole size={15} aria-hidden="true" /></span>
               </article>
               <article className={`${styles.adjustmentMetric} ${styles.availableMetric}`}>
                 <div>
                   <span>TỒN KHẢ DỤNG (AVAILABLE)</span>
-                  <strong>265</strong>
+                  <strong>{availableStock}</strong>
                   <small>Sẵn sàng chiến lược ngay</small>
                 </div>
                 <span className={styles.metricIcon}><PackageCheck size={15} aria-hidden="true" /></span>
@@ -210,7 +252,7 @@ export function InventoryAdjustment() {
               <article className={`${styles.adjustmentMetric} ${styles.thresholdMetric}`}>
                 <div>
                   <span>NGƯỠNG TỐI THIỂU</span>
-                  <strong>15</strong>
+                  <strong>{Math.min(15, availableStock)}</strong>
                   <small>Cảnh báo restock xưởng</small>
                 </div>
                 <span className={styles.metricIcon}><AlertTriangle size={15} aria-hidden="true" /></span>
@@ -220,17 +262,23 @@ export function InventoryAdjustment() {
 
           <section className={styles.variantsCard} aria-labelledby="variants-title">
             <header className={styles.variantsHeader}>
-              <div>
-                <h2 id="variants-title">
-                  Bảng phân bổ điều chỉnh chi tiết theo từng biến thể (SKU Variants)
-                </h2>
-                <p>
+              <div className={styles.variantsTitleCopy}>
+                <div className={styles.variantsTitleRow}>
+                  <h2 id="variants-title">
+                    Bảng phân bổ điều chỉnh chi tiết theo từng biến thể (SKU Variants)
+                  </h2>
+                  <span className={styles.variantCount}>
+                    {adjustmentVariants.length} Biến thể SKU
+                  </span>
+                </div>
+                <p
+                  title="Tự động tính toán số lượng chênh lệch thực tế, cập nhật lại dữ liệu tồn kho WMS và bật chốt đơn"
+                >
                   Tự động tính toán số lượng chênh lệch thực tế, cập nhật lại dữ liệu
                   tồn kho WMS và bật chốt đơn
                 </p>
               </div>
               <div className={styles.variantsActions}>
-                <span className={styles.variantCount}>4 Biến thể SKU</span>
                 <button type="button" onClick={() => setAdjustmentNotice("Bộ lọc chỉ hiển thị các biến thể có thay đổi.")}>
                   <SlidersHorizontal size={12} aria-hidden="true" />
                   Lọc biến thể có thay đổi
@@ -278,7 +326,15 @@ export function InventoryAdjustment() {
                           {variant.available}
                         </td>
                         <td>
-                          <select aria-label={`Loại điều chỉnh ${variant.sku}`} defaultValue="count">
+                          <select
+                            aria-label={`Loại điều chỉnh ${variant.sku}`}
+                            defaultValue="count"
+                            onChange={(event) => {
+                              event.currentTarget.title =
+                                event.currentTarget.selectedOptions[0]?.text ?? "";
+                            }}
+                            title="Kiểm đếm thực tế"
+                          >
                             <option value="count">Kiểm đếm thực tế</option>
                             <option value="increase">Tăng tồn (+)</option>
                             <option value="decrease">Giảm tồn (-)</option>
@@ -309,7 +365,15 @@ export function InventoryAdjustment() {
                           </span>
                         </td>
                         <td>
-                          <select aria-label={`Lý do điều chỉnh ${variant.sku}`} defaultValue={variant.reason}>
+                          <select
+                            aria-label={`Lý do điều chỉnh ${variant.sku}`}
+                            defaultValue={variant.reason}
+                            onChange={(event) => {
+                              event.currentTarget.title =
+                                event.currentTarget.selectedOptions[0]?.text ?? "";
+                            }}
+                            title={variant.reason}
+                          >
                             <option>{variant.reason}</option>
                             <option>Kiểm kê định kỳ chênh lệch</option>
                             <option>Hàng rách/lỗi may</option>
@@ -321,6 +385,10 @@ export function InventoryAdjustment() {
                             aria-label={`Ghi chú chi tiết ${variant.sku}`}
                             className={styles.noteInput}
                             defaultValue={variant.note}
+                            onChange={(event) => {
+                              event.currentTarget.title = event.currentTarget.value;
+                            }}
+                            title={variant.note}
                           />
                         </td>
                       </tr>
@@ -330,7 +398,7 @@ export function InventoryAdjustment() {
               </table>
             </div>
             <footer className={styles.adjustmentTableFooter}>
-              <span>Tổng cộng: 4 biến thể được quét</span>
+              <span>Tổng cộng: {adjustmentVariants.length} biến thể được quét</span>
               <span className={styles.footerPositive}>● {adjustmentVariants.filter((row) => (adjustments[row.sku] ?? 0) > 0).length} biến thể tăng tồn</span>
               <span className={styles.footerNegative}>● {adjustmentVariants.filter((row) => (adjustments[row.sku] ?? 0) < 0).length} biến thể giảm tồn</span>
               <span>● {adjustmentVariants.filter((row) => (adjustments[row.sku] ?? 0) === 0).length} biến thể không đổi</span>
@@ -365,7 +433,7 @@ export function InventoryAdjustment() {
             <div className={styles.impactSummary}>
               <span>Tổng SKU điều chỉnh: <strong>3 biến thể</strong></span>
               <span>Tổng số lượng chênh lệch: <strong className={styles.footerPositive}>{adjustmentTotal >= 0 ? "+" : ""}{adjustmentTotal} sản phẩm</strong></span>
-              <span>Giá trị biến động tồn: <strong className={styles.impactValue}>{formatMoney(adjustmentTotal * 289_000)}</strong></span>
+              <span>Giá trị biến động tồn: <strong className={styles.impactValue}>{formatMoney(adjustmentTotal * selectedProduct.livePrice)}</strong></span>
               <span className={styles.readyBadge}><CircleCheck size={13} aria-hidden="true" /> ĐÃ SẴN SÀNG DUYỆT</span>
             </div>
             <footer className={styles.approvalFooter}>
@@ -377,7 +445,7 @@ export function InventoryAdjustment() {
                 />
                 <span>
                   <strong>Gửi thông báo cập nhật tồn tự động sang phiên Livestream đang chạy</strong>
-                  <small>Bật chốt đơn sẽ lập tức mở thêm quota cho biến thể A001-BLK-M và A001-WHT-M cho khách đang xem live</small>
+                  <small>Bật chốt đơn sẽ cập nhật quota cho các biến thể của {selectedProduct.name} đang được khách xem live</small>
                 </span>
               </label>
               <button
@@ -389,14 +457,71 @@ export function InventoryAdjustment() {
               </button>
               <button
                 className={styles.adjustmentPrimaryButton}
-                onClick={() => setAdjustmentNotice("Đã xác nhận và cập nhật tồn kho khả dụng.")}
+                onClick={() => setAdjustmentNotice(`Đã xác nhận và cập nhật tồn kho khả dụng cho ${selectedProduct.name}.`)}
                 type="button"
               >
                 <CircleCheck size={14} aria-hidden="true" />
-                Xác nhận &amp; Cập nhật tồn kho khả dụng ngay
+                <span>
+                  Xác nhận &amp; Cập nhật tồn kho khả dụng ngay
+                </span>
               </button>
             </footer>
           </section>
         </section>
+        <Dialog
+          open={isProductPickerOpen}
+          onClose={() => setIsProductPickerOpen(false)}
+          title="Chọn sản phẩm điều chỉnh tồn kho"
+          size="lg"
+        >
+          <p className={styles.productPickerHint}>
+            Chọn sản phẩm để tải thông tin tồn kho và danh sách biến thể tương ứng.
+          </p>
+          <div className={styles.productPickerList}>
+            {productMockList.map((product) => {
+              const productVariants = getAdjustmentVariants(product);
+              const productAvailable = productVariants.reduce(
+                (sum, variant) => sum + variant.available,
+                0,
+              );
+              const productReserved = productVariants.reduce(
+                (sum, variant) => sum + variant.stock - variant.available,
+                0,
+              );
+              return (
+                <button
+                  aria-pressed={product.id === selectedProduct.id}
+                  className={`${styles.productChoice} ${
+                    product.id === selectedProduct.id ? styles.productChoiceSelected : ""
+                  }`}
+                  key={product.id}
+                  onClick={() => selectProduct(product.id)}
+                  type="button"
+                >
+                  <Image
+                    alt=""
+                    className={styles.productChoiceImage}
+                    height={56}
+                    src={product.imageUrl}
+                    unoptimized
+                    width={56}
+                  />
+                  <span className={styles.productChoiceDetails}>
+                    <strong>{product.name}</strong>
+                    <small>{product.sku} · {product.category}</small>
+                    <small>Tồn khả dụng: {productAvailable} · Đang giữ: {productReserved}</small>
+                  </span>
+                  {product.id === selectedProduct.id && (
+                    <span className={styles.productChoiceCurrent}>
+                      <Check size={14} aria-hidden="true" />
+                      Đang chọn
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </Dialog>
+      </>
     );
 }
