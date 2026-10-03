@@ -25,7 +25,7 @@ test("payment list links through to the transaction detail", async ({
   await page.getByRole("button", { name: /^Tất cả/ }).click({ force: true });
   await page
     .getByRole("row", { name: /VNP-20250620-889412/ })
-    .getByRole("link", { name: "Chi tiết" })
+    .getByRole("link", { name: /^Xem chi tiết giao dịch/ })
     .click();
 
   await expect(

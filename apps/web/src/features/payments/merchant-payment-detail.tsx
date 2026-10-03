@@ -43,7 +43,7 @@ export function MerchantPaymentDetail({ payment }: { payment: Payment }) {
         <div className="stack">
           <Card>
             <div className="section-heading">
-              <h2>
+              <h2  className="title-icon">
                 <ReceiptText size={18} aria-hidden="true" /> Dòng tiền
               </h2>
               <Badge>Chưa kết nối</Badge>
@@ -72,7 +72,7 @@ export function MerchantPaymentDetail({ payment }: { payment: Payment }) {
 
           <Card>
             <div className="section-heading">
-              <h2>
+              <h2  className="title-icon"> 
                 <History size={18} aria-hidden="true" /> Nhật ký giao dịch
               </h2>
               <Badge>Dữ liệu minh họa</Badge>
@@ -116,9 +116,8 @@ export function MerchantPaymentDetail({ payment }: { payment: Payment }) {
                   </div>
                 </dl>
                 <p>
-                  <Link href={`/shop/orders/${order.code.toLowerCase()}`}>
-                    Xem chi tiết đơn {order.code}
-                    <ChevronRight size={14} aria-hidden="true" />
+                  <Link href={`/shop/orders/${order.code.toLowerCase()}`}  className="title-icon">
+                    <ChevronRight size={14} aria-hidden="true" /> Xem chi tiết đơn {order.code} 
                   </Link>
                 </p>
               </>
@@ -129,7 +128,7 @@ export function MerchantPaymentDetail({ payment }: { payment: Payment }) {
 
           <Card>
             <div className="section-heading">
-              <h2>
+              <h2  className="title-icon">
                 <Warehouse size={18} aria-hidden="true" /> Tồn kho
               </h2>
               <Badge>Chưa kết nối</Badge>

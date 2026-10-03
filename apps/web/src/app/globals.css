@@ -154,6 +154,36 @@ select {
   font: inherit;
 }
 
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: medium;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Link trong bảng và danh sách thuộc tính: gạch chân sẵn.
+   Chỉ dựa vào màu là không đủ cho người mù màu (WCAG 1.4.1). */
+.data-table a:not(.row-action),
+.kv a,
+.link-inline {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* Thoát hiểm: link bọc cả khối, không muốn trông như link */
+.link-plain,
+.link-plain:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
 button,
 a,
 input,
@@ -951,6 +981,7 @@ footer {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 .metric-value {
@@ -1147,9 +1178,11 @@ textarea {
   padding: var(--space-3);
   border-bottom: 1px solid var(--color-border);
   font-size: var(--text-xs);
-  letter-spacing: 0.06em;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: var(--color-text);
   white-space: nowrap;
 }
 
@@ -1176,6 +1209,11 @@ textarea {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+.data-table-compact {
+  min-width: 0;
+}
+
 
 .countdown {
   font-variant-numeric: tabular-nums;
@@ -1411,6 +1449,7 @@ textarea {
 /* order */
 
 dialog {
+  margin: auto;
   width: min(480px, calc(100% - 32px));
   max-height: 90dvh;
   border: 1px solid var(--color-border);
@@ -1434,6 +1473,56 @@ dialog::backdrop {
   display: grid;
   gap: var(--space-3);
 }
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.row-action {
+  min-width: 34px;
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.row-action:hover:not(:disabled) {
+  background: var(--color-subtle);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.row-action-danger:hover:not(:disabled) {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.row-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.title-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.link-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
 
 @media (max-width: 1100px) {
   .metric-grid {
