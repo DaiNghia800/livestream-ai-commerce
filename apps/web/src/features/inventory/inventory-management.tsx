@@ -167,7 +167,7 @@ function getProductImage(row: InventoryRow) {
   return product.imageUrl;
 }
 
-export function MerchantInventory() {
+export function InventoryManagement() {
   const [query, setQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -261,6 +261,7 @@ export function MerchantInventory() {
 
   return (
     <div className={styles.workspace}>
+
       <section className={styles.pageHeader} aria-labelledby="inventory-title">
         <div className={styles.headingCopy}>
           <div className={styles.titleLine}>
@@ -276,6 +277,13 @@ export function MerchantInventory() {
           </p>
         </div>
         <div className={styles.headerActions}>
+          <Link
+            className={styles.secondaryButton}
+            href="/shop/inventory/history"
+          >
+            <History size={15} aria-hidden="true" />
+            Nhật ký biến động
+          </Link>
           <button
             className={styles.secondaryButton}
             onClick={() => setNotice("Đã đồng bộ dữ liệu kho mẫu mới nhất.")}
@@ -292,14 +300,13 @@ export function MerchantInventory() {
             <Download size={15} aria-hidden="true" />
             Xuất file kiểm kê
           </button>
-          <button
+          <Link
             className={styles.adjustButton}
-            onClick={() => setNotice("Chế độ điều chỉnh tồn kho mẫu.")}
-            type="button"
+            href="/shop/inventory/adjustment"
           >
             <Settings2 size={15} aria-hidden="true" />
             Điều chỉnh tồn kho
-          </button>
+          </Link>
           <button
             className={styles.primaryButton}
             onClick={() => setNotice("Chế độ nhập kho mẫu.")}

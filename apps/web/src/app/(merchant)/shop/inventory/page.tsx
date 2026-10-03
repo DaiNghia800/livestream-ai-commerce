@@ -1,4 +1,4 @@
-import { MerchantInventory } from "@/features/inventory";
+import { InventoryManagement } from "@/features/inventory/inventory-management";
 
 export const metadata = {
   title: "Quản lý tồn kho - LiveOrder AI",
@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function InventoryPage() {
-  return <MerchantInventory />;
+  return <InventoryManagement />;
 }

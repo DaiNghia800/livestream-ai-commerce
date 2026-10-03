@@ -1,0 +1,5 @@
+{
+  "extraPaths": ["services/ai-worker"],
+  "pythonVersion": "3.13",
+  "reportMissingImports": true
+}
