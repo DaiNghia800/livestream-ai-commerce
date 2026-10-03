@@ -47,6 +47,7 @@ print(f"  Customer: {result['customer_id']}")
 intent = result["intent"]
 if intent["has_intent"]:
     print(f"  Confidence: {intent['confidence']}")
+    print(f"  Source    : {intent['source']}")
     print(f"  Product   : {intent['product_code'] or '—'}")
     print(f"  Color     : {intent['color'] or '—'}")
     print(f"  Size      : {intent['size'] or '—'}")
