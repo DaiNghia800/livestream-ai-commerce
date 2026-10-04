@@ -1,5 +1,7 @@
 @import "../styles/tokens.css";
+@import "@fontsource/material-symbols-outlined/400.css";
 @import "tailwindcss";
+@config "../../tailwind.config.ts";
 
 @theme {
   /* Colors */
@@ -146,6 +148,22 @@ body {
   background: var(--color-background);
   color: var(--color-text);
   font: var(--text-sm)/1.6 var(--font-body);
+}
+
+.material-symbols-outlined {
+  display: inline-block;
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: "liga";
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
