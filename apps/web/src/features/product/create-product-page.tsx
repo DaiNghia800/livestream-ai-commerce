@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import styles from "./product.module.css";
 
 // ===== Types =====
 interface VariantRow {
@@ -369,7 +370,8 @@ export function CreateProductPage() {
                 </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-12 pl-3 font-title-sm text-title-sm font-bold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all"
+                    aria-label="Tổng tồn kho nhập"
+                    className={`${styles.numberInputWithSuffix} w-full font-title-sm text-title-sm font-bold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all`}
                     type="number"
                     value={totalStock}
                     onChange={(e) => setTotalStock(Number(e.target.value))}
@@ -390,7 +392,8 @@ export function CreateProductPage() {
                 </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-12 pl-3 font-title-sm text-title-sm font-bold text-error rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all"
+                    aria-label="Ngưỡng cảnh báo tồn kho"
+                    className={`${styles.numberInputWithSuffix} w-full font-title-sm text-title-sm font-bold text-error rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all`}
                     type="number"
                     value={stockWarning}
                     onChange={(e) => setStockWarning(Number(e.target.value))}
@@ -443,7 +446,8 @@ export function CreateProductPage() {
                   <div className="relative flex items-center">
                     <span className="absolute left-3.5 font-label-md font-bold text-primary">#</span>
                     <input
-                      className="h-11 w-full pl-8 pr-4 font-metric-num text-metric-num text-primary tracking-wider rounded-lg border-2 border-primary-container bg-surface-container-lowest focus:ring-4 focus:ring-primary-container/20 focus:outline-none transition-all"
+                      aria-label="Mã chốt đơn chính"
+                      className={`${styles.triggerCodeInput} w-full font-metric-num text-metric-num text-primary tracking-wider rounded-lg border-2 border-primary-container bg-surface-container-lowest focus:ring-4 focus:ring-primary-container/20 focus:outline-none transition-all`}
                       type="text"
                       value={triggerCode}
                       onChange={(e) => setTriggerCode(e.target.value.toUpperCase())}
@@ -663,16 +667,16 @@ export function CreateProductPage() {
                     : "border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className={`${styles.statusOptionContent} flex items-center gap-3`}>
                   <input
                     checked={productStatus === "active"}
-                    className="w-4 h-4 text-primary focus:ring-primary border-outline accent-primary"
+                    className={`${styles.statusOptionRadio} text-primary focus:ring-primary border-outline accent-primary`}
                     name="product_status"
                     type="radio"
                     value="active"
                     onChange={() => setProductStatus("active")}
                   />
-                  <div>
+                  <div className={`${styles.statusOptionText} min-w-0`}>
                     <span className="font-label-md text-label-md font-bold text-on-surface block">
                       Đang bán (Active)
                     </span>
@@ -692,16 +696,16 @@ export function CreateProductPage() {
                     : "border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className={`${styles.statusOptionContent} flex items-center gap-3`}>
                   <input
                     checked={productStatus === "draft"}
-                    className="w-4 h-4 text-primary focus:ring-primary border-outline accent-primary"
+                    className={`${styles.statusOptionRadio} text-primary focus:ring-primary border-outline accent-primary`}
                     name="product_status"
                     type="radio"
                     value="draft"
                     onChange={() => setProductStatus("draft")}
                   />
-                  <div>
+                  <div className={`${styles.statusOptionText} min-w-0`}>
                     <span className="font-label-md text-label-md font-semibold text-on-surface block">
                       Nháp (Draft)
                     </span>
@@ -721,16 +725,16 @@ export function CreateProductPage() {
                     : "border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className={`${styles.statusOptionContent} flex items-center gap-3`}>
                   <input
                     checked={productStatus === "inactive"}
-                    className="w-4 h-4 text-primary focus:ring-primary border-outline accent-primary"
+                    className={`${styles.statusOptionRadio} text-primary focus:ring-primary border-outline accent-primary`}
                     name="product_status"
                     type="radio"
                     value="inactive"
                     onChange={() => setProductStatus("inactive")}
                   />
-                  <div>
+                  <div className={`${styles.statusOptionText} min-w-0`}>
                     <span className="font-label-md text-label-md font-semibold text-on-surface block">
                       Ngừng bán (Inactive)
                     </span>
@@ -874,7 +878,8 @@ export function CreateProductPage() {
                 </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-16 pl-3 font-body-md text-body-md font-semibold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all"
+                    aria-label="Trọng lượng đóng gói"
+                    className={`${styles.numberInputWithSuffix} w-full font-body-md text-body-md font-semibold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all`}
                     type="number"
                     value={weight}
                     onChange={(e) => setWeight(Number(e.target.value))}
@@ -898,7 +903,8 @@ export function CreateProductPage() {
                   ].map(({ label, value, setter }) => (
                     <div key={label} className="relative">
                       <input
-                        className="w-full h-10 pr-8 pl-2.5 text-center font-body-md text-body-md font-medium text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 focus:outline-none"
+                        aria-label={`Kích thước ${label.toLowerCase()} (cm)`}
+                        className={`${styles.numberInputWithCompactSuffix} w-full text-center font-body-md text-body-md font-medium text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 focus:outline-none`}
                         placeholder={label}
                         type="number"
                         value={value}
