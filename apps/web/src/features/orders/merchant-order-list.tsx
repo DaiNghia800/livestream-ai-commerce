@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Download, Printer } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/feedback/states";
 import { formatCountdown, formatMoney } from "@/lib/format";
 import { orderSources, orderStatuses, orders } from "@/mocks/orders";
+import { Eye, Pencil, XCircle } from "lucide-react";
 
 const statusKeys = Object.keys(orderStatuses) as (keyof typeof orderStatuses)[];
 
@@ -77,22 +78,22 @@ export function MerchantOrderList() {
 
       <div className="metric-grid">
         <Card>
-          <p className="muted">Tổng đơn trong phiên</p>
+          <h2 className="muted">Tổng đơn trong phiên</h2>
           <strong className="metric-value">{orders.length}</strong>
           <p className="metric-note">Dữ liệu minh họa</p>
         </Card>
         <Card>
-          <p className="muted">Đang giữ tồn</p>
+          <h2 className="muted">Đang giữ tồn</h2>
           <strong className="metric-value">{holding.length}</strong>
           <p className="metric-note">Đơn nháp và đơn chờ xác nhận</p>
         </Card>
         <Card>
-          <p className="muted">Chờ khách xác nhận</p>
+          <h2 className="muted">Chờ khách xác nhận</h2>
           <strong className="metric-value">{waiting.length}</strong>
           <p className="metric-note">Đã gửi link xác nhận</p>
         </Card>
         <Card>
-          <p className="muted">Giá trị đơn còn hiệu lực</p>
+          <h2 className="muted">Giá trị đơn còn hiệu lực</h2>
           <strong className="metric-value">
             {formatMoney(live.reduce((sum, order) => sum + order.total, 0))}
           </strong>
@@ -164,13 +165,11 @@ export function MerchantOrderList() {
                   <th scope="col">Mã đơn</th>
                   <th scope="col">Khách hàng</th>
                   <th scope="col" className="col-secondary">Sản phẩm</th>
-                  <th scope="col">Tổng tiền</th>
+                  <th scope="col" className="num">Tổng tiền</th>
                   <th scope="col">Thanh toán</th>
                   <th scope="col">Trạng thái</th>
-                  <th scope="col">Giữ hàng</th>
-                  <th scope="col">
-                    <span className="sr-only">Xem chi tiết</span>
-                  </th>
+                  <th scope="col" className="num">Giữ hàng</th>
+                  <th scope="col" className="num">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,10 +220,34 @@ export function MerchantOrderList() {
                         )}
                       </td>
                       <td>
-                        <Link href={`/shop/orders/${order.code.toLowerCase()}`}>
-                          Chi tiết
-                          <ChevronRight size={14} aria-hidden="true" />
-                        </Link>
+                        <div className="row-actions">
+                          <Link
+                            className="row-action"
+                            href={`/shop/orders/${order.code.toLowerCase()}`}
+                            aria-label={`Xem chi tiết đơn ${order.code}`}
+                            title="Xem chi tiết"
+                          >
+                            <Eye size={17} aria-hidden="true" />
+                          </Link>
+                          <button
+                            className="row-action"
+                            type="button"
+                            disabled
+                            aria-label={`Sửa đơn ${order.code}`}
+                            title="Sửa đơn · Sắp có"
+                          >
+                            <Pencil size={17} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="row-action row-action-danger"
+                            type="button"
+                            disabled
+                            aria-label={`Hủy đơn ${order.code}`}
+                            title="Hủy đơn · Sắp có"
+                          >
+                            <XCircle size={17} aria-hidden="true" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -237,5 +260,6 @@ export function MerchantOrderList() {
         )}
       </Card>
     </>
+    
   );
 }

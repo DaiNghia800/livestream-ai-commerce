@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Download, RefreshCw } from "lucide-react";
+import { Download, Eye, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -69,24 +69,24 @@ export function MerchantPaymentList() {
 
       <div className="metric-grid">
         <Card>
-          <p className="muted">Tổng giao dịch</p>
+          <h2 className="muted">Tổng giao dịch</h2>
           <strong className="metric-value">{payments.length}</strong>
           <p className="metric-note">Dữ liệu minh họa</p>
         </Card>
         <Card>
-          <p className="muted">Đã thanh toán</p>
+          <h2 className="muted">Đã thanh toán</h2>
           <strong className="metric-value">
             {formatMoney(paid.reduce((sum, item) => sum + item.amount, 0))}
           </strong>
           <p className="metric-note">{paid.length} giao dịch thành công</p>
         </Card>
         <Card>
-          <p className="muted">Đang chờ khách trả</p>
+          <h2 className="muted">Đang chờ khách trả</h2>
           <strong className="metric-value">{pending.length}</strong>
           <p className="metric-note">Một số đơn vẫn đang giữ tồn</p>
         </Card>
         <Card>
-          <p className="muted">Thất bại hoặc hết hạn</p>
+          <h2 className="muted">Thất bại hoặc hết hạn</h2>
           <strong className="metric-value">{failed.length}</strong>
           <p className="metric-note">Tồn đã được trả về kho</p>
         </Card>
@@ -159,13 +159,11 @@ export function MerchantPaymentList() {
                   <th scope="col">Đơn hàng</th>
                   <th scope="col">Khách hàng</th>
                   <th scope="col" className="col-secondary">Cổng</th>
-                  <th scope="col">Số tiền</th>
+                  <th scope="col" className="num">Số tiền</th>
                   <th scope="col">Trạng thái</th>
-                  <th scope="col">Giữ hàng</th>
-                  <th scope="col" className="col-secondary">Thời gian</th>
-                  <th scope="col">
-                    <span className="sr-only">Xem chi tiết</span>
-                  </th>
+                  <th scope="col" className="num">Giữ hàng</th>
+                  <th scope="col" className="num">Thời gian</th>
+                  <th scope="col" className="num">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -225,12 +223,17 @@ export function MerchantPaymentList() {
                         {formatClock(payment.createdAt)}
                       </td>
                       <td>
-                        <Link
-                          href={`/shop/payments/${payment.txnRef.toLowerCase()}`}
-                        >
-                          Chi tiết
-                          <ChevronRight size={14} aria-hidden="true" />
-                        </Link>
+                        <div className="row-actions">
+                          <Link
+                            className="row-action"
+                            href={`/shop/payments/${payment.txnRef.toLowerCase()}`}
+                            aria-label={`Xem chi tiết giao dịch ${payment.txnRef}`}
+                            title="Xem chi tiết"
+                          >
+                            <Eye size={17} aria-hidden="true" />
+                          </Link>
+                        </div>
+                        
                       </td>
                     </tr>
                   );

@@ -101,7 +101,7 @@ export function MerchantOrderDetail({ order }: { order: Order }) {
           {order.sourceComment && (
             <Card>
               <div className="section-heading">
-                <h2>
+                <h2 className="title-icon">
                   <Sparkles size={18} aria-hidden="true" /> Bóc tách ý định mua
                   hàng
                 </h2>
@@ -141,7 +141,7 @@ export function MerchantOrderDetail({ order }: { order: Order }) {
               <Badge>{order.items.length} mục</Badge>
             </div>
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table data-table-compact">
                 <caption className="sr-only">
                   Các dòng hàng thuộc đơn {order.code}
                 </caption>
@@ -150,9 +150,9 @@ export function MerchantOrderDetail({ order }: { order: Order }) {
                     <th scope="col">Sản phẩm</th>
                     <th scope="col">Mã chốt / SKU</th>
                     <th scope="col">Phân loại</th>
-                    <th scope="col">Đơn giá</th>
-                    <th scope="col">SL</th>
-                    <th scope="col">Thành tiền</th>
+                    <th scope="col" className="num">Đơn giá</th>
+                    <th scope="col" className="num">SL</th>
+                    <th scope="col" className="num">Thành tiền</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,7 +188,7 @@ export function MerchantOrderDetail({ order }: { order: Order }) {
         <div className="stack">
           <Card>
             <div className="section-heading">
-              <h2>
+              <h2 className="title-icon">
                 <User size={18} aria-hidden="true" /> Khách hàng
               </h2>
               {order.customer.isVip && <Badge tone="warning">Khách VIP</Badge>}
@@ -206,7 +206,7 @@ export function MerchantOrderDetail({ order }: { order: Order }) {
           </Card>
 
           <Card>
-            <h2>
+            <h2  className="title-icon">
               <MapPin size={18} aria-hidden="true" /> Địa chỉ nhận hàng
             </h2>
             <p>{order.address}</p>
@@ -220,7 +220,7 @@ export function MerchantOrderDetail({ order }: { order: Order }) {
 
           <Card>
             <div className="section-heading">
-              <h2>
+              <h2  className="title-icon">
                 <Truck size={18} aria-hidden="true" /> Vận chuyển
               </h2>
               <Badge>Chưa kết nối</Badge>

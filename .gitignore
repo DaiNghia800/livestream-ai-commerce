@@ -28,8 +28,9 @@ Thumbs.db
 # Office lock files
 ~$*
 *.tsbuildinfo
+next-env.d.ts
 
-docs/design/draft-order-reservation.
+docs/design/draft-order-reservation
 
 # Editor
 .vscode/
