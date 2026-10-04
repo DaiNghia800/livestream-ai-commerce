@@ -5,10 +5,14 @@ This module contains ONLY the processing logic.
 It does NOT know where the event came from (file, queue, API).
 """
 
-from parse_intent import parse_purchase_intent
+from datetime import datetime
+from typing import Any
 
-EXPECTED_EVENT_TYPE = "comment.created"
-REQUIRED_FIELDS = [
+from parse_intent import parse_purchase_intent
+from ai_errors import AIParsingError
+
+EXPECTED_EVENT_TYPE: str = "comment.created"
+REQUIRED_FIELDS: list[str] = [
     "schema_version",
     "event_id",
     "event_type",
@@ -20,12 +24,12 @@ REQUIRED_FIELDS = [
 ]
 
 
-def _make_error(error_type: str, message: str) -> dict:
+def _make_error(error_type: str, message: str) -> dict[str, Any]:
     """Return a standard error result."""
     return {"status": "error", "error_type": error_type, "message": message}
 
 
-def process_comment_event(event: dict) -> dict:
+def process_comment_event(event: dict[str, Any]) -> dict[str, Any]:
     """
     Validate and process a single comment event.
     
@@ -66,7 +70,6 @@ def process_comment_event(event: dict) -> dict:
         return _make_error("invalid_type", "'occurred_at' must be a string")
     
     try:
-        from datetime import datetime
         dt = datetime.fromisoformat(occurred_at_str.replace('Z', '+00:00'))
         if dt.tzinfo is None:
             return _make_error("invalid_format", "'occurred_at' must include timezone information")
@@ -80,8 +83,15 @@ def process_comment_event(event: dict) -> dict:
     if content == "":
         return _make_error("empty_content", "Empty comment")
 
-    # Validation passed -> parse intent
-    intent = parse_purchase_intent(content)
+    try:
+        # Validation passed -> parse intent
+        intent = parse_purchase_intent(content)
+    except AIParsingError as e:
+        # Catch known AI errors and return them cleanly for SQS routing
+        error_result = _make_error(e.error_type, e.message)
+        error_result["event_id"] = event["event_id"]
+        error_result["comment_id"] = event["comment_id"]
+        return error_result
 
     return {
         "status": "ok",

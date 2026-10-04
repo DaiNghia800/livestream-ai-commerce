@@ -7,7 +7,7 @@ Test strategy:
   - FIELD EXTRACTION: product code, color, size, quantity
   - CONFIDENCE SCORING: high vs low based on keyword + fields found
   - SOURCE TRACKING: verify "regex" vs "gemini" source field
-  - GEMINI INTEGRATION: mock AI responses to test hybrid flow
+  - GEMINI ROUTING UNIT TESTS: mock AI responses to test hybrid flow
   - BUG REGRESSION: "xanh dương" fix, "cho em hỏi" fix
 
 Each test name follows: test_<what>_<condition>_<expected>
@@ -198,10 +198,10 @@ class TestConfidenceScoring:
 
 
 # ══════════════════════════════════════════════════════════════
-# GEMINI AI INTEGRATION (mocked)
+# GEMINI AI ROUTING (unit tests with mocked helper)
 # ══════════════════════════════════════════════════════════════
 
-class TestGeminiIntegration:
+class TestGeminiRouting:
     """Tests for the hybrid regex→Gemini flow using mocked AI responses."""
 
     @patch("parse_intent._try_gemini")
@@ -238,12 +238,15 @@ class TestGeminiIntegration:
         assert result["has_intent"] is False
 
     @patch("parse_intent._try_gemini")
-    def test_gemini_failure_falls_back_to_regex(self, mock_gemini):
-        """When Gemini returns None (failure), regex result should be used."""
-        mock_gemini.return_value = None
-        result = parse_purchase_intent("Mua B05", use_ai=True)
-        assert result["source"] == "regex"
-        assert result["confidence"] == "low"
+    def test_gemini_failure_raises_exception(self, mock_gemini):
+        """When Gemini fails, AIParsingError should bubble up, no fallback."""
+        from ai_errors import AIParsingError
+        mock_gemini.side_effect = AIParsingError("ai_transient", "Test timeout")
+        
+        with pytest.raises(AIParsingError) as exc_info:
+            parse_purchase_intent("Mua B05", use_ai=True)
+            
+        assert exc_info.value.error_type == "ai_transient"
 
     @patch("parse_intent._try_gemini")
     def test_gemini_overrides_regex_fields(self, mock_gemini):

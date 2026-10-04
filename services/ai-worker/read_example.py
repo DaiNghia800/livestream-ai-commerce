@@ -37,7 +37,7 @@ except json.JSONDecodeError as e:
 result = process_comment_event(event)
 
 if result["status"] != "ok":
-    print(f"[DATA ERROR] {result['message']}")
+    print(f"[ERROR: {result['error_type']}] {result['message']}")
     raise SystemExit(1)
 
 print(f"[OK] {result['message']}")
@@ -45,6 +45,8 @@ print(f"  Session : {result['session_id']}")
 print(f"  Customer: {result['customer_id']}")
 
 intent = result["intent"]
+print(f"  Decision  : {intent['decision']}")
+print(f"  Reasons   : {', '.join(intent['reason_codes']) or '—'}")
 if intent["has_intent"]:
     print(f"  Confidence: {intent['confidence']}")
     print(f"  Source    : {intent['source']}")

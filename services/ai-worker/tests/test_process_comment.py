@@ -269,3 +269,27 @@ class TestEdgeCases:
         assert result["status"] == "ok"
         assert result["intent"]["has_intent"] is False
         mock_parser.assert_called_once_with("Đẹp quá chị ơi")
+
+class TestAIErrorHandling:
+    """Tests that process_comment safely catches and structures AI errors."""
+
+    def test_ai_parsing_error_caught_and_structured(self, mock_parser):
+        from ai_errors import AIParsingError
+        mock_parser.side_effect = AIParsingError("ai_transient", "Gemini timeout")
+        event = _make_valid_event(content="Chốt A12")
+        result = process_comment_event(event)
+
+        assert result["status"] == "error"
+        assert result["error_type"] == "ai_transient"
+        assert "Gemini timeout" in result["message"]
+        # Ensure traceability IDs are preserved
+        assert result["event_id"] == event["event_id"]
+        assert result["comment_id"] == event["comment_id"]
+
+    def test_programming_error_bubbles_up(self, mock_parser):
+        # A generic exception like ValueError should crash the process, not be caught as an AI error
+        mock_parser.side_effect = ValueError("Some programming error")
+        event = _make_valid_event(content="Chốt A12")
+        
+        with pytest.raises(ValueError, match="Some programming error"):
+            process_comment_event(event)

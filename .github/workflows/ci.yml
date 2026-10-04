@@ -194,4 +194,4 @@ jobs:
 
       # Run all AI Worker tests with verbose output
       - name: Run AI Worker tests
-        run: python -m pytest tests/ai-worker/ -v --tb=short
+        run: python -m pytest services/ai-worker/tests/ -v --tb=short

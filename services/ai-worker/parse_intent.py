@@ -2,15 +2,18 @@
 Parse purchase intent from a livestream comment.
 
 Strategy (hybrid):
+  0. Guard negation, questions and ambiguous purchase language
   1. Regex tries first — fast, free, no network
-  2. If regex confidence is "high" → return immediately
+  2. If regex confidence is "high" → apply the business decision gate
   3. If regex confidence is "low"  → call Gemini AI to verify
-  4. If Gemini fails              → fall back to regex result
+  4. If Gemini fails              → propagate the technical failure
   5. If no keywords found         → skip (no intent)
 """
 
 import re
 import logging
+
+from intent_policy import apply_decision, guard_comment
 
 # --- Known values (will move to database/config later) ---
 # Sorted longest-first so "xanh dương" matches before "xanh"
@@ -50,31 +53,34 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
           - "size": str or None
           - "quantity": int or None
           - "raw": the original content (for debugging)
+          - "decision": no_purchase | needs_clarification | purchase_candidate
+          - "reason_codes": machine-readable reasons for the decision
+
+        A purchase_candidate still requires Commerce SKU validation.
     """
+    guarded = guard_comment(content)
+    if guarded is not None:
+        return guarded
+
     # --- Step 1: Regex tries first (fast, free) ---
     regex_result = _regex_parse(content)
 
-    # No keywords found → definitely not buying
+    # No purchase evidence found by the current regex rules.
     if not regex_result["has_intent"]:
-        return regex_result
+        return apply_decision(regex_result)
 
-    # Regex is confident → trust it, skip AI
+    # Skip AI for confident extraction, but still check completeness.
     if regex_result["confidence"] == "high":
-        return regex_result
+        return apply_decision(regex_result)
 
     # --- Step 2: Regex confidence is "low" → ask Gemini AI ---
     if not use_ai:
-        return regex_result
+        return apply_decision(regex_result)
 
     logger.info(f"Low confidence, calling Gemini AI for: {content}")
+    # Will raise AIParsingError if AI fails. We let it bubble up.
     ai_result = _try_gemini(content)
-
-    if ai_result is not None:
-        return ai_result
-
-    # --- Step 3: Gemini failed → fall back to regex ---
-    logger.warning("Gemini failed, falling back to regex result")
-    return regex_result
+    return apply_decision(ai_result)
 
 
 # ── Regex parser ─────────────────────────────────────────────
@@ -124,35 +130,26 @@ def _regex_parse(content: str) -> dict:
 # ── Gemini AI caller ─────────────────────────────────────────
 
 
-def _try_gemini(content: str) -> dict | None:
+def _try_gemini(content: str) -> dict:
     """
-    Call Gemini AI and return a result dict, or None on failure.
+    Call Gemini AI and return a result dict.
     Import is lazy to avoid crash when google-genai is not installed.
+    Raises AIParsingError on failure.
     """
-    try:
-        from gemini_client import parse_with_gemini
+    from gemini_client import parse_with_gemini
 
-        ai_response = parse_with_gemini(content)
-        if ai_response is None:
-            return None
+    ai_response = parse_with_gemini(content)
 
-        return {
-            "has_intent": ai_response["has_intent"],
-            "confidence": "high",  # AI verified → treat as high
-            "source": "gemini",
-            "product_code": ai_response.get("product_code"),
-            "color": ai_response.get("color"),
-            "size": ai_response.get("size"),
-            "quantity": ai_response.get("quantity"),
-            "raw": content,
-        }
-
-    except EnvironmentError as e:
-        logger.warning(f"Gemini not configured: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Gemini call failed: {e}")
-        return None
+    return {
+        "has_intent": ai_response["has_intent"],
+        "confidence": "high",  # AI verified → treat as high
+        "source": "gemini",
+        "product_code": ai_response.get("product_code"),
+        "color": ai_response.get("color"),
+        "size": ai_response.get("size"),
+        "quantity": ai_response.get("quantity"),
+        "raw": content,
+    }
 
 
 # ── Private helpers ──────────────────────────────────────────
