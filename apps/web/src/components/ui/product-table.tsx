@@ -175,7 +175,7 @@ export function ProductTable({
                 <td className="px-4 py-3 text-right">
                   <div className="flex flex-col items-end">
                     <span
-                      className={`font-headline-md text-[13px] font-bold font-mono tabular-nums ${
+                      className={`font-headline-md text-xs font-bold font-mono tabular-nums ${
                         isInactive
                           ? "text-outline"
                           : isOutOfStock
@@ -200,19 +200,19 @@ export function ProductTable({
                 {/* Tồn khả dụng */}
                 <td className="px-3 py-3 text-center">
                   {isInactive ? (
-                    <span className="font-headline-md text-[13px] font-bold text-outline bg-surface-container px-2 py-0.5 rounded">
+                    <span className="font-headline-md text-xs font-bold text-outline bg-surface-container px-2 py-0.5 rounded">
                       0
                     </span>
                   ) : isOutOfStock ? (
-                    <span className="font-headline-md text-[13px] font-bold text-error bg-error-container/50 px-2 py-0.5 rounded border border-error/20">
+                    <span className="font-headline-md text-xs font-bold text-error bg-error-container/50 px-2 py-0.5 rounded border border-error/20">
                       0
                     </span>
                   ) : isLowStock ? (
-                    <span className="font-headline-md text-[13px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                    <span className="font-headline-md text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
                       {product.availableStock}
                     </span>
                   ) : (
-                    <span className="font-headline-md text-[13px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    <span className="font-headline-md text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                       {product.availableStock}
                     </span>
                   )}
@@ -221,11 +221,11 @@ export function ProductTable({
                 {/* Đang giữ chỗ */}
                 <td className="px-3 py-3 text-center">
                   {product.reservedStock > 0 ? (
-                    <span className="font-mono text-[13px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    <span className="font-mono text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                       {product.reservedStock}
                     </span>
                   ) : (
-                    <span className="font-mono text-[13px] font-medium text-outline bg-surface-container px-2 py-0.5 rounded">
+                    <span className="font-mono text-xs font-medium text-outline bg-surface-container px-2 py-0.5 rounded">
                       0
                     </span>
                   )}
