@@ -195,3 +195,23 @@ jobs:
       # Run all AI Worker tests with verbose output
       - name: Run AI Worker tests
         run: python -m pytest tests/ai-worker/ -v --tb=short
+
+
+  commerce-test:
+    name: "Commerce — Pytest"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r services/commerce/requirements.txt
+
+      - name: Run Commerce tests
+        run: python -m pytest tests/commerce/ -v --tb=short
+
