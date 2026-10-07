@@ -201,6 +201,24 @@ jobs:
     name: "Commerce — Pytest"
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: commerce_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/commerce_db
+
     steps:
       - uses: actions/checkout@v4
 
@@ -211,6 +229,10 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r services/commerce/requirements.txt
+
+      - name: Run migrations
+        working-directory: services/commerce
+        run: alembic upgrade head
 
       - name: Run Commerce tests
         run: python -m pytest tests/commerce/ -v --tb=short
