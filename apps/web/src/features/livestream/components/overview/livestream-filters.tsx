@@ -50,7 +50,7 @@ export function LivestreamFilters({
               onChange={(e) => onSearchChange?.(e.target.value)}
               aria-label="Tìm kiếm livestream"
               placeholder="Tìm theo tên phiên hoặc mã ID (VD: LIVE-2025-034)..."
-              className="h-9 w-full rounded-lg border border-outline-variant bg-surface pl-9 pr-3 text-xs text-on-surface placeholder:text-outline transition-colors focus:border-primary focus:bg-surface-container-lowest focus:outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-9 w-full rounded-lg border border-outline-variant bg-surface pl-10 pr-3 text-xs text-on-surface placeholder:text-outline transition-colors focus:border-primary focus:bg-surface-container-lowest focus:outline-none focus:ring-1 focus:ring-primary/30"
             />
           </div>
 

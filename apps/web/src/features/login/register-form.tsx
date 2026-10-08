@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, User } from "lucide-react";
-import Link from "next/link";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export function RegisterForm() {
+  const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,18 +65,16 @@ export function RegisterForm() {
     setErrors({});
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_COMMERCE_API_URL ?? "http://localhost:8000"}/api/auth/register`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            full_name: fullName.trim(),
-            email,
-            password,
-          }),
-        },
-      );
+      const apiBaseUrl = process.env.NEXT_PUBLIC_COMMERCE_API_URL ?? "http://localhost:8000";
+      const res = await fetch(`${apiBaseUrl}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          email,
+          password,
+        }),
+      });
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -85,14 +84,7 @@ export function RegisterForm() {
         return;
       }
 
-      const data = await res.json();
-      if (data.access_token) {
-        localStorage.setItem("access_token", data.access_token);
-      }
-      if (data.refresh_token) {
-        localStorage.setItem("refresh_token", data.refresh_token);
-      }
-      window.location.href = "/shop";
+      router.replace("/login?registered=1");
     } catch {
       setErrors({
         general: "Không thể kết nối đến server. Vui lòng thử lại.",
@@ -103,9 +95,9 @@ export function RegisterForm() {
   }
 
   return (
-    <form className="auth-form" onSubmit={handleSubmit} noValidate>
+    <form className="auth-form auth-register-form" onSubmit={handleSubmit} noValidate>
       <div className="auth-heading">
-        <h1>Tạo tài khoản</h1>
+        <h1>Đăng ký tài khoản</h1>
         <p className="muted">
           Đăng ký để bắt đầu quản lý livestream, chốt đơn và tối ưu doanh thu.
         </p>
@@ -196,13 +188,6 @@ export function RegisterForm() {
         {loading ? "Đang tạo tài khoản…" : "Tạo tài khoản"}
       </button>
 
-      <div className="auth-divider">
-        <span>hoặc</span>
-      </div>
-
-      <Link href="/login" className="button button-secondary auth-sso-btn">
-        Đã có tài khoản? Đăng nhập ngay
-      </Link>
     </form>
   );
 }
