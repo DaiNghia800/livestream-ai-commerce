@@ -1,7 +1,4 @@
 import type { Metadata } from "next";
-import "@fontsource/inter/latin-400.css";
-import "@fontsource/inter/latin-600.css";
-import "@fontsource/plus-jakarta-sans/latin-700.css";
 import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "LiveOrder AI", template: "%s | LiveOrder AI" },
