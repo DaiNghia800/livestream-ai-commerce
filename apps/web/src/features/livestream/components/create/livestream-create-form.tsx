@@ -11,7 +11,14 @@ import { ProductPicker } from "./product-picker";
 import { mockCatalogProducts } from "../../mocks/products.mock";
 import { mockLivestreams } from "../../mocks/livestream.mock";
 import type { LiveProductItem } from "../../types/livestream";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  createLivestream,
+  formatScheduledAt,
+  CreateLivestreamApiError,
+} from "../../api/create-livestream";
+import { requestCoverPresign } from "../../api/request-cover-presign";
+import { uploadFileToS3 } from "../../api/upload-file-to-s3";
 
 export function LivestreamCreateForm() {
   const router = useRouter();
@@ -33,6 +40,7 @@ export function LivestreamCreateForm() {
   const [coverImage, setCoverImage] = useState<string | null>(
     "https://lh3.googleusercontent.com/aida-public/AB6AXuDquS0Ga7ht0MFZWCn02YeM-3cRYr7nghO42T56Y1UU1qgvHPaOU8TnouNMD4iqxtneKByNyF4r5ru3XWBXuHEfnK0Z1m9cfJYIGEviC9u981Kx7ZyYodz5H3PVYyRIuSarSsv3yV1er5XLtbjaDyMm3oUfP7p0z8JBhFeMIn_AXc50DomAomiJ95CkB8I24x6wg1FKA6R9ksmLgbSmxWFdc3mU0Duazr5_CjWXImHNJysA502lX2sE"
   );
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [startDate, setStartDate] = useState(getTodayDate());
   const [startTime, setStartTime] = useState("19:30");
   const [endDate, setEndDate] = useState(getTodayDate());
@@ -73,6 +81,7 @@ export function LivestreamCreateForm() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<{
     title?: string;
     dates?: string;
@@ -169,36 +178,65 @@ export function LivestreamCreateForm() {
     }, 800);
   };
 
-  // Create Official Livestream Action
-  const handleCreateLive = () => {
+  // Create Official Livestream Action (Real Backend Commerce API)
+  const handleCreateLive = async () => {
     if (isSubmitting) return;
+
+    setErrorMessage(null);
+    setSuccessMessage(null);
 
     if (!validateForm()) {
       return;
     }
 
     setIsSubmitting(true);
-    const newLiveId = `LIVE-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`;
+    let succeeded = false;
 
-    // Add to mock livestream list
-    mockLivestreams.unshift({
-      id: newLiveId,
-      title: title.trim(),
-      status: "SCHEDULED",
-      thumbnail: coverImage || undefined,
-      hostName: "KOL / Host Shop",
-      timeDisplay: `${startTime || "19:00"} - ${endTime || "22:00"}`,
-      subTimeDisplay: `Lịch phát: ${startDate || getTodayDate()}`,
-      productCount: products.length,
-    });
+    try {
+      let finalCoverImageKey: string | undefined = undefined;
 
-    setSuccessMessage(
-      `Đã khởi tạo phiên Livestream "${title.trim()}" thành công! (Dữ liệu mẫu frontend)`
-    );
+      // Upload cover file to S3 via presigned PUT URL if a new file was chosen
+      if (coverFile) {
+        const presignRes = await requestCoverPresign({
+          fileName: coverFile.name,
+          contentType: coverFile.type,
+          fileSize: coverFile.size,
+        });
 
-    setTimeout(() => {
-      router.push("/shop/livestream");
-    }, 800);
+        await uploadFileToS3(presignRes.uploadUrl, coverFile, coverFile.type);
+        finalCoverImageKey = presignRes.objectKey;
+      }
+
+      const scheduledAtIso = formatScheduledAt(startDate, startTime);
+
+      const createdSession = await createLivestream({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        scheduledAt: scheduledAtIso || undefined,
+        coverImageKey: finalCoverImageKey,
+      });
+
+      succeeded = true;
+      setSuccessMessage(
+        `Đã tạo phiên Livestream "${createdSession.title}" thành công!`
+      );
+
+      setTimeout(() => {
+        router.push("/shop/livestream");
+      }, 1000);
+    } catch (err) {
+      if (err instanceof CreateLivestreamApiError) {
+        setErrorMessage(err.message);
+      } else if (err instanceof Error) {
+        setErrorMessage(`Đã xảy ra lỗi: ${err.message}`);
+      } else {
+        setErrorMessage("Không thể tạo phiên Livestream. Vui lòng thử lại sau.");
+      }
+    } finally {
+      if (!succeeded) {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   return (
@@ -211,6 +249,14 @@ export function LivestreamCreateForm() {
         <div className="mb-6 flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs font-semibold text-emerald-800 shadow-xs">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>{successMessage} Đang chuyển hướng về danh sách phiên...</span>
+        </div>
+      )}
+
+      {/* Error Notification Banner */}
+      {errorMessage && (
+        <div className="mb-6 flex items-center gap-2.5 rounded-lg border border-red-200 bg-red-50 p-4 text-xs font-semibold text-error shadow-xs">
+          <AlertCircle className="h-4 w-4 shrink-0 text-error" aria-hidden="true" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -227,8 +273,9 @@ export function LivestreamCreateForm() {
             description={description}
             onDescriptionChange={setDescription}
             coverImage={coverImage}
-            onCoverImageChange={(v) => {
+            onCoverImageChange={(v, f) => {
               setCoverImage(v);
+              setCoverFile(f || null);
               if (errors.coverImage) setErrors((prev) => ({ ...prev, coverImage: undefined }));
             }}
             startDate={startDate}
