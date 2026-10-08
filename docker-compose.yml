@@ -11,8 +11,8 @@
 #   4. docker compose down           → dừng
 #   5. docker compose down -v        → dừng + xóa data
 #
-# Lưu ý: Các service Python (commerce, realtime, ai-worker) và
-#         Next.js chạy trực tiếp trên máy bằng uvicorn/npm run dev
+# Lưu ý: Các service (Commerce [Node.js], Realtime, AI Worker [Python]) và
+#         Next.js chạy trực tiếp trên máy bằng npm run dev/python
 #         để dev nhanh hơn. Docker chỉ chạy infrastructure.
 # ============================================================
 
