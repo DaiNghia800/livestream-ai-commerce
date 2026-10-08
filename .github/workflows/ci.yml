@@ -171,3 +171,27 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 5: Chạy unit tests cho AI Worker (Python + pytest)
+  # Kiểm tra logic validate event và parse purchase intent
+  # ─────────────────────────────────────────────────────────────────
+  ai-worker-test:
+    name: "AI Worker — Pytest"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      # Install dependencies from requirements.txt
+      - name: Install test dependencies
+        run: pip install -r services/ai-worker/requirements.txt
+
+      # Run all AI Worker tests with verbose output
+      - name: Run AI Worker tests
+        run: python -m pytest tests/ai-worker/ -v --tb=short
