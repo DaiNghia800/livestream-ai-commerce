@@ -3,14 +3,16 @@ import { Bot } from "lucide-react";
 export function AuthLayout({
   children,
   marketing,
+  compact = false,
 }: {
   children: React.ReactNode;
   marketing?: React.ReactNode;
+  compact?: boolean;
 }) {
   return (
     <div className={`auth-layout ${marketing ? "" : "auth-layout-single"}`}>
-      <div className="auth-left">
-        <div className="auth-left-inner">
+      <div className={`auth-left ${compact ? "auth-left-compact" : ""}`}>
+        <div className={`auth-left-inner ${compact ? "auth-left-inner-compact" : ""}`}>
           <div className="auth-brand">
             <span className="brand">
               <span className="brand-icon" aria-hidden="true">

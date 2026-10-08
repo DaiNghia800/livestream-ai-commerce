@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { LogIn, UserPlus } from "lucide-react";
 import { LoginForm } from "./login-form";
 import { RegisterForm } from "./register-form";
 
@@ -30,7 +31,8 @@ export function AuthSwitcher({
           className={!isRegister ? "is-active" : ""}
           onClick={() => selectMode("login")}
         >
-          Đăng nhập
+          <LogIn size={18} aria-hidden="true" />
+          <span>Đăng nhập</span>
         </button>
         <button
           type="button"
@@ -39,7 +41,8 @@ export function AuthSwitcher({
           className={isRegister ? "is-active" : ""}
           onClick={() => selectMode("register")}
         >
-          Tạo tài khoản
+          <UserPlus size={18} aria-hidden="true" />
+          <span>Tạo tài khoản</span>
         </button>
       </div>
       {registrationComplete && !isRegister && (

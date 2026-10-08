@@ -4,7 +4,7 @@ import { MarketingPanel } from "@/features/login/marketing-panel";
 
 export default function RegisterPage() {
   return (
-    <AuthLayout marketing={<MarketingPanel />}>
+    <AuthLayout marketing={<MarketingPanel />} compact>
       <AuthSwitcher />
     </AuthLayout>
   );
