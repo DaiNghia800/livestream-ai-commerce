@@ -123,6 +123,7 @@
   --text-display-lg: 36px;
   --text-display-lg--line-height: 44px;
 }
+
 * {
   box-sizing: border-box;
 }
@@ -173,16 +174,10 @@ select {
 }
 
 a {
-  color: var(--color-primary);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: medium;
+  /* color: inherit; */
+  text-decoration: inherit;
 }
 
-a:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 
 /* Link trong bảng và danh sách thuộc tính: gạch chân sẵn.
    Chỉ dựa vào màu là không đủ cho người mù màu (WCAG 1.4.1). */
