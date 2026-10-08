@@ -2,14 +2,17 @@ import cors from "cors";
 import express, { Express } from "express";
 import { config } from "./config.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
+import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
 import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
-  customS3Service?: S3StorageService
+  customS3Service?: S3StorageService,
+  customProductRepository?: ILivestreamProductRepository
 ): Express {
+
   const app = express();
 
   app.use(cors());
@@ -46,8 +49,12 @@ export function createApp(
 
   // Mount API routers
   const apiRouter = express.Router();
-  apiRouter.use("/livestreams", createLivestreamRouter(customRepository));
+  apiRouter.use(
+    "/livestreams",
+    createLivestreamRouter(customRepository, customProductRepository)
+  );
   apiRouter.use("/uploads", createUploadRouter(customS3Service));
+
 
   app.use(config.apiPrefix, apiRouter);
 
