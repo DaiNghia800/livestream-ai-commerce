@@ -16,6 +16,8 @@ export interface AppConfig {
   holdSoftSeconds: number;
   holdConfirmSeconds: number;
   holdMaxSeconds: number;
+  /** Khoảng cách giữa hai lượt quét đơn hết hạn. */
+  expireJobIntervalMs: number;
 }
 
 export const config: AppConfig = {
@@ -33,4 +35,5 @@ export const config: AppConfig = {
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),
   holdConfirmSeconds: parseInt(process.env.HOLD_CONFIRM_SECONDS || "900", 10),
   holdMaxSeconds: parseInt(process.env.HOLD_MAX_SECONDS || "1800", 10),
+  expireJobIntervalMs: parseInt(process.env.EXPIRE_JOB_INTERVAL_MS || "30000", 10),
 };
