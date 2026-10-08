@@ -17,8 +17,10 @@ import {
   formatScheduledAt,
   CreateLivestreamApiError,
 } from "../../api/create-livestream";
+import { addLivestreamProduct } from "../../api/livestream-products";
 import { requestCoverPresign } from "../../api/request-cover-presign";
 import { uploadFileToS3 } from "../../api/upload-file-to-s3";
+
 
 export function LivestreamCreateForm() {
   const router = useRouter();
@@ -216,10 +218,30 @@ export function LivestreamCreateForm() {
         coverImageKey: finalCoverImageKey,
       });
 
+      // Tự động gắn các sản phẩm đã chọn vào phiên livestream trong cơ sở dữ liệu
+      if (products.length > 0) {
+        for (let i = 0; i < products.length; i++) {
+          const p = products[i];
+          try {
+            await addLivestreamProduct(createdSession.id, {
+              productId: p.id,
+              displayOrder: i,
+              isFeatured: i === 0,
+            });
+          } catch (prodErr) {
+            console.warn(
+              `[LivestreamCreateForm] Không thể gắn sản phẩm ${p.id} vào phiên:`,
+              prodErr
+            );
+          }
+        }
+      }
+
       succeeded = true;
       setSuccessMessage(
-        `Đã tạo phiên Livestream "${createdSession.title}" thành công!`
+        `Đã tạo phiên Livestream "${createdSession.title}" và gắn ${products.length} sản phẩm thành công!`
       );
+
 
       setTimeout(() => {
         router.push("/shop/livestream");

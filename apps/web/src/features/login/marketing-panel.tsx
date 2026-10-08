@@ -3,7 +3,6 @@ import {
   Cpu,
   Package,
   Truck,
-  Zap,
   CheckCircle,
   Activity,
 } from "lucide-react";
@@ -28,15 +27,6 @@ function FeatureCard({
   );
 }
 
-function StatItem({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="auth-stat">
-      <span className="auth-stat-value">{value}</span>
-      <span className="auth-stat-label">{label}</span>
-    </div>
-  );
-}
-
 export function MarketingPanel() {
   return (
     <div className="auth-marketing">
@@ -54,7 +44,8 @@ export function MarketingPanel() {
       <div className="auth-hero">
         <span className="auth-hero-eyebrow">SỨC MẠNH KIẾN TRÚC PHÂN TÁN</span>
         <h2>
-          Hạ tầng Livestream bán hàng thế hệ mới &amp; Chốt đơn tự động bằng AI
+          Hạ tầng livestream bán hàng thế hệ mới
+          <span>Chốt đơn tự động bằng AI</span>
         </h2>
         <p>
           Giải pháp công nghệ chuyên biệt cho phiên live quy mô lớn. Xử lý đồng
@@ -86,19 +77,6 @@ export function MarketingPanel() {
         />
       </div>
 
-      <div className="auth-stats-row">
-        <StatItem value="3.4M" label="Comment xử lý" />
-        <StatItem value="99.89%" label="Tỉ lệ uptime" />
-        <StatItem value="0.35s" label="Tốc độ phản hồi" />
-      </div>
-
-      <div className="auth-quote">
-        <Zap size={14} />
-        <span>
-          &ldquo;LiveOrder AI giúp team tôi tiết kiệm 4,500 giờ nhân công/tháng
-          cho việc chốt đơn Livestream Thời trang&rdquo;
-        </span>
-      </div>
     </div>
   );
 }
