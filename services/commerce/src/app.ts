@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
 import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js";
+import { createOrderRouter } from "./modules/order/routes/order.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 
 export function createApp(
@@ -48,6 +49,7 @@ export function createApp(
   const apiRouter = express.Router();
   apiRouter.use("/livestreams", createLivestreamRouter(customRepository));
   apiRouter.use("/uploads", createUploadRouter(customS3Service));
+  apiRouter.use("/orders", createOrderRouter());
 
   app.use(config.apiPrefix, apiRouter);
 
