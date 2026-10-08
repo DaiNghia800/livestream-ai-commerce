@@ -40,6 +40,35 @@ export class SkuNotFoundError extends DomainError {
   }
 }
 
+export class OrderNotFoundError extends DomainError {
+  readonly code = "ORDER_NOT_FOUND";
+
+  constructor(readonly identifier: string) {
+    super(`Không tìm thấy đơn ${identifier}`);
+  }
+}
+
+/**
+ * Chuyển trạng thái không hợp lệ.
+ *
+ * Ví dụ: cố xác nhận một đơn đã huỷ, hoặc hoàn tất một đơn chưa xác nhận.
+ * Mang theo trạng thái hiện tại để client hiển thị thông báo đúng việc
+ * thay vì chỉ "thao tác thất bại".
+ */
+export class InvalidOrderStateError extends DomainError {
+  readonly code = "INVALID_ORDER_STATE";
+
+  constructor(
+    readonly orderId: string,
+    readonly currentStatus: string,
+    readonly attempted: string
+  ) {
+    super(
+      `Đơn đang ở trạng thái ${currentStatus}, không thể ${attempted}`
+    );
+  }
+}
+
 /** Mọi dòng hàng đều không giữ được chút nào. */
 export class AllLinesOutOfStockError extends DomainError {
   readonly code = "OUT_OF_STOCK";
