@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Video, Info, ImagePlus, Trash2, RefreshCw, AlertCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Video, ImagePlus, Trash2, RefreshCw, AlertCircle } from "lucide-react";
 
 interface SessionInformationProps {
   title: string;
@@ -9,7 +9,7 @@ interface SessionInformationProps {
   description: string;
   onDescriptionChange: (value: string) => void;
   coverImage: string | null;
-  onCoverImageChange: (image: string | null) => void;
+  onCoverImageChange: (image: string | null, file?: File | null) => void;
   startDate: string;
   onStartDateChange: (value: string) => void;
   startTime: string;
@@ -29,6 +29,19 @@ interface SessionInformationProps {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const isAllowedFileType = (file: File): boolean => {
+  if (ALLOWED_TYPES.includes(file.type.toLowerCase())) {
+    return true;
+  }
+  const fileName = file.name.toLowerCase();
+  return (
+    fileName.endsWith(".jpg") ||
+    fileName.endsWith(".jpeg") ||
+    fileName.endsWith(".png") ||
+    fileName.endsWith(".webp")
+  );
+};
 
 export function SessionInformation({
   title,
@@ -50,40 +63,133 @@ export function SessionInformation({
   hideIvsNotice = false,
 }: SessionInformationProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const dragCounter = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
 
+  // Revoke object URL on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+    };
+  }, []);
+
+  // Prevent browser from navigating or opening the file when dropped outside the dropzone
+  useEffect(() => {
+    const handleGlobalDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const handleGlobalDrop = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener("dragover", handleGlobalDragOver);
+    window.addEventListener("drop", handleGlobalDrop);
+
+    return () => {
+      window.removeEventListener("dragover", handleGlobalDragOver);
+      window.removeEventListener("drop", handleGlobalDrop);
+    };
+  }, []);
+
+  // Unified file validation and preview handler
+  const processFile = useCallback(
+    (file: File) => {
+      setImageError(null);
+
+      // Check format
+      if (!isAllowedFileType(file)) {
+        setImageError("Định dạng không hợp lệ. Vui lòng chọn ảnh JPG, PNG hoặc WebP.");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      // Check size
+      if (file.size > MAX_FILE_SIZE) {
+        setImageError("Dung lượng ảnh vượt quá 5MB. Vui lòng chọn ảnh nhẹ hơn.");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      // Revoke previous object URL if any
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+
+      // Create preview object URL
+      const previewUrl = URL.createObjectURL(file);
+      objectUrlRef.current = previewUrl;
+      onCoverImageChange(previewUrl, file);
+
+      // Reset input value to permit re-selection of the same file
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    [onCoverImageChange]
+  );
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setImageError(null);
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Check format
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setImageError("Định dạng không hợp lệ. Vui lòng chọn ảnh JPG, PNG hoặc WebP.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-
-    // Check size
-    if (file.size > MAX_FILE_SIZE) {
-      setImageError("Dung lượng ảnh vượt quá 5MB. Vui lòng chọn ảnh nhẹ hơn.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-
-    // Read and create preview
-    const reader = new FileReader();
-    reader.onload = () => {
-      onCoverImageChange(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    processFile(file);
   };
 
   const handleRemoveImage = () => {
-    onCoverImageChange(null);
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    onCoverImageChange(null, null);
     setImageError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+    dragCounter.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled) return;
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setIsDragging(false);
+
+    if (disabled) return;
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processFile(file);
     }
   };
 
@@ -116,11 +222,10 @@ export function SessionInformation({
           <input
             id="livestream-title"
             disabled={disabled}
-            className={`w-full rounded-lg border bg-surface-container-lowest px-3.5 py-2.5 text-sm text-on-surface transition-all placeholder:text-outline focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
-              errors.title
-                ? "border-error focus:border-error focus:ring-2 focus:ring-error/20"
-                : "border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20"
-            }`}
+            className={`w-full rounded-lg border bg-surface-container-lowest px-3.5 py-2.5 text-sm text-on-surface transition-all placeholder:text-outline focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.title
+              ? "border-error focus:border-error focus:ring-2 focus:ring-error/20"
+              : "border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20"
+              }`}
             placeholder="Ví dụ: Đại tiệc Flash Sale Thời Trang Công Sở Hè 2026..."
             type="text"
             value={title}
@@ -157,7 +262,17 @@ export function SessionInformation({
 
           {coverImage ? (
             /* Image Preview */
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative flex flex-col gap-3 rounded-lg border-2 transition-all sm:flex-row sm:items-start ${
+                isDragging
+                  ? "border-dashed border-primary bg-primary/5 p-3 ring-2 ring-primary/20"
+                  : "border-transparent"
+              }`}
+            >
               <div className="relative aspect-video w-full max-w-xs shrink-0 overflow-hidden rounded-lg border border-outline-variant bg-surface-container">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -165,10 +280,19 @@ export function SessionInformation({
                   alt="Ảnh bìa phiên livestream"
                   className="h-full w-full object-cover"
                 />
+                {isDragging && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-primary/20 backdrop-blur-[1px]">
+                    <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-white shadow-xs">
+                      Thả ảnh để thay thế
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
-                <p className="text-xs font-medium text-on-surface">Ảnh bìa đã chọn (Preview)</p>
+                <p className="text-xs font-medium text-on-surface">
+                  {isDragging ? "Thả ảnh mới vào đây để thay đổi" : "Ảnh bìa đã chọn (Preview)"}
+                </p>
                 <p className="text-[11px] text-outline">
                   Ảnh bìa sẽ hiển thị trên danh sách phiên phát sóng và thẻ chia sẻ livestream.
                 </p>
@@ -197,21 +321,46 @@ export function SessionInformation({
           ) : (
             /* Upload Dropzone / Placeholder */
             <div
+              role="button"
+              tabIndex={disabled ? -1 : 0}
+              aria-label="Tải lên ảnh bìa livestream"
               onClick={() => !disabled && fileInputRef.current?.click()}
-              className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-outline-variant/70 p-5 text-center transition-all ${
+              onKeyDown={(e) => {
+                if (!disabled && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-5 text-center transition-all ${
                 disabled
-                  ? "cursor-not-allowed bg-surface-container-low/30 opacity-60"
-                  : "cursor-pointer hover:border-primary/60 hover:bg-surface-container-low/40"
+                  ? "cursor-not-allowed border-outline-variant/70 bg-surface-container-low/30 opacity-60"
+                  : isDragging
+                  ? "cursor-copy border-primary bg-primary/10 ring-2 ring-primary/20 scale-[0.995]"
+                  : "cursor-pointer border-outline-variant/70 hover:border-primary/60 hover:bg-surface-container-low/40"
               }`}
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+                  isDragging ? "bg-primary text-white scale-110" : "bg-primary/10 text-primary"
+                }`}
+              >
                 <ImagePlus className="h-5 w-5" aria-hidden="true" />
               </div>
               <p className="mt-2 text-xs font-semibold text-on-surface">
-                {disabled ? "Ảnh bìa chưa được cập nhật" : "Nhấn để tải lên ảnh bìa livestream"}
+                {disabled
+                  ? "Ảnh bìa chưa được cập nhật"
+                  : isDragging
+                  ? "Thả ảnh vào đây để tải lên"
+                  : "Nhấn để tải lên ảnh bìa livestream"}
               </p>
               <p className="mt-0.5 text-[11px] text-outline">
-                Định dạng hỗ trợ: JPG, PNG, WebP (Tối đa 5MB, tỉ lệ 16:9 khuyến nghị)
+                {isDragging
+                  ? "Hỗ trợ JPG, PNG, WebP (Tối đa 5MB)"
+                  : "Định dạng hỗ trợ: JPG, PNG, WebP (Tối đa 5MB, tỉ lệ 16:9 khuyến nghị)"}
               </p>
             </div>
           )}
@@ -260,11 +409,10 @@ export function SessionInformation({
               <input
                 id="livestream-start-date"
                 disabled={disabled}
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
-                  errors.dates
-                    ? "border-error focus:border-error"
-                    : "border-outline-variant focus:border-primary"
-                }`}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.dates
+                  ? "border-error focus:border-error"
+                  : "border-outline-variant focus:border-primary"
+                  }`}
                 type="date"
                 value={startDate}
                 onChange={(e) => onStartDateChange(e.target.value)}
@@ -277,11 +425,10 @@ export function SessionInformation({
               <input
                 id="livestream-start-time"
                 disabled={disabled}
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
-                  errors.dates
-                    ? "border-error focus:border-error"
-                    : "border-outline-variant focus:border-primary"
-                }`}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.dates
+                  ? "border-error focus:border-error"
+                  : "border-outline-variant focus:border-primary"
+                  }`}
                 type="time"
                 value={startTime}
                 onChange={(e) => onStartTimeChange(e.target.value)}
@@ -306,11 +453,10 @@ export function SessionInformation({
               <input
                 id="livestream-end-date"
                 disabled={disabled}
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
-                  errors.dates
-                    ? "border-error focus:border-error"
-                    : "border-outline-variant focus:border-primary"
-                }`}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.dates
+                  ? "border-error focus:border-error"
+                  : "border-outline-variant focus:border-primary"
+                  }`}
                 type="date"
                 value={endDate}
                 onChange={(e) => onEndDateChange(e.target.value)}
@@ -323,11 +469,10 @@ export function SessionInformation({
               <input
                 id="livestream-end-time"
                 disabled={disabled}
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${
-                  errors.dates
-                    ? "border-error focus:border-error"
-                    : "border-outline-variant focus:border-primary"
-                }`}
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.dates
+                  ? "border-error focus:border-error"
+                  : "border-outline-variant focus:border-primary"
+                  }`}
                 type="time"
                 value={endTime}
                 onChange={(e) => onEndTimeChange(e.target.value)}
@@ -341,26 +486,6 @@ export function SessionInformation({
           <div className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs font-medium text-error md:col-span-2">
             <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{errors.dates}</span>
-          </div>
-        )}
-
-        {/* Thiết lập kênh video: Amazon IVS Channel Pool Notice */}
-        {!hideIvsNotice && (
-          <div className="pt-2 md:col-span-2">
-            <div className="flex items-start gap-3 rounded-lg border border-outline-variant/50 bg-surface-container-low/70 p-3.5">
-              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Info className="h-4 w-4" aria-hidden="true" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-xs font-semibold text-on-surface">
-                  Cấu hình truyền dẫn Video đám mây
-                </h3>
-                <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
-                  Amazon IVS Channel sẽ được hệ thống tự động phân bổ khi bạn bắt đầu phát sóng tại
-                  Studio.
-                </p>
-              </div>
-            </div>
           </div>
         )}
       </div>
