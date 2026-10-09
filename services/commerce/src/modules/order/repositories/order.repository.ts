@@ -265,6 +265,46 @@ export async function appendOutboxEvent(
   );
 }
 
+/**
+ * Phát sự kiện tồn kho cho mọi SKU trong đơn.
+ *
+ * Màn hình shop cần biết "còn bán được bao nhiêu", mà con số đó chỉ
+ * đổi khi held_quantity hoặc on_hand_quantity đổi — tức là ở các bước
+ * giữ hàng, trả hàng và xuất kho. Sự kiện order.* không mang thông tin
+ * này nên UI không thể tự suy ra.
+ *
+ * Gửi TRẠNG THÁI HIỆN TẠI chứ không gửi mức chênh. Publisher chỉ bảo
+ * đảm at-least-once và không bảo đảm thứ tự, nên nếu gửi mức chênh thì
+ * một gói trùng hay một gói đến muộn sẽ làm con số bên nhận sai vĩnh
+ * viễn. Với trạng thái thì gói đến sau cùng luôn đúng.
+ *
+ * Gọi trong CÙNG transaction với thay đổi tồn, và gọi SAU khi đã thay
+ * đổi xong — hàm đọc thẳng bảng inventory nên gọi sớm sẽ chụp nhầm số
+ * cũ.
+ */
+export async function appendInventoryChangedEvents(
+  client: PoolClient,
+  params: { orderId: string; reason: string }
+): Promise<void> {
+  await client.query(
+    `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+     SELECT 'inventory', inv.sku_id, 'inventory.changed',
+            jsonb_build_object(
+                'skuId',    inv.sku_id,
+                'onHand',   inv.on_hand_quantity,
+                'held',     inv.held_quantity,
+                'sellable', inv.on_hand_quantity - inv.held_quantity,
+                'reason',   $2::text,
+                'orderId',  $1::uuid
+            )
+       FROM inventory inv
+      WHERE inv.sku_id IN (
+            SELECT DISTINCT sku_id FROM order_items WHERE order_id = $1
+      )`,
+    [params.orderId, params.reason]
+  );
+}
+
 /** Đọc lại đơn sau khi ghi, để trả về đúng những gì database đang có. */
 export async function loadOrder(
   client: PoolClient,

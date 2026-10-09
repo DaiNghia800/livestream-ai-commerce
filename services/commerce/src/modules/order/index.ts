@@ -9,3 +9,6 @@ export * from "./services/draft-order.service.js";
 export * from "./services/order-lifecycle.service.js";
 export * from "./types/order.types.js";
 export * from "./jobs/expire-orders.job.js";
+export * from "./jobs/publish-outbox.job.js";
+export * from "./events/event-transport.js";
+export * from "./repositories/outbox.repository.js";

@@ -15,11 +15,12 @@
 | T5 Chống trùng 5 tầng | 🟡 | Tầng 1, 3, 4 đã có; tầng 2 và 5 chờ AI worker |
 | T6 Gộp đơn | ✅ | 17 test |
 | T8 Job quét hết hạn | ✅ | 9 test |
-| T9–T12 | ❌ | |
+| T10 Outbox publisher | ✅ | 23 test · chạy ở chế độ ghi log tới khi `services/realtime` lên |
+| T9, T11, T12 | ❌ | |
 | Backend thanh toán | ❌ | Bảng `payments` đã có, chưa có module |
 | Nối frontend vào API | ❌ | 4 màn vẫn chạy `src/mocks/` |
 
-Toàn bộ test của service: **213 passed**, trong đó 67 ca thuộc phần đơn hàng.
+Toàn bộ test của service: **236 passed**, trong đó 90 ca thuộc phần đơn hàng.
 
 ---
 
@@ -219,6 +220,31 @@ Sau khi chạy hết 213 test, đối soát `SUM(reservations HOLDING) == invent
 
 ---
 
+## T10 — Outbox publisher
+
+Nửa đầu của mẫu transactional outbox đã có từ T4: mọi nghiệp vụ ghi sự kiện **cùng transaction** với thay đổi dữ liệu. Nhưng tới trước T10 thì chưa ai đọc ra — năm loại sự kiện đã ghi vào bảng chỉ nằm đó.
+
+`PublishOutboxJob` quét mỗi 2 giây, nhận một lô, gửi qua `EventTransport`, đánh dấu `SENT` hoặc giãn thử lại.
+
+**Transport cắm rời** vì `services/realtime` hiện còn rỗng. Không cấu hình `REALTIME_EVENTS_URL` thì dùng bản chỉ ghi log và **không ném lỗi** — nếu mặc định là hỏng thì chạy ở máy dev sẽ đẻ ra một đống sự kiện `FAILED` vô nghĩa. Hôm nào service đó lên thì điền URL, không sửa dòng code nào.
+
+**Hai cột phải thêm** (migration 006) — thiếu chúng thì publisher không retry nổi:
+
+| Cột | Vì sao |
+|---|---|
+| `next_attempt_at` | Không có thì phải thử lại ngay lập tức. Nã vào service đang chết là chuyện nhỏ; chuyện lớn là lô quét sắp theo `created_at`, nên **N sự kiện hỏng ở đầu hàng chiếm trọn N suất của mọi lô sau** — sự kiện mới sinh chết đói ngay sau lưng chúng |
+| `last_error` | Biết vì sao hỏng mà không phải mò log |
+
+**Nhận việc bằng vé thuê có hạn.** `claimDueEvents` đẩy `next_attempt_at` về tương lai **ngay trong câu UPDATE**, trước khi gửi. Worker khác quét trong lúc ta đang gọi HTTP sẽ thấy chưa tới hạn và bỏ qua. Nhờ vậy transaction đóng ngay, không giữ khoá suốt thời gian gọi mạng. `attempts` cộng lúc nhận việc chứ không phải lúc gửi hỏng — một sự kiện làm tiến trình chết mỗi lần xử lý vẫn phải đếm, nếu không nó quay vòng mãi mãi.
+
+Giãn theo luỹ thừa 2 (2s, 4s, 8s…), trần 5 phút, quá 8 lần thì chuyển `FAILED` — trạng thái cuối. Để nó ở `PENDING` là quay lại đúng bài toán chết đói ở trên.
+
+**`inventory.changed` là sự kiện mà màn hình shop thật sự cần.** Sự kiện `order.*` không mang số tồn, nên UI không thể tự suy ra "còn bán được bao nhiêu". Phát ở ba chỗ tồn thay đổi: giữ hàng, trả hàng, xuất kho.
+
+Payload mang **trạng thái hiện tại**, không mang mức chênh. Publisher chỉ bảo đảm *at-least-once* và **không** bảo đảm thứ tự — một gói trùng hay một gói đến muộn sẽ làm con số bên nhận sai vĩnh viễn nếu gửi mức chênh; với trạng thái thì gói đến sau cùng luôn đúng.
+
+---
+
 ## Hạ tầng đã đụng tới
 
 | Thay đổi | Lý do |
@@ -230,6 +256,8 @@ Sau khi chạy hết 213 test, đối soát `SUM(reservations HOLDING) == invent
 | `playwright.config.ts`: timeout 60s, 4 worker, `retries: 1` | 40 test trên 6 worker cùng một server gây flaky — mỗi lần đỏ một bộ khác nhau |
 | Dọn database chuyển từ `setupFiles` sang `globalSetup` | `setupFiles` chạy lại cho **từng** file test mà vitest chạy song song — file này `TRUNCATE` giữa chừng xoá mất dữ liệu file kia đang dùng, gây 21 ca đỏ dù chạy riêng từng file đều xanh |
 | Thêm `npm run migrate` (`scripts/migrate.ts`) | Áp migration mới mà không phải khởi động cả server; test **không** tự chạy migration |
+| `.gitignore`: thu hẹp `docs/design/draft-order-reservation` | Dòng cũ nhằm loại 5 thư mục ảnh mockup (~2,5 MB) nhưng viết quá rộng nên nuốt luôn `progress.md` — file này chưa bao giờ được commit, link từ `tasks.md` trỏ vào hư không |
+| `.env.example`: thêm `REALTIME_EVENTS_URL`, `OUTBOX_JOB_INTERVAL_MS`, `EXPIRE_JOB_INTERVAL_MS` | Khác `NEXT_PUBLIC_REALTIME_URL`: cái đó là WebSocket cho trình duyệt, cái này là đầu vào HTTP giữa hai service |
 
 ---
 
@@ -242,3 +270,4 @@ Sau khi chạy hết 213 test, đối soát `SUM(reservations HOLDING) == invent
 | `services/commerce/` chứa cả code livestream | Livestream không phải commerce; nên đổi tên thư mục hoặc thống nhất "commerce = backend gộp" |
 | Mất `downgrade` của Alembic | Runner hiện tại chỉ tiến, không lùi — cân nhắc `node-pg-migrate` |
 | `tasks.md` chưa có task cho backend thanh toán và nối frontend | Khoảng 4 ngày công chưa ai tính |
+| Đồng hồ container Postgres lệch khỏi host 1–2 giây và trôi dần | WSL2 sau khi máy ngủ. Test **không được** so mốc thời gian do Postgres sinh với `Date.now()` của Node — đã làm đỏ ngẫu nhiên 2 ca của T10. Cách đúng: tính khoảng cách ngay trong SQL (`EXTRACT(EPOCH FROM (x - NOW()))`) |
