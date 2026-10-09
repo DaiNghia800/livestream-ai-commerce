@@ -2,15 +2,18 @@ import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import {
   CreateProductSchema,
+  CreateProductImageSchema,
   CreateProductSkuSchema,
   ProductListQuerySchema,
   UpdateProductSchema,
+  UpdateProductImageSchema,
   UpdateProductSkuSchema,
 } from "../schemas/product.schema.js";
 import {
   DuplicateProductCodeError,
   DuplicateSkuCodeError,
   InvalidProductReferenceError,
+  ProductImageLimitError,
 } from "../repositories/product.repository.js";
 import { ProductNotFoundError, ProductService } from "../services/product.service.js";
 import {
@@ -147,6 +150,26 @@ export class ProductController {
     }
   };
 
+  createImage = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = CreateProductImageSchema.parse(req.body);
+      res.status(201).json(await this.service.createImage(req.shopId!, req.params.id, input));
+    } catch (error) {
+      this.handleError(error, res, "Failed to create product image");
+    }
+  };
+
+  updateImage = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = UpdateProductImageSchema.parse(req.body);
+      res.status(200).json(
+        await this.service.updateImage(req.shopId!, req.params.id, req.params.imageId, input)
+      );
+    } catch (error) {
+      this.handleError(error, res, "Failed to update product image");
+    }
+  };
+
   private handleError(error: unknown, res: Response, fallbackMessage: string): void {
     if (error instanceof ZodError) {
       res.status(400).json({
@@ -164,6 +187,10 @@ export class ProductController {
       error instanceof DuplicateProductCodeError ||
       error instanceof DuplicateSkuCodeError
     ) {
+      res.status(409).json({ error: "ConflictError", message: error.message });
+      return;
+    }
+    if (error instanceof ProductImageLimitError) {
       res.status(409).json({ error: "ConflictError", message: error.message });
       return;
     }

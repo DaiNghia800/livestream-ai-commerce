@@ -35,6 +35,8 @@ describe("ProductService", () => {
       createSku: vi.fn(),
       updateSku: vi.fn(),
       discontinueSku: vi.fn(),
+      createImage: vi.fn(),
+      updateImage: vi.fn(),
       removeImage: vi.fn(),
     };
     service = new ProductService(repository);

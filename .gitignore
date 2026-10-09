@@ -15,6 +15,7 @@ __pycache__/
 coverage/
 htmlcov/
 .coverage
+services/commerce/uploads/
 playwright-report/
 test-results/
 .terraform/

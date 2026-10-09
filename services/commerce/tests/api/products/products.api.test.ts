@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
 import {
   DuplicateProductCodeError,
+  ProductImageLimitError,
   type IProductRepository,
 } from "../../../src/modules/product/repositories/product.repository.js";
 import type { Product } from "../../../src/modules/product/types/product.types.js";
@@ -40,6 +41,8 @@ describe("Products API", () => {
       createSku: vi.fn(),
       updateSku: vi.fn(),
       discontinueSku: vi.fn(),
+      createImage: vi.fn(),
+      updateImage: vi.fn(),
       removeImage: vi.fn(),
     };
     app = createApp(undefined, undefined, undefined, repository);
@@ -122,6 +125,56 @@ describe("Products API", () => {
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("archived");
     expect(repository.archive).toHaveBeenCalledWith(7, "41");
+  });
+
+  it("creates product images and keeps one primary image when requested", async () => {
+    const image = {
+      id: "12",
+      productId: "41",
+      skuId: null,
+      url: "https://example.com/product.jpg",
+      isPrimary: true,
+      sortOrder: 0,
+      createdAt: "2026-10-09T00:00:00.000Z",
+    };
+    vi.mocked(repository.createImage).mockResolvedValue(image);
+    const created = await request(app)
+      .post("/api/products/41/images")
+      .set("X-Shop-Id", "7")
+      .send({ url: image.url, isPrimary: true });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject(image);
+    expect(repository.createImage).toHaveBeenCalledWith(7, "41", {
+      url: image.url,
+      isPrimary: true,
+      sortOrder: 0,
+    });
+  });
+
+  it("rejects product images after reaching the configured limit", async () => {
+    vi.mocked(repository.createImage).mockRejectedValueOnce(new ProductImageLimitError());
+    const response = await request(app)
+      .post("/api/products/41/images")
+      .set("X-Shop-Id", "7")
+      .send({ url: "https://example.com/extra.jpg" });
+    expect(response.status).toBe(409);
+    expect(response.body.message).toContain("at most 8 images");
+  });
+
+  it("validates product image updates and scopes them to the selected shop", async () => {
+    vi.mocked(repository.updateImage).mockResolvedValue(null);
+    const response = await request(app)
+      .patch("/api/products/41/images/12")
+      .set("X-Shop-Id", "7")
+      .send({ isPrimary: true });
+    expect(response.status).toBe(404);
+    expect(repository.updateImage).toHaveBeenCalledWith(7, "41", "12", { isPrimary: true });
+
+    const invalid = await request(app)
+      .patch("/api/products/41/images/12")
+      .set("X-Shop-Id", "7")
+      .send({ isPrimary: "yes" });
+    expect(invalid.status).toBe(400);
   });
 
   it("returns global categories without requiring shop scope", async () => {

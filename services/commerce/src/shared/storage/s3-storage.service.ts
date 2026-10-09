@@ -5,12 +5,17 @@ import crypto from "crypto";
 export interface S3StorageConfig {
   region?: string;
   bucketName?: string;
+  publicBaseUrl?: string;
 }
 
 export interface PresignedUploadResult {
   uploadUrl: string;
   objectKey: string;
   expiresIn: number;
+}
+
+export interface PresignedProductImageUploadResult extends PresignedUploadResult {
+  imageUrl: string;
 }
 
 const MIME_EXTENSION_MAP: Record<string, string> = {
@@ -38,15 +43,35 @@ export class S3StorageService {
     return Boolean(this.config.bucketName && (this.config.region || this.s3Client));
   }
 
-  generateObjectKey(contentType: string): string {
+  generateObjectKey(contentType: string, prefix = "livestreams/covers"): string {
     const ext = MIME_EXTENSION_MAP[contentType] || "bin";
     const uuid = crypto.randomUUID();
-    return `livestreams/covers/${uuid}.${ext}`;
+    return `${prefix}/${uuid}.${ext}`;
   }
 
   async createPresignedCoverUpload(
     contentType: string,
     fileSize: number
+  ): Promise<PresignedUploadResult> {
+    return this.createPresignedUpload(contentType, fileSize, "livestreams/covers");
+  }
+
+  async createPresignedProductImageUpload(
+    contentType: string,
+    fileSize: number
+  ): Promise<PresignedProductImageUploadResult> {
+    const result = await this.createPresignedUpload(contentType, fileSize, "products/images");
+    const publicBaseUrl = this.config.publicBaseUrl?.replace(/\/+$/, "");
+    const imageUrl = publicBaseUrl
+      ? `${publicBaseUrl}/${result.objectKey}`
+      : result.uploadUrl.split("?")[0];
+    return { ...result, imageUrl };
+  }
+
+  private async createPresignedUpload(
+    contentType: string,
+    fileSize: number,
+    prefix: string
   ): Promise<PresignedUploadResult> {
     if (!this.isConfigured()) {
       throw new Error(
@@ -54,7 +79,7 @@ export class S3StorageService {
       );
     }
 
-    const objectKey = this.generateObjectKey(contentType);
+    const objectKey = this.generateObjectKey(contentType, prefix);
     const expiresIn = 300; // 5 minutes
 
     const client = this.s3Client!;
