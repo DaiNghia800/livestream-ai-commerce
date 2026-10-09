@@ -1,7 +1,7 @@
-import type { ProductKpiSummary } from "@/mocks/product";
+import type { CatalogProductSummary } from "@/features/product/types";
 
 interface ProductKpiCardsProps {
-  kpi: ProductKpiSummary;
+  kpi: CatalogProductSummary;
 }
 
 export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
@@ -26,10 +26,7 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
           <span className="text-body-sm font-body-sm text-outline">Sản phẩm</span>
         </div>
         <div className="mt-2 flex items-center gap-1.5 text-xs font-label-sm text-tertiary">
-          <span className="material-symbols-outlined text-[14px]" data-icon="trending_up">
-            trending_up
-          </span>
-          <span>{kpi.totalProductsNote}</span>
+          <span>Đọc từ danh mục database</span>
         </div>
       </div>
 
@@ -38,7 +35,7 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
         <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-8 -mt-8 pointer-events-none" />
         <div className="flex items-center justify-between">
           <span className="text-xs font-label-sm font-semibold uppercase tracking-wider text-on-surface-variant">
-            Đang mở bán trên Live
+            Đang bán
           </span>
           <div className="w-8 h-8 rounded-lg bg-primary-fixed flex items-center justify-center text-primary animate-pulse">
             <span className="material-symbols-outlined text-[18px]" data-icon="live_tv">
@@ -48,13 +45,13 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
         </div>
         <div className="mt-3 flex items-baseline gap-2">
           <span className="text-2xl font-metric-num text-primary">
-            {kpi.activeLiveProducts}
+            {kpi.activeProducts}
           </span>
           <span className="text-body-sm font-body-sm text-outline">Sản phẩm</span>
         </div>
         <div className="mt-2 flex items-center gap-1.5 text-xs font-label-sm text-primary font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span>{kpi.activeLiveNote}</span>
+          <span>Trạng thái active trong Catalog</span>
         </div>
       </div>
 
@@ -62,7 +59,7 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
       <div className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] flex flex-col justify-between hover:border-outline transition-colors">
         <div className="flex items-center justify-between">
           <span className="text-xs font-label-sm font-semibold uppercase tracking-wider text-on-surface-variant">
-            Sắp hết hàng
+            Tổng SKU
           </span>
           <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
             <span className="material-symbols-outlined text-[18px]" data-icon="warning">
@@ -72,15 +69,15 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
         </div>
         <div className="mt-3 flex items-baseline gap-2">
           <span className="text-2xl font-metric-num text-amber-600">
-            {kpi.lowStockCount}
+            {kpi.skuCount}
           </span>
-          <span className="text-body-sm font-body-sm text-outline">SKU tồn &lt; 5</span>
+          <span className="text-body-sm font-body-sm text-outline">Biến thể sản phẩm</span>
         </div>
         <div className="mt-2 flex items-center gap-1 text-xs font-label-sm text-amber-700">
           <span className="material-symbols-outlined text-[14px]" data-icon="priority_high">
             priority_high
           </span>
-          <span>{kpi.lowStockNote}</span>
+          <span>Đọc từ product_skus</span>
         </div>
       </div>
 
@@ -98,7 +95,7 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
         </div>
         <div className="mt-3 flex items-baseline gap-2">
           <span className="text-2xl font-metric-num text-outline">
-            {kpi.inactiveCount}
+            {kpi.inactiveProducts}
           </span>
           <span className="text-body-sm font-body-sm text-outline">Sản phẩm lưu trữ</span>
         </div>
@@ -106,7 +103,7 @@ export function ProductKpiCards({ kpi }: ProductKpiCardsProps) {
           <span className="material-symbols-outlined text-[14px]" data-icon="archive">
             archive
           </span>
-          <span>{kpi.inactiveNote}</span>
+          <span>Archived hoặc discontinued</span>
         </div>
       </div>
     </div>

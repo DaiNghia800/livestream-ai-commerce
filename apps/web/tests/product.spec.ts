@@ -1,4 +1,119 @@
 import { test, expect, type Page } from "@playwright/test";
+import { productMockList } from "../src/mocks/product";
+
+const categoryIds: Record<string, number> = {
+  "Áo sơ mi": 1,
+  "Đầm & Váy": 2,
+  "Quần jean": 3,
+  "Phụ kiện": 4,
+  "Áo thun": 5,
+};
+
+const productRows = productMockList.map((product, index) => ({
+  id: String(index + 1),
+  shopId: 1,
+  categoryId: categoryIds[product.category] ?? 1,
+  categoryName: product.category,
+  code: product.id,
+  name: product.name,
+  description: null,
+  status: product.status === "inactive" ? "archived" : "active",
+  skus: [{
+    id: String(index + 1),
+    productId: String(index + 1),
+    skuCode: product.sku,
+    variantName: product.variantDetails,
+    price: product.livePrice.toFixed(2),
+    status: "active",
+    createdAt: "2026-10-09T00:00:00.000Z",
+    updatedAt: "2026-10-09T00:00:00.000Z",
+  }],
+  images: product.imageUrl
+    ? [{
+        id: String(index + 1),
+        productId: String(index + 1),
+        skuId: null,
+        url: product.imageUrl,
+        isPrimary: true,
+        sortOrder: 0,
+        createdAt: "2026-10-09T00:00:00.000Z",
+      }]
+    : [],
+  createdAt: "2026-10-09T00:00:00.000Z",
+  updatedAt: "2026-10-09T00:00:00.000Z",
+}));
+
+async function mockProductApi(page: Page, onImport?: () => void) {
+  await page.route("**/api/products**", async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, X-Shop-Id",
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/import.xlsx")) {
+      onImport?.();
+      await route.fulfill({
+        status: 201,
+        json: { products: 2, skus: 3, message: "Import thành công" },
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/export.xlsx")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers: { "Content-Disposition": 'attachment; filename="products.xlsx"' },
+        body: Buffer.from("xlsx-test"),
+      });
+      return;
+    }
+    if (url.pathname.endsWith("/categories")) {
+      await route.fulfill({
+        json: {
+          data: Object.entries(categoryIds).map(([name, id]) => ({ id, name, parentId: null })),
+        },
+      });
+      return;
+    }
+
+    const search = (url.searchParams.get("q") || "").toLowerCase();
+    const categoryId = url.searchParams.get("categoryId");
+    const status = url.searchParams.get("status");
+    const matching = productRows.filter((product) => {
+      const matchesSearch = !search ||
+        product.name.toLowerCase().includes(search) ||
+        product.code.toLowerCase().includes(search) ||
+        product.skus.some((sku) => sku.skuCode.toLowerCase().includes(search));
+      const matchesCategory = !categoryId || String(product.categoryId) === categoryId;
+      const matchesStatus = !status || product.status === status;
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+    const pageNumber = Number(url.searchParams.get("page") || 1);
+    const pageSize = Number(url.searchParams.get("pageSize") || 20);
+
+    await route.fulfill({
+      json: {
+        data: matching.slice((pageNumber - 1) * pageSize, pageNumber * pageSize),
+        page: pageNumber,
+        pageSize,
+        total: matching.length,
+        summary: {
+          totalProducts: productRows.length,
+          activeProducts: productRows.filter((product) => product.status === "active").length,
+          skuCount: productRows.reduce((total, product) => total + product.skus.length, 0),
+          inactiveProducts: productRows.filter((product) => product.status !== "active").length,
+        },
+      },
+    });
+  });
+}
 
 function collectConsoleErrors(page: Page) {
   const errors: string[] = [];
@@ -12,6 +127,7 @@ test("product management page renders correctly and matches Stitch design", asyn
   page,
 }, testInfo) => {
   const consoleErrors = collectConsoleErrors(page);
+  await mockProductApi(page);
   await page.goto("/shop/products");
 
   // Verify page title
@@ -28,8 +144,8 @@ test("product management page renders correctly and matches Stitch design", asyn
 
   // Verify 4 KPI cards
   await expect(page.getByText("Tổng sản phẩm")).toBeVisible();
-  await expect(page.getByText("Đang mở bán trên Live")).toBeVisible();
-  await expect(page.getByText("Sắp hết hàng")).toBeVisible();
+  await expect(page.getByText("Đang bán", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Tổng SKU")).toBeVisible();
   await expect(page.getByText("Đã ngừng bán")).toBeVisible();
 
   // Verify data items and closing codes
@@ -52,13 +168,7 @@ test("product management page renders correctly and matches Stitch design", asyn
   await expect(statusFilter).toHaveCSS("text-overflow", "ellipsis");
   const filterBar = searchInput.locator("xpath=../..");
   await expect(filterBar).toHaveCSS("flex-wrap", "nowrap");
-  const filterControls = [
-    searchInput,
-    categoryFilter,
-    statusFilter,
-    page.getByTestId("best-seller-filter"),
-    page.getByRole("button", { name: "Live Pin" }),
-  ];
+  const filterControls = [searchInput, categoryFilter, statusFilter];
   const controlCenters = await Promise.all(
     filterControls.map(async (control) => {
       const box = await control.boundingBox();
@@ -93,14 +203,6 @@ test("product management page renders correctly and matches Stitch design", asyn
   // Clear search
   await searchInput.fill("");
   await expect(page.getByText("Quần Jean Ống Suông Lưng Cao Vintage")).toBeVisible();
-
-  // Test quick filter chips
-  const bestSellerChip = page.getByTestId("best-seller-filter");
-  await bestSellerChip.click();
-  await expect(page.getByText("AO01")).toBeVisible();
-  await expect(page.getByText("DM05")).toBeVisible();
-  await expect(page.getByText("PK03")).not.toBeVisible();
-  await bestSellerChip.click(); // toggle off
 
   // Test navigation to the new product form
   const addBtn = page.getByRole("button", { name: /Thêm sản phẩm mới/ });
@@ -165,11 +267,71 @@ test("product management page renders correctly and matches Stitch design", asyn
   expect(consoleErrors).toEqual([]);
 });
 
+test("product management page shows the database empty state without mock rows", async ({ page }) => {
+  await page.route("**/api/products**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/categories")) {
+      await route.fulfill({ json: { data: [] } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        data: [],
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        summary: {
+          totalProducts: 0,
+          activeProducts: 0,
+          skuCount: 0,
+          inactiveProducts: 0,
+        },
+      },
+    });
+  });
+
+  await page.goto("/shop/products");
+
+  await expect(page.getByText("Chưa có sản phẩm trong database.")).toBeVisible();
+  await expect(page.getByText("AO01")).not.toBeVisible();
+  await expect(page.getByText("248", { exact: true })).not.toBeVisible();
+});
+
+test("export button downloads the xlsx file", async ({ page }) => {
+  await mockProductApi(page);
+  await page.goto("/shop/products");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Xuất danh sách" }).click();
+  const download = await downloadPromise;
+
+  expect(download.suggestedFilename()).toBe("products.xlsx");
+});
+
+test("import button uploads an xlsx file and shows the API result", async ({ page }) => {
+  let importRequestCount = 0;
+  await mockProductApi(page, () => { importRequestCount += 1; });
+  await page.goto("/shop/products");
+
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Nhập file Excel" }).click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({
+    name: "products.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from("xlsx-test"),
+  });
+
+  await expect.poll(() => importRequestCount).toBe(1);
+  await expect(page.getByText("Đã nhập 2 sản phẩm và 3 SKU.")).toBeVisible();
+});
+
 test("product edit route matches the editing workflow on desktop and mobile", async ({ page }) => {
+  await mockProductApi(page);
   await page.goto("/shop/products");
   await page.getByTitle("Chỉnh sửa").first().click();
 
-  await expect(page).toHaveURL(/\/shop\/products\/AO01\/edit$/);
+  await expect(page).toHaveURL(/\/shop\/products\/1\/edit$/);
   await expect(
     page.getByRole("heading", { name: "Chỉnh sửa sản phẩm" })
   ).toBeVisible();

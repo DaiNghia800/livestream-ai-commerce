@@ -1,13 +1,15 @@
-import type { ProductItem } from "@/mocks/product";
+import type { ProductListItem } from "@/features/product/types";
+import Image from "next/image";
 import { formatMoney } from "@/lib/format";
 
 interface ProductTableProps {
-  products: ProductItem[];
+  products: ProductListItem[];
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
   onSelectAll: () => void;
   onToggleStatus: (id: string) => void;
-  onEdit: (product: ProductItem) => void;
+  onEdit: (product: ProductListItem) => void;
+  loading?: boolean;
 }
 
 export function ProductTable({
@@ -17,6 +19,7 @@ export function ProductTable({
   onSelectAll,
   onToggleStatus,
   onEdit,
+  loading = false,
 }: ProductTableProps) {
   const allSelected =
     products.length > 0 && selectedIds.length === products.length;
@@ -40,7 +43,7 @@ export function ProductTable({
             <th className="px-4 py-2 min-w-[240px]">Tên sản phẩm &amp; Danh mục</th>
             <th className="px-3 py-2 min-w-[130px]">SKU</th>
             <th className="px-3 py-2 min-w-[120px]">Mã chốt đơn</th>
-            <th className="px-4 py-2 min-w-[150px] text-right">Giá niêm yết / Live</th>
+            <th className="px-4 py-2 min-w-[150px] text-right">Giá SKU</th>
             <th className="px-3 py-2 min-w-[110px] text-center">Tồn khả dụng</th>
             <th className="px-3 py-2 min-w-[110px] text-center">Đang giữ chỗ</th>
             <th className="px-4 py-2 min-w-[120px] text-center">Trạng thái</th>
@@ -48,24 +51,28 @@ export function ProductTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-outline-variant/40 text-body-sm font-body-sm text-on-surface">
+          {!loading && products.length === 0 && (
+            <tr>
+              <td className="px-4 py-12 text-center text-on-surface-variant" colSpan={10}>
+                Chưa có sản phẩm trong database.
+              </td>
+            </tr>
+          )}
+          {loading && products.length === 0 && (
+            <tr>
+              <td className="px-4 py-12 text-center text-on-surface-variant" colSpan={10}>
+                Đang tải sản phẩm...
+              </td>
+            </tr>
+          )}
           {products.map((product) => {
             const isSelected = selectedIds.includes(product.id);
             const isInactive = product.status === "inactive";
-            const isOutOfStock = product.status === "out_of_stock";
-            const isLowStock =
-              product.status === "low_stock" ||
-              (product.availableStock > 0 && product.availableStock <= 5);
-
-            // Row 1: AO01, Row 2: DM02, Row 3: JN04, Row 4: PK03, Row 5: AT99, Row 6: DM05
             return (
               <tr
                 key={product.id}
                 className={`hover:bg-surface-container-low/40 transition-colors group ${
-                  isInactive
-                    ? "opacity-70 bg-surface-container-low/20"
-                    : isOutOfStock
-                    ? "opacity-90"
-                    : ""
+                  isInactive ? "opacity-70 bg-surface-container-low/20" : ""
                 }`}
               >
                 {/* Checkbox */}
@@ -83,14 +90,23 @@ export function ProductTable({
                 <td className="px-2 py-3">
                   <div
                     className={`w-11 h-11 rounded-lg overflow-hidden border border-outline-variant/60 bg-surface-container flex-shrink-0 ${
-                      isInactive || isOutOfStock ? "grayscale" : ""
+                      isInactive ? "grayscale" : ""
                     }`}
                   >
-                    <img
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      src={product.imageUrl}
-                      alt={product.name}
-                    />
+                    {product.imageUrl ? (
+                      <Image
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        src={product.imageUrl}
+                        alt={product.name}
+                        width={44}
+                        height={44}
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-outline" aria-label="Chưa có ảnh">
+                        <span className="material-symbols-outlined" aria-hidden="true">image</span>
+                      </div>
+                    )}
                   </div>
                 </td>
 
@@ -107,39 +123,6 @@ export function ProductTable({
                       >
                         {product.name}
                       </span>
-                      {product.isBestSeller && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
-                          <span
-                            className="material-symbols-outlined text-[11px] mr-0.5"
-                            data-icon="local_fire_department"
-                          >
-                            local_fire_department
-                          </span>
-                          BEST SELLER
-                        </span>
-                      )}
-                      {product.isPinned && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary">
-                          <span
-                            className="material-symbols-outlined text-[11px] mr-0.5"
-                            data-icon="push_pin"
-                          >
-                            push_pin
-                          </span>
-                          PIN
-                        </span>
-                      )}
-                      {isLowStock && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
-                          <span
-                            className="material-symbols-outlined text-[11px] mr-0.5"
-                            data-icon="warning"
-                          >
-                            warning
-                          </span>
-                          SẮP HẾT
-                        </span>
-                      )}
                     </div>
                     <span className="text-label-sm font-label-sm text-outline mt-0.5">
                       {product.variantDetails}
@@ -162,12 +145,10 @@ export function ProductTable({
                     className={`inline-flex items-center px-2 py-0.5 rounded bg-surface-container font-mono text-[12px] font-bold ${
                       isInactive
                         ? "text-outline border border-outline-variant"
-                        : isOutOfStock
-                        ? "text-on-surface-variant border border-outline-variant"
                         : "text-primary border border-primary/20"
                     }`}
                   >
-                    {product.id}
+                    {product.code}
                   </span>
                 </td>
 
@@ -178,8 +159,6 @@ export function ProductTable({
                       className={`font-headline-md text-xs font-bold font-mono tabular-nums ${
                         isInactive
                           ? "text-outline"
-                          : isOutOfStock
-                          ? "text-on-surface"
                           : "text-primary"
                       }`}
                     >
@@ -199,36 +178,16 @@ export function ProductTable({
 
                 {/* Tồn khả dụng */}
                 <td className="px-3 py-3 text-center">
-                  {isInactive ? (
-                    <span className="font-headline-md text-xs font-bold text-outline bg-surface-container px-2 py-0.5 rounded">
-                      0
-                    </span>
-                  ) : isOutOfStock ? (
-                    <span className="font-headline-md text-xs font-bold text-error bg-error-container/50 px-2 py-0.5 rounded border border-error/20">
-                      0
-                    </span>
-                  ) : isLowStock ? (
-                    <span className="font-headline-md text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
-                      {product.availableStock}
-                    </span>
-                  ) : (
-                    <span className="font-headline-md text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      {product.availableStock}
-                    </span>
-                  )}
+                  <span className="font-mono text-xs text-outline" title="Chưa kết nối Inventory service">
+                    {product.availableStock ?? "—"}
+                  </span>
                 </td>
 
                 {/* Đang giữ chỗ */}
                 <td className="px-3 py-3 text-center">
-                  {product.reservedStock > 0 ? (
-                    <span className="font-mono text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                      {product.reservedStock}
-                    </span>
-                  ) : (
-                    <span className="font-mono text-xs font-medium text-outline bg-surface-container px-2 py-0.5 rounded">
-                      0
-                    </span>
-                  )}
+                  <span className="font-mono text-xs text-outline" title="Chưa kết nối Inventory service">
+                    {product.reservedStock ?? "—"}
+                  </span>
                 </td>
 
                 {/* Trạng thái */}
@@ -237,11 +196,6 @@ export function ProductTable({
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-700">
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
                       Ngừng bán
-                    </span>
-                  ) : isOutOfStock ? (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                      Hết hàng
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
@@ -274,18 +228,7 @@ export function ProductTable({
                         history
                       </span>
                     </button>
-                    {isOutOfStock ? (
-                      <button
-                        className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-outline hover:text-error transition-colors border-none bg-transparent cursor-pointer"
-                        title="Bổ sung kho"
-                        type="button"
-                        onClick={() => alert(`Bổ sung kho cho mã ${product.id}`)}
-                      >
-                        <span className="material-symbols-outlined text-[18px]" data-icon="add_box">
-                          add_box
-                        </span>
-                      </button>
-                    ) : isInactive ? (
+                    {isInactive ? (
                       <button
                         className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-outline hover:text-emerald-700 transition-colors border-none bg-transparent cursor-pointer"
                         title="Kích hoạt lại"
