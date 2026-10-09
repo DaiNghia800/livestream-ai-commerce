@@ -7,9 +7,9 @@ Nền tảng Livestream AI Commerce — hỗ trợ chốt đơn tự động b�
 | Tool       | Phiên bản     | Ghi chú                          |
 |------------|---------------|----------------------------------|
 | Docker     | 20+           | Docker Desktop (Windows/Mac)     |
-| Node.js    | 22+           | Dùng cho frontend Next.js        |
+| Node.js    | 22+           | Dùng cho Commerce Service và frontend |
 | npm        | 10+           |                                  |
-| Python     | 3.11+         | Dùng cho backend services        |
+| Python     | 3.11+         | Dùng cho AI Worker và các service Python |
 
 ## 🚀 Bắt đầu nhanh
 
@@ -26,7 +26,21 @@ Lệnh này sẽ tự động:
 - Seed 5 sản phẩm mẫu vào `commerce_db`
 - Khởi động pgAdmin (GUI) trên http://localhost:5050
 
-### 2. Khởi động Frontend
+### 2. Khởi động Commerce Service
+
+```powershell
+cd services/commerce
+npm ci
+$env:COMMERCE_DATABASE_URL = "postgresql://postgres:postgres@localhost:5433/commerce_db"
+$env:SECRET_KEY = "replace-with-a-long-random-secret"
+npm run dev
+```
+
+Service tự chạy các migration khi khởi động và lắng nghe tại http://localhost:8000.
+Các backend theo tính năng được tổ chức dưới `src/modules/<feature>`; ví dụ login ở
+`services/commerce/src/modules/login`.
+
+### 3. Khởi động Frontend
 
 ```sh
 cd apps/web
