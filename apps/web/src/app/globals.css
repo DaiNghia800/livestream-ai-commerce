@@ -605,10 +605,10 @@ select:disabled {
 
 .auth-hero h2 {
   font-family: var(--font-heading);
-  font-size: clamp(2rem, 3.2vw, 3.15rem);
+  font-size: clamp(1.9rem, 3vw, 2.9rem);
   line-height: 1.12;
   margin: 0 0 1rem;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.015em;
   font-weight: 700;
   color: #ffffff;
   max-width: 620px;
