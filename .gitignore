@@ -30,7 +30,14 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 
-docs/design/draft-order-reservation
+# Ảnh mockup xuất từ công cụ thiết kế (~2,5 MB). Chỉ loại các thư mục
+# ảnh, KHÔNG loại cả thư mục thiết kế — dòng cũ ghi rộng quá nên nuốt
+# luôn progress.md, khiến link trong tasks.md trỏ vào hư không.
+docs/design/draft-order-reservation/50_*/
+docs/design/draft-order-reservation/51_*/
+docs/design/draft-order-reservation/52_*/
+docs/design/draft-order-reservation/60_*/
+docs/design/draft-order-reservation/61_*/
 
 # Editor
 .vscode/

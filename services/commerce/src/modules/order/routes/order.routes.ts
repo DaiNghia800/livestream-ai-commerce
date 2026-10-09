@@ -16,7 +16,7 @@ export function createOrderRouter(customPool?: Pool): Router {
   const pool = customPool ?? defaultPool;
 
   const draftController = new OrderController(
-    new DraftOrderService(pool, config.holdSoftSeconds)
+    new DraftOrderService(pool, config.holdSoftSeconds, config.holdMaxSeconds)
   );
   const lifecycleController = new OrderLifecycleController(
     new OrderLifecycleService(pool)
