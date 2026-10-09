@@ -17,16 +17,95 @@ export interface InsertOrderDto {
   holdSeconds: number;
 }
 
+/**
+ * Tra khoá chống trùng.
+ *
+ * Đọc từ bảng order_idempotency_keys chứ không phải cột trên orders:
+ * khi gộp đơn, nhiều khoá khác nhau cùng trỏ về một đơn, mà cột trên
+ * orders chỉ giữ được khoá của request đầu tiên.
+ */
 export async function findOrderIdByIdempotencyKey(
   client: PoolClient,
   customerId: string,
   key: string
 ): Promise<string | null> {
-  const result = await client.query<{ id: string }>(
-    `SELECT id FROM orders WHERE customer_id = $1 AND idempotency_key = $2`,
+  const result = await client.query<{ order_id: string }>(
+    `SELECT order_id FROM order_idempotency_keys
+      WHERE customer_id = $1 AND idempotency_key = $2`,
     [customerId, key]
   );
-  return result.rows[0]?.id ?? null;
+  return result.rows[0]?.order_id ?? null;
+}
+
+/**
+ * Ghi nhận request này đã được xử lý và góp vào đơn nào.
+ *
+ * ON CONFLICT DO NOTHING để hai request song song cùng khoá không làm
+ * vỡ transaction — kẻ thua sẽ thấy bản ghi của kẻ thắng ở lần tra sau.
+ */
+export async function recordIdempotencyKey(
+  client: PoolClient,
+  params: { customerId: string; key: string; orderId: string }
+): Promise<void> {
+  await client.query(
+    `INSERT INTO order_idempotency_keys (customer_id, idempotency_key, order_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (customer_id, idempotency_key) DO NOTHING`,
+    [params.customerId, params.key, params.orderId]
+  );
+}
+
+/**
+ * Tìm đơn nháp đang mở của khách trong phiên, KHOÁ dòng lại.
+ *
+ * `FOR UPDATE` là bắt buộc: hai bình luận của cùng một khách đến gần
+ * như đồng thời sẽ cùng tìm thấy đơn này: khoá dòng buộc chúng xếp hàng
+ * để cộng dồn tuần tự, thay vì cùng ghi rồi mất một bên.
+ *
+ * Chỉ gộp trong phạm vi một phiên live. Đơn không gắn phiên
+ * (livestreamId = null) thì mỗi request một đơn riêng — gộp các lần mua
+ * rời rạc ngoài phiên lại với nhau là sai nghiệp vụ.
+ */
+export async function findOpenDraftForUpdate(
+  client: PoolClient,
+  params: { customerId: string; livestreamId: string }
+): Promise<{ id: string } | null> {
+  const result = await client.query<{ id: string }>(
+    `SELECT id FROM orders
+      WHERE customer_id = $1 AND livestream_id = $2 AND status = 'DRAFT'
+      FOR UPDATE`,
+    [params.customerId, params.livestreamId]
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * Gia hạn giữ hàng cho cả đơn khi khách chốt thêm mã.
+ *
+ * Khách vẫn đang mua thì không có lý do gì cắt đồng hồ của những mã đã
+ * chốt trước đó. Vẫn chặn trần tính từ lúc tạo đơn.
+ *
+ * GREATEST bọc ngoài để gia hạn CHỈ ĐẨY TỚI, không bao giờ kéo lùi.
+ * Đơn gần chạm trần sẽ cho ra LEAST(...) nhỏ hơn hạn đang có, mà rút
+ * ngắn thời gian giữ vì khách mua thêm thì vô lý — và tệ hơn, nó khiến
+ * job quét hết hạn nuốt mất đơn ngay sau khi khách vừa chốt thêm.
+ */
+export async function refreshDraftHold(
+  client: PoolClient,
+  params: { orderId: string; holdSeconds: number; maxSeconds: number }
+): Promise<void> {
+  await client.query(
+    `UPDATE orders
+        SET held_until = GREATEST(
+                held_until,
+                LEAST(
+                    NOW() + make_interval(secs => $2),
+                    created_at + make_interval(secs => $3)
+                )
+            )
+      WHERE id = $1 AND status = 'DRAFT'`,
+    [params.orderId, params.holdSeconds, params.maxSeconds]
+  );
 }
 
 /**
@@ -36,10 +115,20 @@ export async function findOrderIdByIdempotencyKey(
  * phần đuôi lấy từ chính UUID nên không cần bộ đếm riêng và không bao
  * giờ đụng nhau giữa các request song song.
  */
+/**
+ * Tạo đơn nháp mới.
+ *
+ * `ON CONFLICT DO NOTHING` nhắm vào index riêng phần uq_orders_open_draft:
+ * nếu khách đã có đơn nháp đang mở trong phiên này thì KHÔNG tạo thêm,
+ * trả về null để người gọi chuyển sang gộp vào đơn cũ.
+ *
+ * Với đơn không gắn phiên (livestreamId = null) thì mệnh đề này không
+ * bao giờ kích hoạt, vì Postgres coi các giá trị NULL là khác nhau.
+ */
 export async function insertOrder(
   client: PoolClient,
   dto: InsertOrderDto
-): Promise<{ id: string; orderCode: string; heldUntil: string; confirmToken: string }> {
+): Promise<{ id: string; orderCode: string; heldUntil: string; confirmToken: string } | null> {
   const result = await client.query<{
     id: string;
     order_code: string;
@@ -59,6 +148,7 @@ export async function insertOrder(
          NOW() + make_interval(secs => $6),
          $7
      FROM new_order
+     ON CONFLICT (livestream_id, customer_id) WHERE status = 'DRAFT' DO NOTHING
      RETURNING id, order_code, held_until, confirm_token`,
     [
       dto.customerId,
@@ -72,6 +162,9 @@ export async function insertOrder(
   );
 
   const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
   return {
     id: row.id,
     orderCode: row.order_code,
@@ -132,13 +225,23 @@ export async function upsertOrderItem(
   return result.rows[0].id;
 }
 
-export async function insertReservation(
+/**
+ * Tạo hoặc cộng dồn lượt giữ hàng.
+ *
+ * Index uq_reservations_active_hold chỉ cho phép MỘT lượt giữ HOLDING
+ * trên mỗi dòng hàng. Khi gộp đơn, bình luận thứ hai cùng mã sẽ cộng
+ * thêm vào dòng cũ, nên ở đây phải cộng vào lượt giữ đang có chứ không
+ * được chèn dòng mới — chèn mới là vi phạm index và vỡ transaction.
+ */
+export async function upsertReservation(
   client: PoolClient,
   params: { orderId: string; orderItemId: string; skuId: string; quantity: number }
 ): Promise<string> {
   const result = await client.query<{ id: string }>(
     `INSERT INTO reservations (order_id, order_item_id, sku_id, quantity)
      VALUES ($1, $2, $3, $4)
+     ON CONFLICT (order_item_id) WHERE status = 'HOLDING'
+     DO UPDATE SET quantity = reservations.quantity + EXCLUDED.quantity
      RETURNING id`,
     [params.orderId, params.orderItemId, params.skuId, params.quantity]
   );

@@ -93,3 +93,18 @@ export async function createReservation(
 
   return reservation.rows[0].id;
 }
+
+/**
+ * Tạo một phiên live đang phát, trả về livestreamId.
+ *
+ * Cần thiết cho các test gộp đơn: orders.livestream_id có khoá ngoại
+ * sang livestreams, không thể nhét UUID bịa vào được.
+ */
+export async function createLivestream(pool: Pool): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO livestreams (merchant_id, title, status, started_at)
+     VALUES (gen_random_uuid(), 'Phiên test gộp đơn', 'live', NOW())
+     RETURNING id`
+  );
+  return result.rows[0].id;
+}

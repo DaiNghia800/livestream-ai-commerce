@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
     "test": "vitest run"
   },
   "dependencies": {
