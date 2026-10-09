@@ -1,6 +1,8 @@
 import cors from "cors";
 import express, { Express } from "express";
 import { config } from "./config.js";
+import { IAuthRepository } from "./modules/login/repositories/auth.repository.js";
+import { createAuthRouter } from "./modules/login/routes/auth.routes.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
@@ -16,6 +18,8 @@ export function createApp(
   customS3Service?: S3StorageService,
   customLivestreamProductRepository?: ILivestreamProductRepository,
   customProductRepository?: IProductRepository
+  customProductRepository?: ILivestreamProductRepository,
+  customAuthRepository?: IAuthRepository
 ): Express {
 
   const app = express();
@@ -54,6 +58,7 @@ export function createApp(
 
   // Mount API routers
   const apiRouter = express.Router();
+  apiRouter.use("/auth", createAuthRouter(customAuthRepository));
   apiRouter.use(
     "/livestreams",
     createLivestreamRouter(customRepository, customLivestreamProductRepository)
