@@ -50,7 +50,7 @@ class InMemoryAuthRepository implements IAuthRepository {
 describe("Auth API", () => {
   it("AUTH-001 - registers and logs in through the existing API contract", async () => {
     const repository = new InMemoryAuthRepository();
-    const app = createApp(undefined, undefined, undefined, repository);
+    const app = createApp(undefined, undefined, undefined, undefined, repository);
     const registration = await request(app)
       .post("/api/auth/register")
       .send({
@@ -90,6 +90,7 @@ describe("Auth API", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       new InMemoryAuthRepository()
     );
 
@@ -107,6 +108,7 @@ describe("Auth API", () => {
 
   it("AUTH-003 - rejects duplicate registration emails", async () => {
     const app = createApp(
+      undefined,
       undefined,
       undefined,
       undefined,

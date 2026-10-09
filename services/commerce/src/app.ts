@@ -17,8 +17,7 @@ export function createApp(
   customRepository?: ILivestreamRepository,
   customS3Service?: S3StorageService,
   customLivestreamProductRepository?: ILivestreamProductRepository,
-  customProductRepository?: IProductRepository
-  customProductRepository?: ILivestreamProductRepository,
+  customProductRepository?: IProductRepository,
   customAuthRepository?: IAuthRepository
 ): Express {
 
