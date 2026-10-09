@@ -18,6 +18,7 @@ import {
 } from "../../../shared/errors/domain.errors.js";
 import { holdUpTo } from "../repositories/inventory.repository.js";
 import {
+  appendInventoryChangedEvents,
   appendOutboxEvent,
   findOpenDraftForUpdate,
   findOrderIdByIdempotencyKey,
@@ -181,6 +182,12 @@ export class DraftOrderService {
           customerId: params.customerId,
           livestreamId: params.livestreamId ?? null,
         },
+      });
+
+      // Tồn khả dụng vừa giảm, màn hình shop phải thấy ngay.
+      await appendInventoryChangedEvents(client, {
+        orderId,
+        reason: merged ? "ORDER_ITEMS_ADDED" : "ORDER_DRAFTED",
       });
 
       await client.query("COMMIT");

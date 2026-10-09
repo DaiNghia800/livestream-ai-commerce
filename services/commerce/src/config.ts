@@ -18,6 +18,14 @@ export interface AppConfig {
   holdMaxSeconds: number;
   /** Khoảng cách giữa hai lượt quét đơn hết hạn. */
   expireJobIntervalMs: number;
+  /**
+   * Đầu vào HTTP của Realtime service để nhận sự kiện outbox.
+   * Khác NEXT_PUBLIC_REALTIME_URL (WebSocket cho trình duyệt).
+   * Bỏ trống thì publisher chỉ ghi log.
+   */
+  realtimeEventsUrl?: string;
+  /** Khoảng cách giữa hai lượt đẩy outbox. */
+  outboxJobIntervalMs: number;
 }
 
 export const config: AppConfig = {
@@ -36,4 +44,8 @@ export const config: AppConfig = {
   holdConfirmSeconds: parseInt(process.env.HOLD_CONFIRM_SECONDS || "900", 10),
   holdMaxSeconds: parseInt(process.env.HOLD_MAX_SECONDS || "1800", 10),
   expireJobIntervalMs: parseInt(process.env.EXPIRE_JOB_INTERVAL_MS || "30000", 10),
+  // services/realtime còn rỗng nên mặc định không có URL: publisher
+  // chạy ở chế độ ghi log, không sinh ra sự kiện FAILED giả.
+  realtimeEventsUrl: process.env.REALTIME_EVENTS_URL || undefined,
+  outboxJobIntervalMs: parseInt(process.env.OUTBOX_JOB_INTERVAL_MS || "2000", 10),
 };

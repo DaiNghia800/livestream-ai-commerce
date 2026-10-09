@@ -1,6 +1,8 @@
 import { createApp } from "./app.js";
 import { config } from "./config.js";
+import { createEventTransport } from "./modules/order/events/event-transport.js";
 import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
+import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
 import { pool, runMigrations } from "./shared/database/database.js";
 
 async function bootstrap() {
@@ -24,6 +26,15 @@ async function bootstrap() {
   });
   expireOrdersJob.start();
 
+  // Đẩy sự kiện outbox ra ngoài. Chưa cấu hình REALTIME_EVENTS_URL thì chỉ
+  // ghi log — vẫn chạy để thấy được luồng sự kiện khi phát triển.
+  const publishOutboxJob = new PublishOutboxJob(
+    pool,
+    createEventTransport(config.realtimeEventsUrl),
+    { intervalMs: config.outboxJobIntervalMs }
+  );
+  publishOutboxJob.start();
+
   const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
     console.log(`[Commerce Service] API Prefix: ${config.apiPrefix}`);
@@ -34,6 +45,7 @@ async function bootstrap() {
   const shutdown = (signal: string) => {
     console.log(`[Commerce Service] Nhận ${signal}, đang tắt...`);
     expireOrdersJob.stop();
+    publishOutboxJob.stop();
     server.close(() => {
       void pool.end().finally(() => process.exit(0));
     });

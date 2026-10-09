@@ -37,7 +37,11 @@ import {
   saveShippingInfo,
   type OrderRow,
 } from "../repositories/order-lifecycle.repository.js";
-import { appendOutboxEvent, loadOrder } from "../repositories/order.repository.js";
+import {
+  appendInventoryChangedEvents,
+  appendOutboxEvent,
+  loadOrder,
+} from "../repositories/order.repository.js";
 import type { Order, OrderStatus } from "../types/order.types.js";
 
 export interface ShippingInfo {
@@ -263,6 +267,12 @@ export class OrderLifecycleService {
         payload: { orderId, orderCode: order.orderCode },
       });
 
+      // Hàng rời kho: cả on_hand lẫn held đều giảm.
+      await appendInventoryChangedEvents(client, {
+        orderId,
+        reason: "ORDER_COMPLETED",
+      });
+
       const result = await loadOrder(client, orderId);
       await client.query("COMMIT");
       return result;
@@ -337,6 +347,12 @@ export class OrderLifecycleService {
           orderCode: order.orderCode,
           reason: opts.releaseReason,
         },
+      });
+
+      // Hàng vừa trả về kho, tồn khả dụng tăng lại.
+      await appendInventoryChangedEvents(client, {
+        orderId,
+        reason: opts.releaseReason,
       });
 
       const result = await loadOrder(client, orderId);
