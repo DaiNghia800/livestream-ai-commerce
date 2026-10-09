@@ -17,11 +17,12 @@
 | T8 Job quét hết hạn | ✅ | 9 test |
 | T10 Outbox publisher | ✅ | 23 test · chạy ở chế độ ghi log tới khi `services/realtime` lên |
 | T9 Hàng đợi duyệt | 🟡 | 32 test · backend xong, **màn hình nhân viên chưa làm** |
-| T11, T12 | ❌ | |
+| T11 Guard BẪY-01…12 | 🟡 | 26 test · 8 bẫy thuộc backend đã xong, 4 bẫy thuộc AI worker |
+| T12 | ❌ | |
 | Backend thanh toán | ❌ | Bảng `payments` đã có, chưa có module |
 | Nối frontend vào API | ❌ | 4 màn vẫn chạy `src/mocks/` |
 
-Toàn bộ test của service: **268 passed**, trong đó 122 ca thuộc phần đơn hàng.
+Toàn bộ test của service: **294 passed**, trong đó 148 ca thuộc phần đơn hàng.
 
 ---
 
@@ -278,6 +279,41 @@ Màn hình hàng đợi cho nhân viên. API đã có đủ (`GET /api/purchase-
 
 ---
 
+## T11 — Guard nghiệp vụ
+
+Mười hai bẫy ở [README.md](README.md) mục 7. Tám cái thuộc backend đơn hàng, bốn cái thuộc tầng đọc bình luận của AI worker và **phải chặn trước khi gọi sang commerce**.
+
+| Bẫy | Trạng thái | Cách chặn |
+|---|---|---|
+| BẪY-01 một account khoá sạch kho | ✅ | Trần 10 món/khách/phiên. Chạm trần → hàng đợi duyệt, **không giữ thêm** |
+| BẪY-02 ghim chồng lấn | ⬜ AI worker | |
+| BẪY-03 bình luận của chính shop | ⬜ AI worker | |
+| BẪY-04 bình luận bị sửa | 🟡 | Commerce đã chặn trùng theo `comment_id` (T9); bỏ webhook `edited` là việc của AI worker |
+| BẪY-05 số lượng vô lý | ✅ | Trên 10/dòng → hàng đợi duyệt, **vẫn giữ tồn** |
+| BẪY-06 hết hàng một phần | ✅ | `holdUpTo` + cờ `is_partial` (T4) |
+| BẪY-07 giá đổi giữa phiên | ✅ | `applyBestPrice` lúc xác nhận |
+| BẪY-08 bom hàng | 🟡 | Điểm rủi ro → TTL 3′ + cờ `cod_blocked`. Cờ chờ module thanh toán tôn trọng |
+| BẪY-09 không gửi được DM | ✅ | Link `confirm_token` là kênh chính (T7) |
+| BẪY-10 khách bình luận huỷ | ✅ | `POST /api/orders/cancel-intent` |
+| BẪY-11 job huỷ đụng lúc xác nhận | ✅ | Guard trạng thái ở cả hai phía (T7), nay có test tranh chấp thật |
+| BẪY-12 tồn ma | ✅ | TTL hai tầng (T7) |
+
+**BẪY-01 và BẪY-05 trông giống nhau nhưng ngược nhau ở chỗ quan trọng nhất.** Cả hai đều đẩy vào hàng đợi duyệt, nhưng BẪY-05 **vẫn giữ tồn** còn BẪY-01 **thì không**. Lý do: rủi ro của BẪY-05 là mất một đơn sỉ, còn rủi ro của BẪY-01 là một troll làm cả phiên đứng hình. Khi cả hai cùng kích hoạt thì BẪY-01 thắng.
+
+Đề nghị bị BẪY-01 chặn **vẫn vào hàng đợi** dù không giữ tồn — để nhân viên nhìn thấy có kẻ đang gom bất thường. Cột `guard_reasons` nói rõ vì sao, nếu không họ sẽ duyệt bừa.
+
+**Điểm tin cậy cao không có nghĩa là đơn lành.** Guard chạy *trước* khi chọn nhánh: một troll gõ rõ ràng "cho e 50 cái" vẫn được AI chấm 0.99.
+
+**BẪY-07 dùng `LEAST`, không lấy thẳng giá hiện tại.** Chính sách là "giá tốt nhất trong phiên", nên giá tăng giữa chừng thì khách đã chốt vẫn giữ giá cũ. Trigger `trg_order_items_recalc_total` tự tính lại tổng tiền.
+
+**BẪY-08 chỉ đếm hai tín hiệu CÓ THẬT** trong dữ liệu đang có: chốt rồi để hết TTL, và shop huỷ vì nghi gian lận. Khách **tự huỷ sớm không bị tính** — đó là hành vi lành, họ trả hàng về kho cho người khác mua; phạt họ sẽ dạy khách im lặng bỏ đơn. `completed_count` nằm ở mẫu số để khách mua nhiều lần không bị phạt oan.
+
+Công thức `risk_score` là **cột tính sẵn trong schema**, không nằm trong code: hai chỗ tính lệch nhau sẽ quyết định sai việc khách có bị chặn COD hay không.
+
+**BẪY-10 bắt buộc có `livestreamId`.** Không giới hạn phiên thì một câu "thôi k lấy nữa" sẽ quét sạch mọi đơn nháp của khách ở mọi phiên đang chạy. Và nó **không đụng đơn đã xác nhận** — huỷ đơn đã xác nhận là việc của shop, không phải của một câu bình luận mà AI có thể đọc sai.
+
+---
+
 ## Hạ tầng đã đụng tới
 
 | Thay đổi | Lý do |
@@ -303,4 +339,5 @@ Màn hình hàng đợi cho nhân viên. API đã có đủ (`GET /api/purchase-
 | `services/commerce/` chứa cả code livestream | Livestream không phải commerce; nên đổi tên thư mục hoặc thống nhất "commerce = backend gộp" |
 | Mất `downgrade` của Alembic | Runner hiện tại chỉ tiến, không lùi — cân nhắc `node-pg-migrate` |
 | `tasks.md` chưa có task cho backend thanh toán, nối frontend và màn hình hàng đợi duyệt | Khoảng 5 ngày công chưa ai tính |
+| Test chạy song song không được giả định mình chiếm trọn một lô | `publish-outbox` từng đỏ ngẫu nhiên vì lô 100 sự kiện bị file khác lấp đầy. Cách đúng: rút cạn trong vòng lặp, hoặc hỏi thẳng tầng repository |
 | Đồng hồ container Postgres lệch khỏi host 1–2 giây và trôi dần | WSL2 sau khi máy ngủ. Test **không được** so mốc thời gian do Postgres sinh với `Date.now()` của Node — đã làm đỏ ngẫu nhiên 2 ca của T10. Cách đúng: tính khoảng cách ngay trong SQL (`EXTRACT(EPOCH FROM (x - NOW()))`) |

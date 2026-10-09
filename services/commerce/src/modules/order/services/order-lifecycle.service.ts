@@ -40,8 +40,10 @@ import {
 import {
   appendInventoryChangedEvents,
   appendOutboxEvent,
+  applyBestPrice,
   loadOrder,
 } from "../repositories/order.repository.js";
+import { bumpRisk } from "../repositories/customer-risk.repository.js";
 import type { Order, OrderStatus } from "../types/order.types.js";
 
 export interface ShippingInfo {
@@ -126,6 +128,11 @@ export class OrderLifecycleService {
       }
 
       await saveShippingInfo(client, { orderId: order.id, ...shipping });
+
+      // BẪY-07: flash sale 10 phút cuối. Khách chốt lúc đầu phiên phải
+      // được hưởng giá tốt nhất, nếu không họ sẽ huỷ rồi chốt lại — mà
+      // lần chốt lại có thể không còn hàng.
+      await applyBestPrice(client, order.id);
 
       const changed = await markConfirmed(client, order.id);
       if (!changed) {
@@ -261,6 +268,10 @@ export class OrderLifecycleService {
         changedBy,
       });
 
+      // Mẫu số của điểm rủi ro: khách mua nhiều lần không bị phạt oan
+      // vì một hai lần lỡ.
+      await bumpRisk(client, order.customerId, "COMPLETED");
+
       await appendOutboxEvent(client, {
         aggregateId: orderId,
         eventType: "order.completed",
@@ -338,6 +349,18 @@ export class OrderLifecycleService {
         changedBy: opts.changedBy,
         note: opts.releaseReason,
       });
+
+      // BẪY-08: đếm hành vi bom hàng, CÙNG transaction với việc đổi
+      // trạng thái. Lệch một nhịp là hai nguồn số liệu lệch vĩnh viễn.
+      //
+      // Chỉ đếm hai thứ: chốt rồi để hết hạn, và shop huỷ vì nghi gian
+      // lận. Khách tự huỷ sớm là hành vi LÀNH — họ trả hàng về kho cho
+      // người khác mua, phạt họ là phạt nhầm.
+      if (opts.toStatus === "EXPIRED") {
+        await bumpRisk(client, order.customerId, "EXPIRED");
+      } else if (opts.releaseReason === "SUSPECTED_FRAUD") {
+        await bumpRisk(client, order.customerId, "FRAUD");
+      }
 
       await appendOutboxEvent(client, {
         aggregateId: orderId,

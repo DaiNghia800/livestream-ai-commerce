@@ -96,3 +96,22 @@ export const CancelOrderRequestSchema = z
   .strict();
 
 export type CancelOrderInput = z.infer<typeof CancelOrderRequestSchema>;
+
+/**
+ * BẪY-10: AI worker gửi vào đây khi đọc được ý định huỷ từ bình luận.
+ *
+ * Bắt buộc có `livestreamId`: huỷ phải bị giới hạn trong đúng phiên
+ * khách đang xem. Không giới hạn thì một câu "thôi k lấy nữa" sẽ quét
+ * sạch mọi đơn nháp của khách ở mọi phiên đang chạy.
+ */
+export const CancelIntentRequestSchema = z
+  .object({
+    customerId: z.string().uuid({ message: "customerId must be a valid UUID" }),
+    livestreamId: z
+      .string()
+      .uuid({ message: "livestreamId must be a valid UUID" }),
+    commentId: z.string().trim().min(1).max(100).nullable().optional(),
+  })
+  .strict();
+
+export type CancelIntentInput = z.infer<typeof CancelIntentRequestSchema>;

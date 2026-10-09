@@ -53,19 +53,20 @@ export async function insertPurchaseRequest(
   dto: InsertPurchaseRequestDto,
   status: PurchaseRequestStatus,
   rejectReason: string | null,
-  orderId: string | null = null
+  orderId: string | null = null,
+  guardReasons: string[] = []
 ): Promise<string> {
   const result = await client.query<{ id: string }>(
     `INSERT INTO purchase_requests (
          merchant_id, livestream_id, customer_id, comment_id, source,
          status, confidence, ai_result, held_until, reject_reason,
-         order_id, reviewed_at
+         order_id, guard_reasons, reviewed_at
      )
      VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8::jsonb,
          CASE WHEN $9::int IS NULL THEN NULL
               ELSE NOW() + make_interval(secs => $9::int) END,
-         $10, $11,
+         $10, $11, $12::varchar[],
          CASE WHEN $6::varchar = 'PENDING' THEN NULL ELSE NOW() END
      )
      RETURNING id`,
@@ -81,6 +82,7 @@ export async function insertPurchaseRequest(
       dto.holdSeconds,
       rejectReason,
       orderId,
+      guardReasons,
     ]
   );
   return result.rows[0].id;
@@ -326,6 +328,7 @@ export async function loadPurchaseRequest(
             pr.reviewed_by   AS "reviewedBy",
             pr.reviewed_at   AS "reviewedAt",
             pr.reject_reason AS "rejectReason",
+            pr.guard_reasons AS "guardReasons",
             pr.created_at    AS "createdAt",
             COALESCE(
                 (SELECT json_agg(json_build_object(
@@ -365,6 +368,7 @@ export async function listPendingRequests(
             pr.confidence,
             pr.ai_result     AS "aiResult",
             pr.held_until    AS "heldUntil",
+            pr.guard_reasons AS "guardReasons",
             pr.created_at    AS "createdAt",
             COALESCE(
                 (SELECT json_agg(json_build_object(

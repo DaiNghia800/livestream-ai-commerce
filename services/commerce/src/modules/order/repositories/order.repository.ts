@@ -15,6 +15,8 @@ export interface InsertOrderDto {
   source: OrderSource;
   idempotencyKey: string;
   holdSeconds: number;
+  /** BẪY-08: khách rủi ro cao thì module thanh toán không được cho COD. */
+  codBlocked?: boolean;
 }
 
 /**
@@ -138,7 +140,8 @@ export async function insertOrder(
     `WITH new_order AS (SELECT gen_random_uuid() AS id)
      INSERT INTO orders (
          id, order_code, customer_id, merchant_id, livestream_id,
-         source, idempotency_key, status, held_until, confirm_token
+         source, idempotency_key, status, held_until, confirm_token,
+         cod_blocked
      )
      SELECT
          id,
@@ -146,7 +149,7 @@ export async function insertOrder(
                  || '-' || substring(replace(id::text, '-', '') FROM 1 FOR 6),
          $1, $2, $3, $4, $5, 'DRAFT',
          NOW() + make_interval(secs => $6),
-         $7
+         $7, $8
      FROM new_order
      ON CONFLICT (livestream_id, customer_id) WHERE status = 'DRAFT' DO NOTHING
      RETURNING id, order_code, held_until, confirm_token`,
@@ -158,6 +161,7 @@ export async function insertOrder(
       dto.idempotencyKey,
       dto.holdSeconds,
       crypto.randomBytes(32).toString("base64url"),
+      dto.codBlocked ?? false,
     ]
   );
 
@@ -309,6 +313,76 @@ export async function appendInventoryChangedEvents(
       )`,
     [params.orderId, params.reason]
   );
+}
+
+/**
+ * BẪY-07: áp lại giá tốt nhất lúc khách xác nhận.
+ *
+ * Giá trong phiên live hay đổi — flash sale 10 phút cuối là chuyện
+ * thường. Khách chốt lúc đầu phiên rồi xác nhận lúc cuối phiên mà vẫn
+ * phải trả giá cũ thì họ sẽ huỷ đơn rồi chốt lại, và lần chốt lại đó
+ * có thể không còn hàng.
+ *
+ * LEAST chứ không phải lấy thẳng giá hiện tại: giá TĂNG giữa chừng thì
+ * khách đã chốt phải được giữ giá cũ. Chính sách là "giá tốt nhất
+ * trong phiên", không phải "giá tại thời điểm xác nhận".
+ *
+ * Trigger trg_order_items_recalc_total tự tính lại total_amount, nên ở
+ * đây không đụng gì tới bảng orders.
+ */
+export async function applyBestPrice(
+  client: PoolClient,
+  orderId: string
+): Promise<number> {
+  const result = await client.query(
+    `UPDATE order_items oi
+        SET unit_price = LEAST(oi.unit_price, s.price)
+       FROM product_skus s
+      WHERE s.id = oi.sku_id
+        AND oi.order_id = $1
+        AND s.price < oi.unit_price`,
+    [orderId]
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
+ * BẪY-10: tìm thứ khách đang giữ trong phiên để huỷ theo ý họ.
+ *
+ * Khách gõ "thôi k lấy nữa" thì phải trả tồn NGAY. Thiếu nhánh này,
+ * hàng bị giam oan tới hết TTL — 5 phút trong một phiên live là rất
+ * nhiều, đủ để mã hot báo hết hàng sai cho người thật sự muốn mua.
+ *
+ * Trả cả đơn nháp lẫn đề nghị đang chờ duyệt: khách không biết bình
+ * luận trước của mình rơi vào nhánh nào, và cũng không cần biết.
+ *
+ * Chỉ lấy thứ CÒN ĐANG GIỮ TỒN. Đơn đã xác nhận không nằm trong đây —
+ * huỷ đơn đã xác nhận là việc của shop, không phải của một câu bình
+ * luận mà AI có thể đọc sai.
+ */
+export async function findCancellableInSession(
+  client: PoolClient,
+  params: { customerId: string; livestreamId: string }
+): Promise<{ orderIds: string[]; purchaseRequestIds: string[] }> {
+  const orders = await client.query<{ id: string }>(
+    `SELECT id FROM orders
+      WHERE customer_id = $1 AND livestream_id = $2
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
+      ORDER BY created_at DESC`,
+    [params.customerId, params.livestreamId]
+  );
+
+  const requests = await client.query<{ id: string }>(
+    `SELECT id FROM purchase_requests
+      WHERE customer_id = $1 AND livestream_id = $2 AND status = 'PENDING'
+      ORDER BY created_at DESC`,
+    [params.customerId, params.livestreamId]
+  );
+
+  return {
+    orderIds: orders.rows.map((r) => r.id),
+    purchaseRequestIds: requests.rows.map((r) => r.id),
+  };
 }
 
 /** Đọc lại đơn sau khi ghi, để trả về đúng những gì database đang có. */
