@@ -2,7 +2,10 @@ import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { createEventTransport } from "./modules/order/events/event-transport.js";
 import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
+import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
 import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
+import { DraftOrderService } from "./modules/order/services/draft-order.service.js";
+import { PurchaseRequestService } from "./modules/order/services/purchase-request.service.js";
 import { pool, runMigrations } from "./shared/database/database.js";
 
 async function bootstrap() {
@@ -35,6 +38,17 @@ async function bootstrap() {
   );
   publishOutboxJob.start();
 
+  // Trả tồn cho đề nghị nằm trong hàng đợi duyệt quá lâu. Không có
+  // job này thì một hàng đợi không ai ngó sẽ giam sạch kho.
+  const expireRequestsJob = new ExpirePurchaseRequestsJob(
+    new PurchaseRequestService(
+      pool,
+      new DraftOrderService(pool, config.holdSoftSeconds, config.holdMaxSeconds)
+    ),
+    { intervalMs: config.expireJobIntervalMs }
+  );
+  expireRequestsJob.start();
+
   const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
     console.log(`[Commerce Service] API Prefix: ${config.apiPrefix}`);
@@ -46,6 +60,7 @@ async function bootstrap() {
     console.log(`[Commerce Service] Nhận ${signal}, đang tắt...`);
     expireOrdersJob.stop();
     publishOutboxJob.stop();
+    expireRequestsJob.stop();
     server.close(() => {
       void pool.end().finally(() => process.exit(0));
     });

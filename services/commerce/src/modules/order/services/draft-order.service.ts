@@ -20,16 +20,15 @@ import { holdUpTo } from "../repositories/inventory.repository.js";
 import {
   appendInventoryChangedEvents,
   appendOutboxEvent,
-  findOpenDraftForUpdate,
   findOrderIdByIdempotencyKey,
   findSellableSku,
-  insertOrder,
   loadOrder,
   recordIdempotencyKey,
   refreshDraftHold,
   upsertOrderItem,
   upsertReservation,
 } from "../repositories/order.repository.js";
+import { getOrCreateOpenDraft } from "./draft-order.resolver.js";
 import type {
   DraftOrderResult,
   OrderSource,
@@ -224,61 +223,36 @@ export class DraftOrderService {
   /**
    * Quyết định ghi hàng vào đơn nào.
    *
-   * Thử tạo đơn mới TRƯỚC, rồi mới tìm đơn cũ — chứ không phải ngược
-   * lại. Thứ tự này đẩy việc phân xử tranh chấp xuống cho Postgres:
-   * hai bình luận đầu tiên của cùng một khách đến cùng lúc đều thấy
-   * "chưa có đơn nào", nếu cả hai cùng chèn thì phải có một cái vỡ.
-   *
-   * `insertOrder` có ON CONFLICT DO NOTHING trên index uq_orders_open_draft
-   * nên khi đụng đơn đang mở nó trả null thay vì ném lỗi — ném lỗi sẽ
-   * huỷ cả transaction và không còn đường nào để gộp.
+   * Phần lấy-hoặc-tạo đơn nháp nằm ở `getOrCreateOpenDraft` vì nhánh
+   * duyệt đề nghị (T9) cũng dùng chung. Ở đây chỉ thêm phần chống
+   * trùng, vốn chỉ có ý nghĩa với đường bình luận.
    */
   private async resolveTargetOrder(
     client: PoolClient,
     params: CreateDraftOrderParams,
     idempotencyKey: string
   ): Promise<{ orderId: string; merged: boolean } | typeof ALREADY_EXISTS> {
-    const livestreamId = params.livestreamId ?? null;
-
-    const created = await insertOrder(client, {
+    const resolved = await getOrCreateOpenDraft(client, {
       customerId: params.customerId,
       merchantId: params.merchantId,
-      livestreamId,
+      livestreamId: params.livestreamId ?? null,
       source: params.source,
       idempotencyKey,
       holdSeconds: this.holdSeconds,
     });
 
-    if (created) {
-      return { orderId: created.id, merged: false };
-    }
-
-    // Index riêng phần không bắt các dòng có livestream_id NULL, nên
-    // nhánh này không thể xảy ra với đơn ngoài phiên live.
-    if (!livestreamId) {
-      throw new Error("insertOrder trả null khi không có livestreamId");
-    }
-
-    const existing = await findOpenDraftForUpdate(client, {
-      customerId: params.customerId,
-      livestreamId,
-    });
-
-    // Đơn vừa đổi trạng thái (xác nhận/huỷ) đúng giữa hai câu lệnh:
-    // ON CONFLICT thấy còn DRAFT nhưng SELECT thì không. Hiếm, và cách
-    // xử lý đúng là báo lỗi để client gửi lại — lần sau sẽ tạo đơn mới.
-    if (!existing) {
-      throw new Error("đơn nháp biến mất giữa chừng, hãy thử lại");
+    if (!resolved.merged) {
+      return resolved;
     }
 
     // Đây là chỗ bịt lỗ giữ tồn hai lần.
     //
     // Hai request CÙNG MỘT khoá chạy song song: cả hai qua được bước 1
     // (lúc đó chưa ai ghi khoá), một cái tạo được đơn, cái kia rơi vào
-    // đây. `FOR UPDATE` ở trên đã chặn nó lại cho tới khi kẻ thắng
-    // COMMIT, mà kẻ thắng ghi khoá trước khi commit — nên giờ tra lại
-    // là thấy. Thiếu bước này, request lặp bị hiểu nhầm thành "bình
-    // luận mới" và giữ tồn thêm một lần nữa.
+    // đây. `FOR UPDATE` bên trong getOrCreateOpenDraft đã chặn nó lại
+    // cho tới khi kẻ thắng COMMIT, mà kẻ thắng ghi khoá trước khi
+    // commit — nên giờ tra lại là thấy. Thiếu bước này, request lặp bị
+    // hiểu nhầm thành "bình luận mới" và giữ tồn thêm một lần nữa.
     const replayed = await findOrderIdByIdempotencyKey(
       client,
       params.customerId,
@@ -288,6 +262,6 @@ export class DraftOrderService {
       return ALREADY_EXISTS;
     }
 
-    return { orderId: existing.id, merged: true };
+    return resolved;
   }
 }
