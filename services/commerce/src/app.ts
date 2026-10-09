@@ -5,12 +5,17 @@ import { ILivestreamRepository } from "./modules/livestream/repositories/livestr
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
 import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js";
+import {
+  IProductRepository,
+} from "./modules/product/repositories/product.repository.js";
+import { createProductRouter } from "./modules/product/routes/product.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
   customS3Service?: S3StorageService,
-  customProductRepository?: ILivestreamProductRepository
+  customLivestreamProductRepository?: ILivestreamProductRepository,
+  customProductRepository?: IProductRepository
 ): Express {
 
   const app = express();
@@ -51,9 +56,10 @@ export function createApp(
   const apiRouter = express.Router();
   apiRouter.use(
     "/livestreams",
-    createLivestreamRouter(customRepository, customProductRepository)
+    createLivestreamRouter(customRepository, customLivestreamProductRepository)
   );
   apiRouter.use("/uploads", createUploadRouter(customS3Service));
+  apiRouter.use("/products", createProductRouter(customProductRepository));
 
 
   app.use(config.apiPrefix, apiRouter);

@@ -15,6 +15,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1147.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "pg": "^8.13.3",
     "zod": "^3.24.2"

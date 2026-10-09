@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -9,8 +9,6 @@ import {
   Plus,
   Search,
   ChevronDown,
-  Star,
-  Pin,
   ChevronLeft,
   ChevronRight,
   Bot,
@@ -20,67 +18,82 @@ import { ProductKpiCards } from "@/components/ui/product-metrics-bar";
 import { ProductTable } from "@/components/ui/product-table";
 import styles from "./product.module.css";
 import {
-  productMockList,
-  productKpiData,
-  type ProductItem,
-} from "@/mocks/product";
+  exportProducts,
+  getProductCategories,
+  getProducts,
+  importProducts,
+  updateProductStatus,
+} from "./api/products";
+import type { ProductCategory } from "./api/products";
+import type { CatalogProductSummary, ProductListItem } from "./types";
 
 export function MerchantProduct() {
   const router = useRouter();
-  const [products, setProducts] = useState<ProductItem[]>(productMockList);
+  const [products, setProducts] = useState<ProductListItem[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [summary, setSummary] = useState<CatalogProductSummary>({
+    totalProducts: 0,
+    activeProducts: 0,
+    skuCount: 0,
+    inactiveProducts: 0,
+  });
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [loadedQuery, setLoadedQuery] = useState("");
+  const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [filterBestSellerOnly, setFilterBestSellerOnly] = useState(false);
-  const [filterLivePinOnly, setFilterLivePinOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const requestKey = `${searchQuery}|${categoryFilter}|${statusFilter}|${currentPage}|${pageSize}|${refreshKey}`;
+  const loading = loadedQuery !== requestKey;
 
-  // Filtered Products
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchesSearch =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q);
+  useEffect(() => {
+    const controller = new AbortController();
+    getProductCategories(controller.signal)
+      .then(setCategories)
+      .catch((requestError: unknown) => {
+        if (!(requestError instanceof DOMException && requestError.name === "AbortError")) {
+          setError(requestError instanceof Error ? requestError.message : "Không thể tải danh mục.");
+        }
+      });
+    return () => controller.abort();
+  }, []);
 
-      const matchesCat =
-        !categoryFilter ||
-        (categoryFilter === "ao-so-mi" && p.category === "Áo sơ mi") ||
-        (categoryFilter === "dam-vay" && p.category === "Đầm & Váy") ||
-        (categoryFilter === "quan-jean" && p.category === "Quần jean") ||
-        (categoryFilter === "phu-kien" && p.category === "Phụ kiện") ||
-        (categoryFilter === "ao-thun" && p.category === "Áo thun");
+  useEffect(() => {
+    const controller = new AbortController();
+    getProducts({
+      q: searchQuery.trim() || undefined,
+      categoryId: categoryFilter || undefined,
+      status: statusFilter || undefined,
+      page: currentPage,
+      pageSize,
+    }, controller.signal)
+      .then((result) => {
+        setError("");
+        setProducts(result.data);
+        setSummary(result.summary);
+        setTotalProducts(result.total);
+        setLoadedQuery(requestKey);
+      })
+      .catch((requestError: unknown) => {
+        if (!(requestError instanceof DOMException && requestError.name === "AbortError")) {
+          setError(requestError instanceof Error ? requestError.message : "Không thể tải sản phẩm.");
+          setLoadedQuery(requestKey);
+        }
+      });
+    return () => controller.abort();
+  }, [searchQuery, categoryFilter, statusFilter, currentPage, pageSize, refreshKey, requestKey]);
 
-      const matchesStatus =
-        !statusFilter ||
-        (statusFilter === "dang-ban" &&
-          (p.status === "active" || p.status === "low_stock")) ||
-        (statusFilter === "het-hang" && p.status === "out_of_stock") ||
-        (statusFilter === "ngung-ban" && p.status === "inactive");
-
-      const matchesBestSeller = !filterBestSellerOnly || Boolean(p.isBestSeller);
-      const matchesLivePin = !filterLivePinOnly || Boolean(p.isPinned);
-
-      return (
-        matchesSearch &&
-        matchesCat &&
-        matchesStatus &&
-        matchesBestSeller &&
-        matchesLivePin
-      );
-    });
-  }, [
-    products,
-    searchQuery,
-    categoryFilter,
-    statusFilter,
-    filterBestSellerOnly,
-    filterLivePinOnly,
-  ]);
+  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
+  const firstProduct = totalProducts === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const lastProduct = Math.min(currentPage * pageSize, totalProducts);
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) =>
@@ -89,32 +102,68 @@ export function MerchantProduct() {
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.length === filteredProducts.length) {
+    if (selectedIds.length === products.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredProducts.map((p) => p.id));
+      setSelectedIds(products.map((p) => p.id));
     }
   };
 
-  const handleToggleStatus = (id: string) => {
-    setProducts((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const newStatus =
-            item.status === "inactive"
-              ? item.availableStock > 0
-                ? "active"
-                : "out_of_stock"
-              : "inactive";
-          return { ...item, status: newStatus };
-        }
-        return item;
-      })
-    );
+  const handleToggleStatus = async (id: string) => {
+    const product = products.find((item) => item.id === id);
+    if (!product) return;
+    try {
+      await updateProductStatus(id, product.status === "active" ? "archived" : "active");
+      setRefreshKey((value) => value + 1);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Không thể cập nhật sản phẩm.");
+    }
   };
 
-  const handleEdit = (product: ProductItem) => {
+  const handleEdit = (product: ProductListItem) => {
     router.push(`/shop/products/${product.id}/edit`);
+  };
+
+  const handleExport = async () => {
+    setError("");
+    setIsExporting(true);
+    try {
+      const file = await exportProducts({
+        q: searchQuery.trim() || undefined,
+        categoryId: categoryFilter || undefined,
+        status: statusFilter || undefined,
+      });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "products.xlsx";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Không thể xuất Excel.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    setError("");
+    setImportMessage("");
+    setIsImporting(true);
+    try {
+      const result = await importProducts(file);
+      setImportMessage(`Đã nhập ${result.products} sản phẩm và ${result.skus} SKU.`);
+      setCurrentPage(1);
+      setRefreshKey((value) => value + 1);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Không thể nhập Excel.");
+    } finally {
+      setIsImporting(false);
+      input.value = "";
+    }
   };
 
   return (
@@ -133,19 +182,28 @@ export function MerchantProduct() {
           <button
             className="h-10 whitespace-nowrap px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high text-sm font-label-md font-medium inline-flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
             type="button"
-            onClick={() => alert("Đang xuất danh sách sản phẩm...")}
+            disabled={isExporting}
+            onClick={handleExport}
           >
             <Download size={18} aria-hidden="true" />
-            <span>Xuất danh sách</span>
+            <span>{isExporting ? "Đang xuất..." : "Xuất danh sách"}</span>
           </button>
           <button
             className="h-10 whitespace-nowrap px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high text-sm font-label-md font-medium inline-flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
             type="button"
-            onClick={() => alert("Nhập tệp Excel sản phẩm...")}
+            disabled={isImporting}
+            onClick={() => fileInputRef.current?.click()}
           >
             <Upload size={18} aria-hidden="true" />
-            <span>Nhập file Excel</span>
+            <span>{isImporting ? "Đang nhập..." : "Nhập file Excel"}</span>
           </button>
+          <input
+            ref={fileInputRef}
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="hidden"
+            onChange={handleImport}
+            type="file"
+          />
           <Link
             role="button"
             href="/shop/products/new"
@@ -158,7 +216,18 @@ export function MerchantProduct() {
       </div>
 
       {/* ==================== 4 KPI HEADER CARDS (Bento Grid Style) ==================== */}
-      <ProductKpiCards kpi={productKpiData} />
+      <ProductKpiCards kpi={summary} />
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-error/30 bg-error-container/30 px-4 py-3 text-sm text-error">
+          {error}
+        </div>
+      )}
+      {importMessage && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {importMessage}
+        </div>
+      )}
 
       {/* ==================== ACTION BAR & FILTERS ==================== */}
       <div className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] flex flex-nowrap items-center gap-3 overflow-x-auto">
@@ -174,7 +243,10 @@ export function MerchantProduct() {
             placeholder="Tìm tên, SKU hoặc mã chốt đơn..."
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
           />
         </div>
 
@@ -186,24 +258,19 @@ export function MerchantProduct() {
               aria-label="Lọc theo danh mục"
               className={`${styles.filterSelect} w-full min-w-0 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer`}
               title={
-                categoryFilter === "ao-so-mi"
-                  ? "Áo sơ mi"
-                  : categoryFilter === "dam-vay"
-                    ? "Đầm & Váy"
-                    : categoryFilter === "quan-jean"
-                      ? "Quần jean"
-                      : categoryFilter === "phu-kien"
-                        ? "Phụ kiện"
-                        : "Tất cả danh mục"
+                categories.find((category) => String(category.id) === categoryFilter)?.name ??
+                "Tất cả danh mục"
               }
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setCurrentPage(1);
+              }}
             >
               <option value="">Tất cả danh mục</option>
-              <option value="ao-so-mi">Áo sơ mi</option>
-              <option value="dam-vay">Đầm &amp; Váy</option>
-              <option value="quan-jean">Quần jean</option>
-              <option value="phu-kien">Phụ kiện</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
             </select>
             <ChevronDown
               size={18}
@@ -217,22 +284,17 @@ export function MerchantProduct() {
             <select
               aria-label="Lọc theo trạng thái"
               className={`${styles.filterSelect} w-full min-w-0 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer`}
-              title={
-                statusFilter === "dang-ban"
-                  ? "Đang bán"
-                  : statusFilter === "het-hang"
-                    ? "Hết hàng"
-                    : statusFilter === "ngung-ban"
-                      ? "Ngừng bán"
-                      : "Tất cả trạng thái"
-              }
+              title={statusFilter ? "Lọc theo trạng thái Catalog" : "Tất cả trạng thái"}
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
             >
               <option value="">Tất cả trạng thái</option>
-              <option value="dang-ban">Đang bán</option>
-              <option value="het-hang">Hết hàng</option>
-              <option value="ngung-ban">Ngừng bán</option>
+              <option value="active">Đang bán</option>
+              <option value="archived">Đã lưu trữ</option>
+              <option value="discontinued">Ngừng kinh doanh</option>
             </select>
             <ChevronDown
               size={18}
@@ -241,48 +303,19 @@ export function MerchantProduct() {
             />
           </div>
 
-          {/* Quick Filter Chips */}
-          <div className="flex shrink-0 items-center justify-start gap-1.5 border-l border-outline-variant/60 pl-3 overflow-visible">
-            <button
-              type="button"
-              aria-label="Best Seller"
-              data-testid="best-seller-filter"
-              className={`shrink-0 px-2.5 py-1.5 rounded-full text-xs font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${
-                filterBestSellerOnly
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "bg-surface-container-high text-primary hover:bg-surface-container"
-              }`}
-              onClick={() => setFilterBestSellerOnly((v) => !v)}
-            >
-              <Star size={14} aria-hidden="true" />
-              <span>Best Seller</span>
-            </button>
-
-            <button
-              className={`shrink-0 px-2.5 py-1.5 rounded-full text-xs font-label-sm font-medium flex items-center gap-1 transition-colors border-none cursor-pointer ${
-                filterLivePinOnly
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
-              }`}
-              type="button"
-              onClick={() => setFilterLivePinOnly((v) => !v)}
-            >
-              <Pin size={14} aria-hidden="true" />
-              <span>Live Pin</span>
-            </button>
-          </div>
         </div>
       </div>
 
       {/* ==================== PRODUCT DATA TABLE ==================== */}
       <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] overflow-hidden">
         <ProductTable
-          products={filteredProducts}
+          products={products}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
           onSelectAll={handleSelectAll}
           onToggleStatus={handleToggleStatus}
           onEdit={handleEdit}
+          loading={loading}
         />
 
         {/* ==================== SAAS PROFESSIONAL PAGINATION FOOTER ==================== */}
@@ -290,8 +323,8 @@ export function MerchantProduct() {
           {/* Left: Range Information */}
           <div className={`${styles.productPageInfo} text-body-sm font-body-sm text-on-surface-variant`}>
             <span>
-              Hiển thị <strong className="font-semibold text-on-surface">1 - {Math.min(pageSize, filteredProducts.length)}</strong> trên tổng số{" "}
-              <strong className="font-semibold text-on-surface">248</strong> sản phẩm
+              Hiển thị <strong className="font-semibold text-on-surface">{firstProduct} - {lastProduct}</strong> trên tổng số{" "}
+              <strong className="font-semibold text-on-surface">{totalProducts}</strong> sản phẩm
             </span>
             <span className="text-outline">|</span>
             <label className={`${styles.productPageSize} text-xs font-label-sm text-outline`}>
@@ -299,7 +332,10 @@ export function MerchantProduct() {
               <select
                 aria-label="Số hàng mỗi trang"
                 value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
               >
                 <option value={10}>10</option>
                 <option value={25}>25</option>
@@ -313,62 +349,21 @@ export function MerchantProduct() {
           <div className={`${styles.productPagination} text-xs font-label-sm`}>
             <button
               className="h-8 px-2 rounded-lg border border-outline-variant/60 text-outline hover:bg-surface-container hover:text-on-surface disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 text-xs font-label-sm cursor-pointer"
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || loading}
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             >
               <ChevronLeft size={16} aria-hidden="true" />
               <span className="hidden sm:inline">Trước</span>
             </button>
+            <span aria-live="polite" className="px-2 text-on-surface-variant">
+              Trang {currentPage} / {totalPages}
+            </span>
             <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-xs font-semibold flex items-center justify-center cursor-pointer border-none ${
-                currentPage === 1
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
-              }`}
+              className="h-8 px-2 rounded-lg border border-outline-variant/60 text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 text-xs font-label-sm cursor-pointer"
+              disabled={currentPage >= totalPages || loading}
               type="button"
-              onClick={() => setCurrentPage(1)}
-            >
-              1
-            </button>
-            <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-xs font-semibold flex items-center justify-center cursor-pointer border-none ${
-                currentPage === 2
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
-              }`}
-              type="button"
-              onClick={() => setCurrentPage(2)}
-            >
-              2
-            </button>
-            <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-xs font-semibold flex items-center justify-center cursor-pointer border-none ${
-                currentPage === 3
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
-              }`}
-              type="button"
-              onClick={() => setCurrentPage(3)}
-            >
-              3
-            </button>
-            <span className="w-6 text-center text-outline text-xs font-semibold">...</span>
-            <button
-              className={`w-8 h-8 rounded-lg font-headline-md text-xs font-semibold flex items-center justify-center cursor-pointer border-none ${
-                currentPage === 25
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container transition-colors"
-              }`}
-              type="button"
-              onClick={() => setCurrentPage(25)}
-            >
-              25
-            </button>
-            <button
-              className="h-8 px-2 rounded-lg border border-outline-variant/60 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors flex items-center gap-1 text-xs font-label-sm cursor-pointer"
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.min(25, p + 1))}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             >
               <span className="hidden sm:inline">Sau</span>
               <ChevronRight size={16} aria-hidden="true" />
