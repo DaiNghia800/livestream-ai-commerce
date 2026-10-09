@@ -1,11 +1,14 @@
 import { pool } from "../../../shared/database/database.js";
 import type {
   CreateProductInput,
+  CreateProductImageInput,
   CreateProductSkuInput,
   ProductListQuery,
   UpdateProductInput,
+  UpdateProductImageInput,
   UpdateProductSkuInput,
 } from "../schemas/product.schema.js";
+import { MAX_PRODUCT_IMAGES } from "../schemas/product.schema.js";
 import type {
   Product,
   ProductCategory,
@@ -32,6 +35,13 @@ export class InvalidProductReferenceError extends Error {
   constructor() {
     super("The selected category does not exist");
     this.name = "InvalidProductReferenceError";
+  }
+}
+
+export class ProductImageLimitError extends Error {
+  constructor() {
+    super(`A product may have at most ${MAX_PRODUCT_IMAGES} images`);
+    this.name = "ProductImageLimitError";
   }
 }
 
@@ -70,6 +80,17 @@ export interface IProductRepository {
     productId: string,
     skuId: string
   ): Promise<ProductSku | null>;
+  createImage(
+    shopId: number,
+    productId: string,
+    input: CreateProductImageInput
+  ): Promise<ProductImage | null>;
+  updateImage(
+    shopId: number,
+    productId: string,
+    imageId: string,
+    input: UpdateProductImageInput
+  ): Promise<ProductImage | null>;
   removeImage(shopId: number, productId: string, imageId: string): Promise<boolean>;
 }
 
@@ -360,10 +381,12 @@ export class PostgresProductRepository implements IProductRepository {
       status: "status",
     };
     const values: unknown[] = [shopId, productId];
-    const assignments = Object.entries(input).map(([key, value]) => {
+    const assignments = Object.entries(input)
+      .filter(([key]) => key in columns)
+      .map(([key, value]) => {
       values.push(value);
       return `${columns[key]} = $${values.length}`;
-    });
+      });
     try {
       const result = await pool.query(
         `UPDATE products SET ${assignments.join(", ")}
@@ -420,10 +443,12 @@ export class PostgresProductRepository implements IProductRepository {
       status: "status",
     };
     const values: unknown[] = [shopId, productId, skuId];
-    const assignments = Object.entries(input).map(([key, value]) => {
+    const assignments = Object.entries(input)
+      .filter(([key]) => key in columns)
+      .map(([key, value]) => {
       values.push(value);
       return `${columns[key]} = $${values.length}`;
-    });
+      });
     try {
       const result = await pool.query(
         `UPDATE product_skus s SET ${assignments.join(", ")}
@@ -457,13 +482,147 @@ export class PostgresProductRepository implements IProductRepository {
     return result.rows[0] ? this.asSku(result.rows[0]) : null;
   }
 
+  async createImage(
+    shopId: number,
+    productId: string,
+    input: CreateProductImageInput
+  ): Promise<ProductImage | null> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const product = await client.query(
+        "SELECT id FROM products WHERE shop_id = $1 AND id = $2 FOR UPDATE",
+        [shopId, productId]
+      );
+      if (!product.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const imageCount = await client.query(
+        "SELECT COUNT(*)::int AS count FROM product_images WHERE product_id = $1",
+        [productId]
+      );
+      if (imageCount.rows[0].count >= MAX_PRODUCT_IMAGES) {
+        throw new ProductImageLimitError();
+      }
+      if (input.isPrimary) {
+        await client.query(
+          "UPDATE product_images SET is_primary = FALSE WHERE product_id = $1",
+          [productId]
+        );
+      }
+      const result = await client.query(
+        `INSERT INTO product_images (product_id, url, is_primary, sort_order)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id::text AS id, product_id::text AS "productId", sku_id::text AS "skuId",
+           url, is_primary AS "isPrimary", sort_order AS "sortOrder", created_at AS "createdAt"`,
+        [productId, input.url, input.isPrimary, input.sortOrder]
+      );
+      await client.query("COMMIT");
+      return this.asImage(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateImage(
+    shopId: number,
+    productId: string,
+    imageId: string,
+    input: UpdateProductImageInput
+  ): Promise<ProductImage | null> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const product = await client.query(
+        "SELECT id FROM products WHERE shop_id = $1 AND id = $2 FOR UPDATE",
+        [shopId, productId]
+      );
+      if (!product.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      if (input.isPrimary) {
+        await client.query(
+          "UPDATE product_images SET is_primary = FALSE WHERE product_id = $1",
+          [productId]
+        );
+      }
+      const columns: Record<string, string> = {
+        isPrimary: "is_primary",
+        sortOrder: "sort_order",
+      };
+      const values: unknown[] = [productId, imageId];
+      const assignments = Object.entries(input).map(([key, value]) => {
+        values.push(value);
+        return `${columns[key]} = $${values.length}`;
+      });
+      const result = await client.query(
+        `UPDATE product_images SET ${assignments.join(", ")}
+         WHERE product_id = $1 AND id = $2
+         RETURNING id::text AS id, product_id::text AS "productId", sku_id::text AS "skuId",
+           url, is_primary AS "isPrimary", sort_order AS "sortOrder", created_at AS "createdAt"`,
+        values
+      );
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query("COMMIT");
+      return this.asImage(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async removeImage(shopId: number, productId: string, imageId: string): Promise<boolean> {
-    const result = await pool.query(
-      `DELETE FROM product_images i USING products p
-       WHERE i.product_id = p.id AND p.shop_id = $1 AND p.id = $2 AND i.id = $3`,
-      [shopId, productId, imageId]
-    );
-    return (result.rowCount ?? 0) > 0;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const product = await client.query(
+        "SELECT id FROM products WHERE shop_id = $1 AND id = $2 FOR UPDATE",
+        [shopId, productId]
+      );
+      if (!product.rowCount) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      const removed = await client.query(
+        `DELETE FROM product_images
+         WHERE product_id = $1 AND id = $2
+         RETURNING is_primary AS "wasPrimary"`,
+        [productId, imageId]
+      );
+      if (!removed.rowCount) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      if (removed.rows[0].wasPrimary) {
+        await client.query(
+          `UPDATE product_images SET is_primary = TRUE
+           WHERE id = (
+             SELECT id FROM product_images
+             WHERE product_id = $1
+             ORDER BY sort_order, id
+             LIMIT 1
+           )`,
+          [productId]
+        );
+      }
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private asSku(row: Record<string, any>): ProductSku {
@@ -476,6 +635,18 @@ export class PostgresProductRepository implements IProductRepository {
       status: row.status,
       createdAt: new Date(row.createdAt).toISOString(),
       updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
+  private asImage(row: Record<string, any>): ProductImage {
+    return {
+      id: row.id,
+      productId: row.productId,
+      skuId: row.skuId,
+      url: row.url,
+      isPrimary: row.isPrimary,
+      sortOrder: row.sortOrder,
+      createdAt: new Date(row.createdAt).toISOString(),
     };
   }
 }

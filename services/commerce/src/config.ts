@@ -15,10 +15,15 @@ export interface AppConfig {
   refreshTokenDays: number;
   awsRegion?: string;
   s3BucketName?: string;
+  s3PublicBaseUrl?: string;
+  commercePublicUrl: string;
+  productImageUploadDir: string;
 }
 
+const port = parseInt(process.env.PORT || "8000", 10);
+
 export const config: AppConfig = {
-  port: parseInt(process.env.PORT || "8000", 10),
+  port,
   // Hierarchy: COMMERCE_DATABASE_URL -> DATABASE_URL -> local fallback
   databaseUrl:
     process.env.COMMERCE_DATABASE_URL ||
@@ -32,4 +37,8 @@ export const config: AppConfig = {
   refreshTokenDays: parseInt(process.env.REFRESH_TOKEN_DAYS || "30", 10),
   awsRegion: process.env.AWS_REGION || undefined,
   s3BucketName: process.env.S3_BUCKET_NAME || undefined,
+  s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL || undefined,
+  commercePublicUrl: process.env.COMMERCE_PUBLIC_URL || `http://localhost:${port}`,
+  productImageUploadDir:
+    process.env.PRODUCT_IMAGE_UPLOAD_DIR || path.resolve(__dirname, "../uploads/products"),
 };

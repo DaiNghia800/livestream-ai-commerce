@@ -1,12 +1,14 @@
 import type {
   CreateProductInput,
+  CreateProductImageInput,
   CreateProductSkuInput,
   ProductListQuery,
   UpdateProductInput,
+  UpdateProductImageInput,
   UpdateProductSkuInput,
 } from "../schemas/product.schema.js";
 import type { IProductRepository } from "../repositories/product.repository.js";
-import type { Product, ProductCategory, ProductPage, ProductSku } from "../types/product.types.js";
+import type { Product, ProductCategory, ProductImage, ProductPage, ProductSku } from "../types/product.types.js";
 
 export class ProductNotFoundError extends Error {
   constructor() {
@@ -83,5 +85,26 @@ export class ProductService {
   async removeImage(shopId: number, productId: string, imageId: string): Promise<void> {
     const removed = await this.repository.removeImage(shopId, productId, imageId);
     if (!removed) throw new ProductNotFoundError();
+  }
+
+  async createImage(
+    shopId: number,
+    productId: string,
+    input: CreateProductImageInput
+  ): Promise<ProductImage> {
+    const image = await this.repository.createImage(shopId, productId, input);
+    if (!image) throw new ProductNotFoundError();
+    return image;
+  }
+
+  async updateImage(
+    shopId: number,
+    productId: string,
+    imageId: string,
+    input: UpdateProductImageInput
+  ): Promise<ProductImage> {
+    const image = await this.repository.updateImage(shopId, productId, imageId, input);
+    if (!image) throw new ProductNotFoundError();
+    return image;
   }
 }

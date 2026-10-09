@@ -12,16 +12,24 @@ import {
 } from "./modules/product/repositories/product.repository.js";
 import { createProductRouter } from "./modules/product/routes/product.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
+import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
   customS3Service?: S3StorageService,
   customLivestreamProductRepository?: ILivestreamProductRepository,
   customProductRepository?: IProductRepository,
-  customAuthRepository?: IAuthRepository
+  customAuthRepository?: IAuthRepository,
+  customLocalProductImageStorage?: LocalProductImageStorageService
 ): Express {
 
   const app = express();
+  const localProductImageStorage =
+    customLocalProductImageStorage ||
+    new LocalProductImageStorageService(
+      config.productImageUploadDir,
+      config.commercePublicUrl
+    );
 
   app.use(cors());
   app.use(express.json());
@@ -54,6 +62,15 @@ export function createApp(
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", service: "Commerce Service" });
   });
+  app.use(
+    "/uploads/products",
+    express.static(localProductImageStorage.getDirectory(), {
+      dotfiles: "deny",
+      fallthrough: false,
+      maxAge: "1d",
+      immutable: true,
+    })
+  );
 
   // Mount API routers
   const apiRouter = express.Router();
@@ -62,7 +79,10 @@ export function createApp(
     "/livestreams",
     createLivestreamRouter(customRepository, customLivestreamProductRepository)
   );
-  apiRouter.use("/uploads", createUploadRouter(customS3Service));
+  apiRouter.use(
+    "/uploads",
+    createUploadRouter(customS3Service, localProductImageStorage)
+  );
   apiRouter.use("/products", createProductRouter(customProductRepository));
 
 

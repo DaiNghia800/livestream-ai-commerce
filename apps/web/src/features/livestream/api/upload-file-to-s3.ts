@@ -1,5 +1,5 @@
 /**
- * Uploads a local binary File directly to Amazon S3 using a presigned PUT URL.
+ * Uploads a local binary File to an upload destination using a PUT URL.
  */
 export async function uploadFileToS3(
   uploadUrl: string,
@@ -24,8 +24,17 @@ export async function uploadFileToS3(
   }
 
   if (!response.ok) {
+    let responseMessage = "";
+    try {
+      const responseBody = await response.text();
+      if (responseBody) {
+        responseMessage = ` ${responseBody.slice(0, 300)}`;
+      }
+    } catch {
+      // Keep the HTTP status message when the server response cannot be read.
+    }
     throw new Error(
-      `Tải ảnh lên S3 thất bại (HTTP ${response.status} ${response.statusText}).`
+      `Tải ảnh lên thất bại (HTTP ${response.status} ${response.statusText}).${responseMessage}`
     );
   }
 }

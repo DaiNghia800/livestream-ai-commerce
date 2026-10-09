@@ -66,6 +66,30 @@ describe("Products API - PostgreSQL integration", () => {
     expect(update.status).toBe(200);
     expect(update.body.name).toBe("Updated integration product");
 
+    const addImage = await request(app)
+      .post(`/api/products/${productId}/images`)
+      .set("X-Shop-Id", String(shopId))
+      .send({ url: "https://example.com/product-second.jpg", sortOrder: 1 });
+    expect(addImage.status).toBe(201);
+    expect(addImage.body.isPrimary).toBe(false);
+
+    const selectImage = await request(app)
+      .patch(`/api/products/${productId}/images/${addImage.body.id}`)
+      .set("X-Shop-Id", String(shopId))
+      .send({ isPrimary: true });
+    expect(selectImage.status).toBe(200);
+    expect(selectImage.body.isPrimary).toBe(true);
+
+    const deletePrimary = await request(app)
+      .delete(`/api/products/${productId}/images/${addImage.body.id}`)
+      .set("X-Shop-Id", String(shopId));
+    expect(deletePrimary.status).toBe(200);
+    const afterImageDelete = await request(app)
+      .get(`/api/products/${productId}`)
+      .set("X-Shop-Id", String(shopId));
+    expect(afterImageDelete.body.images).toHaveLength(1);
+    expect(afterImageDelete.body.images[0].isPrimary).toBe(true);
+
     const archive = await request(app)
       .delete(`/api/products/${productId}`)
       .set("X-Shop-Id", String(shopId));

@@ -90,5 +90,12 @@ export function createProductRouter(customRepository?: IProductRepository): Rout
     requireNumericId("imageId"),
     controller.removeImage
   );
+  router.post("/:id/images", requireNumericId("id"), controller.createImage);
+  router.patch(
+    "/:id/images/:imageId",
+    requireNumericId("id"),
+    requireNumericId("imageId"),
+    controller.updateImage
+  );
   return router;
 }
