@@ -18,6 +18,8 @@ const TABLES = [
   "order_status_history",
   "reservations",
   "order_items",
+  "order_idempotency_keys",
+  "purchase_requests",
   "orders",
   "inventory_adjustments",
   "inventory",

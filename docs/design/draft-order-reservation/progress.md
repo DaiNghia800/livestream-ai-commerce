@@ -12,15 +12,16 @@
 | T3 Giữ/trả tồn nguyên tử | ✅ | 12 test |
 | T4 Tạo đơn nháp + API | ✅ | 10 test |
 | T7 Vòng đời đơn hàng | ✅ | 19 test |
-| T5 Chống trùng 5 tầng | 🟡 | Tầng 1, 3, 4 đã có; tầng 2 và 5 chờ AI worker |
+| T5 Chống trùng 5 tầng | 🟡 | Tầng 1–4 đã có; tầng 5 chờ AI worker |
 | T6 Gộp đơn | ✅ | 17 test |
 | T8 Job quét hết hạn | ✅ | 9 test |
 | T10 Outbox publisher | ✅ | 23 test · chạy ở chế độ ghi log tới khi `services/realtime` lên |
-| T9, T11, T12 | ❌ | |
+| T9 Hàng đợi duyệt | 🟡 | 32 test · backend xong, **màn hình nhân viên chưa làm** |
+| T11, T12 | ❌ | |
 | Backend thanh toán | ❌ | Bảng `payments` đã có, chưa có module |
 | Nối frontend vào API | ❌ | 4 màn vẫn chạy `src/mocks/` |
 
-Toàn bộ test của service: **236 passed**, trong đó 90 ca thuộc phần đơn hàng.
+Toàn bộ test của service: **268 passed**, trong đó 122 ca thuộc phần đơn hàng.
 
 ---
 
@@ -245,6 +246,38 @@ Payload mang **trạng thái hiện tại**, không mang mức chênh. Publisher
 
 ---
 
+## T9 — Hàng đợi duyệt và chuyển chủ sở hữu lượt giữ
+
+Ba nhánh theo điểm tin cậy AI: `>= 0.85` tự chốt, `0.5–0.85` vào hàng đợi, `< 0.5` chỉ ghi nhận.
+
+Nhánh giữa **vẫn giữ tồn** trong lúc chờ duyệt. Đây là chỗ gây tranh cãi nhất của QĐ-3, và lý do là công bằng với khách: người bình luận lúc 20:01 không đáng mất hàng vào tay người bình luận lúc 20:03 chỉ vì AI đọc câu của họ khó hơn. Cái giá phải trả là `ExpirePurchaseRequestsJob` — hàng đợi không ai ngó sẽ giam sạch kho, mà nhân viên bận nhất đúng lúc live đông nhất.
+
+`confidence` **bắt buộc, không mặc định**. Để nó mặc định 1.0 thì AI worker quên gửi một lần là tự chốt đơn cho mọi bình luận rác.
+
+### Chuyển chủ sở hữu — phần đáng giá nhất của T9
+
+Cách làm sai mà ai cũng nghĩ ra đầu tiên: trả tồn rồi giữ lại dưới tên đơn hàng. Giữa hai thao tác đó, dù chỉ vài micro giây, món hàng nằm ở trạng thái **khả dụng** — một khách khác đang F5 có thể cướp đúng món mà khách này đã chờ nhân viên duyệt suốt ba phút. Tệ hơn: nếu bước giữ lại thất bại vì vừa hết hàng, thì đề nghị đã duyệt rồi mà không còn hàng để giao.
+
+Cách đúng là `UPDATE` mấy cột chủ sở hữu. `inventory.held_quantity` **không hề bị đụng tới** trong suốt quá trình duyệt — đó là nguyên văn tiêu chí nghiệm thu #23, và có một ca test so nguyên cả object tồn kho trước/sau.
+
+Hệ quả: duyệt **không** phát `inventory.changed`. Tồn khả dụng không đổi, phát ra chỉ làm màn hình shop nhấp nháy mà con số vẫn y nguyên.
+
+### Ba chỗ cài đặt lệch khỏi ERD
+
+Ghi chi tiết ở [erd-changes.md](erd-changes.md) mục 4b. Tóm tắt:
+
+| Chỗ | ERD vẽ | Thực tế |
+|---|---|---|
+| Liên kết đơn ↔ đề nghị | `orders.purchase_request_id`, một-một | `purchase_requests.order_id`, nhiều-một — vì T6 cho phép một đơn gom nhiều đề nghị |
+| Trạng thái lượt giữ | 3 trạng thái | Thêm `MERGED`: khi dồn vào lượt giữ đang sống, tồn **không** về kho nên không được đánh `RELEASED` |
+| `comment_id` | `uuid` → bảng `comment` | `VARCHAR(100)` — bảng `comment` thuộc AI worker, mã Facebook không phải UUID |
+
+### Vẫn còn thiếu
+
+Màn hình hàng đợi cho nhân viên. API đã có đủ (`GET /api/purchase-requests?merchantId=`, `/:id`, `/:id/approve`, `/:id/reject`), frontend chưa dựng — nằm chung với việc nối 4 màn hiện có khỏi `src/mocks/`.
+
+---
+
 ## Hạ tầng đã đụng tới
 
 | Thay đổi | Lý do |
@@ -269,5 +302,5 @@ Payload mang **trạng thái hiện tại**, không mang mức chênh. Publisher
 | `livestream_products.variant_id` vs `product_skus.id` | Cùng một thứ, hai tên — nhóm cần thống nhất |
 | `services/commerce/` chứa cả code livestream | Livestream không phải commerce; nên đổi tên thư mục hoặc thống nhất "commerce = backend gộp" |
 | Mất `downgrade` của Alembic | Runner hiện tại chỉ tiến, không lùi — cân nhắc `node-pg-migrate` |
-| `tasks.md` chưa có task cho backend thanh toán và nối frontend | Khoảng 4 ngày công chưa ai tính |
+| `tasks.md` chưa có task cho backend thanh toán, nối frontend và màn hình hàng đợi duyệt | Khoảng 5 ngày công chưa ai tính |
 | Đồng hồ container Postgres lệch khỏi host 1–2 giây và trôi dần | WSL2 sau khi máy ngủ. Test **không được** so mốc thời gian do Postgres sinh với `Date.now()` của Node — đã làm đỏ ngẫu nhiên 2 ca của T10. Cách đúng: tính khoảng cách ngay trong SQL (`EXTRACT(EPOCH FROM (x - NOW()))`) |

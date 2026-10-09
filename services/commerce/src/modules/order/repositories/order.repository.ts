@@ -232,6 +232,12 @@ export async function upsertOrderItem(
  * trên mỗi dòng hàng. Khi gộp đơn, bình luận thứ hai cùng mã sẽ cộng
  * thêm vào dòng cũ, nên ở đây phải cộng vào lượt giữ đang có chứ không
  * được chèn dòng mới — chèn mới là vi phạm index và vỡ transaction.
+ *
+ * Mệnh đề ON CONFLICT phải chép ĐÚNG predicate của index, kể cả vế
+ * `order_item_id IS NOT NULL`. Postgres chỉ suy ra được index khi điều
+ * kiện ở đây bao hàm điều kiện của index; thiếu một vế là lỗi
+ * "no unique or exclusion constraint matching the ON CONFLICT
+ * specification" ngay lúc chạy, không phải lúc biên dịch.
  */
 export async function upsertReservation(
   client: PoolClient,
@@ -240,7 +246,7 @@ export async function upsertReservation(
   const result = await client.query<{ id: string }>(
     `INSERT INTO reservations (order_id, order_item_id, sku_id, quantity)
      VALUES ($1, $2, $3, $4)
-     ON CONFLICT (order_item_id) WHERE status = 'HOLDING'
+     ON CONFLICT (order_item_id) WHERE status = 'HOLDING' AND order_item_id IS NOT NULL
      DO UPDATE SET quantity = reservations.quantity + EXCLUDED.quantity
      RETURNING id`,
     [params.orderId, params.orderItemId, params.skuId, params.quantity]

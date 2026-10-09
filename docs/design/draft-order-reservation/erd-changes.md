@@ -95,6 +95,32 @@ ERD cũ để `variant` là một chuỗi (`"đen, M"`). Bình luận thật là
 
 ---
 
+## 4b. Ba chỗ cài đặt LỆCH so với ERD (T9, 2026-10-10)
+
+Phát hiện khi dựng hàng đợi duyệt. Sửa ERD theo cài đặt, không sửa ngược lại — lý do ghi kèm từng mục.
+
+### 4b.1 Liên kết đơn ↔ đề nghị đổi chiều
+
+ERD vẽ `orders.purchase_request_id` với index duy nhất, tức quan hệ **một-một**. Từ khi có gộp đơn (T6), một đơn nháp có thể gom nhiều đề nghị đã duyệt của cùng một khách trong cùng phiên, nên quan hệ thật là **nhiều-một**.
+
+Cài đặt: cột nằm ở `purchase_requests.order_id`.
+
+### 4b.2 `reservations` cần trạng thái thứ tư: `MERGED`
+
+ERD chỉ có `HELD | RELEASED | CONSUMED`. Thiếu một trạng thái cho tình huống sau: khách đã có đơn nháp chứa mã A, rồi một đề nghị cũng chứa mã A được duyệt. Dòng hàng là duy nhất theo `(order_id, sku_id)` và mỗi dòng chỉ được một lượt giữ `HOLDING`, nên phải dồn số lượng vào lượt giữ đang sống.
+
+Đóng lượt giữ cũ bằng `RELEASED` là **sai**: `RELEASED` nghĩa là tồn đã về kho, mà ở đây tồn không đi đâu cả, nó chỉ đổi người đứng tên. Dùng nhầm sẽ làm mọi phép đối soát sau này tính thiếu.
+
+Cài đặt: thêm `MERGED` + cột `merged_into_id` trỏ sang lượt giữ còn sống.
+
+### 4b.3 `purchase_request.comment_id` không phải UUID
+
+ERD để `uuid` tham chiếu bảng `comment`. Bảng `comment` thuộc về AI worker, không nằm trong commerce service, và mã bình luận Facebook trả về có dạng `123456789_987654321` chứ không phải UUID.
+
+Cài đặt: `VARCHAR(100) UNIQUE`, chứa thẳng mã của nền tảng. `UNIQUE` ở đây chính là tầng 2 trong 5 tầng chống trùng.
+
+---
+
 ## 5. Việc cần làm với `ERD_LiveCommerce.docx`
 
 - [ ] Xuất hình từ dbdiagram.io (hoặc vẽ trong StarUML từ `erd.mdj`), lưu vào `diagrams/`
@@ -103,3 +129,4 @@ ERD cũ để `variant` là một chuỗi (`"đen, M"`). Bình luận thật là
 - [ ] Cập nhật mục *3. Danh mục quan hệ và bản số* — đối chiếu bảng ở mục 2 trên
 - [ ] Sửa Ghi chú: TTL **5 phút giữ mềm → 15 phút khi khách mở link xác nhận → trần 30 phút**, thay cho "3 phút"
 - [ ] Thêm Ghi chú: `RESERVATION` thuộc về `PURCHASE_REQUEST` (lúc chờ duyệt) hoặc `ORDER_ITEM` (sau khi duyệt); khi duyệt thì **chuyển chủ sở hữu**, không release rồi hold lại
+- [ ] Áp ba sửa đổi ở mục 4b vào cả `erd.dbml` lẫn `erd.mdj`
