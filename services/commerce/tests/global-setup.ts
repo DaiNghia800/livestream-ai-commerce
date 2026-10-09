@@ -21,6 +21,7 @@ const TABLES = [
   "order_idempotency_keys",
   "purchase_requests",
   "orders",
+  "customer_risk",
   "inventory_adjustments",
   "inventory",
   "product_skus",

@@ -24,6 +24,7 @@ export interface ResolveDraftParams {
   source: OrderSource;
   idempotencyKey: string;
   holdSeconds: number;
+  codBlocked?: boolean;
 }
 
 export interface ResolvedDraft {
@@ -54,6 +55,7 @@ export async function getOrCreateOpenDraft(
     source: params.source,
     idempotencyKey: params.idempotencyKey,
     holdSeconds: params.holdSeconds,
+    codBlocked: params.codBlocked,
   });
 
   if (created) {

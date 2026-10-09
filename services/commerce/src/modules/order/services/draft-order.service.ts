@@ -28,6 +28,7 @@ import {
   upsertOrderItem,
   upsertReservation,
 } from "../repositories/order.repository.js";
+import { readRiskProfile } from "../repositories/customer-risk.repository.js";
 import { getOrCreateOpenDraft } from "./draft-order.resolver.js";
 import type {
   DraftOrderResult,
@@ -53,7 +54,9 @@ export class DraftOrderService {
   constructor(
     private readonly pool: Pool,
     private readonly holdSeconds: number,
-    private readonly maxHoldSeconds: number
+    private readonly maxHoldSeconds: number,
+    private readonly riskScoreThreshold = 1.1,
+    private readonly riskyHoldSeconds = holdSeconds
   ) {}
 
   async createDraftOrder(
@@ -77,8 +80,24 @@ export class DraftOrderService {
 
       await client.query("BEGIN");
 
-      // ── 2. Lấy đơn để ghi vào: tạo mới hoặc gộp vào đơn đang mở ───
-      const target = await this.resolveTargetOrder(client, params, idempotencyKey);
+      // ── 2. BẪY-08: khách có lịch sử bom hàng thì giữ ngắn hơn ────
+      // Người đã chốt rồi bỏ ba lần không đáng được giam tồn đủ 5 phút
+      // như người mua thật. Cờ cod_blocked ghi luôn vào đơn để module
+      // thanh toán sau này không phải tính lại điểm — tính lại nghĩa
+      // là khách có thể qua cửa này mà trượt cửa kia.
+      const risk = await readRiskProfile(client, params.customerId);
+      const riskyCustomer = risk.riskScore >= this.riskScoreThreshold;
+      const holdSeconds = riskyCustomer
+        ? this.riskyHoldSeconds
+        : this.holdSeconds;
+
+      // ── 3. Lấy đơn để ghi vào: tạo mới hoặc gộp vào đơn đang mở ───
+      const target = await this.resolveTargetOrder(
+        client,
+        params,
+        idempotencyKey,
+        { holdSeconds, codBlocked: riskyCustomer }
+      );
 
       // Request lặp bị phát hiện muộn (xem resolveTargetOrder): trả về
       // đơn đã có, tuyệt đối không giữ thêm tồn.
@@ -94,7 +113,7 @@ export class DraftOrderService {
 
       const { orderId, merged } = target;
 
-      // ── 3. Giữ tồn từng dòng ─────────────────────────────────────
+      // ── 4. Giữ tồn từng dòng ─────────────────────────────────────
       // Sắp xếp theo skuId để chống deadlock: hai đơn cùng mua A và B
       // mà khoá theo thứ tự ngược nhau sẽ ôm nhau chết.
       const sortedLines = [...params.lines].sort((a, b) =>
@@ -147,18 +166,18 @@ export class DraftOrderService {
         throw new AllLinesOutOfStockError(rejected);
       }
 
-      // ── 4. Gia hạn giữ hàng khi gộp ──────────────────────────────
+      // ── 5. Gia hạn giữ hàng khi gộp ──────────────────────────────
       // Khách vừa chốt thêm mã nghĩa là vẫn đang mua, không có lý do
       // để cắt đồng hồ của những mã đã chốt trước đó.
       if (merged) {
         await refreshDraftHold(client, {
           orderId,
-          holdSeconds: this.holdSeconds,
+          holdSeconds,
           maxSeconds: this.maxHoldSeconds,
         });
       }
 
-      // ── 5. Ghi nhận khoá chống trùng ─────────────────────────────
+      // ── 6. Ghi nhận khoá chống trùng ─────────────────────────────
       // Nằm trong cùng transaction với phần giữ tồn: nếu giữ tồn hỏng
       // thì khoá cũng biến mất, request được phép thử lại sạch sẽ.
       await recordIdempotencyKey(client, {
@@ -167,7 +186,7 @@ export class DraftOrderService {
         orderId,
       });
 
-      // ── 6. Sự kiện, cùng transaction ─────────────────────────────
+      // ── 7. Sự kiện, cùng transaction ─────────────────────────────
       const result = await loadOrder(client, orderId);
       await appendOutboxEvent(client, {
         aggregateId: orderId,
@@ -230,7 +249,8 @@ export class DraftOrderService {
   private async resolveTargetOrder(
     client: PoolClient,
     params: CreateDraftOrderParams,
-    idempotencyKey: string
+    idempotencyKey: string,
+    opts: { holdSeconds: number; codBlocked: boolean }
   ): Promise<{ orderId: string; merged: boolean } | typeof ALREADY_EXISTS> {
     const resolved = await getOrCreateOpenDraft(client, {
       customerId: params.customerId,
@@ -238,7 +258,8 @@ export class DraftOrderService {
       livestreamId: params.livestreamId ?? null,
       source: params.source,
       idempotencyKey,
-      holdSeconds: this.holdSeconds,
+      holdSeconds: opts.holdSeconds,
+      codBlocked: opts.codBlocked,
     });
 
     if (!resolved.merged) {

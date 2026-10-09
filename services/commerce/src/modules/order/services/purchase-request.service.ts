@@ -48,6 +48,7 @@ import {
   mergeHoldInto,
   transferHoldToOrderItem,
 } from "../repositories/purchase-request.repository.js";
+import { evaluateGuards, type GuardVerdict } from "./order-guards.js";
 import type { OrderSource, RejectedLine } from "../types/order.types.js";
 import type {
   PurchaseRequest,
@@ -99,15 +100,29 @@ export class PurchaseRequestService {
       }
     }
 
-    if (params.confidence >= this.thresholds.autoOrder) {
-      return this.autoOrder(params);
-    }
-
+    // Điểm quá thấp thì khỏi chạy guard: không giữ tồn, không tạo đơn,
+    // chẳng có gì để chặn.
     if (params.confidence < this.thresholds.discard) {
       return this.discard(params);
     }
 
-    return this.queueForReview(params);
+    // ── Guard nghiệp vụ (T11) ────────────────────────────────────
+    // Chạy TRƯỚC khi chọn nhánh. Điểm tin cậy cao chỉ nói "AI đọc câu
+    // này chắc chắn", không nói "đơn này lành" — một troll gõ rõ ràng
+    // "cho e 50 cái" vẫn được AI chấm 0.99.
+    const guards = await this.withClient((client) =>
+      evaluateGuards(client, {
+        customerId: params.customerId,
+        livestreamId: params.livestreamId ?? null,
+        lines: params.lines,
+      })
+    );
+
+    if (params.confidence >= this.thresholds.autoOrder && guards.autoOrderAllowed) {
+      return this.autoOrder(params);
+    }
+
+    return this.queueForReview(params, guards);
   }
 
   /**
@@ -327,6 +342,17 @@ export class PurchaseRequestService {
 
   // ───────────────────────────────────────────────────────────────────
 
+  private async withClient<T>(
+    fn: (client: PoolClient) => Promise<T>
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      return await fn(client);
+    } finally {
+      client.release();
+    }
+  }
+
   private async findExistingByComment(
     commentId: string
   ): Promise<SubmitRequestResult | null> {
@@ -421,17 +447,23 @@ export class PurchaseRequestService {
    * động trả lại tồn — giống hệt nguyên tắc ở T4.
    */
   private async queueForReview(
-    params: SubmitRequestParams
+    params: SubmitRequestParams,
+    guards: GuardVerdict
   ): Promise<SubmitRequestResult> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
 
+      // BẪY-01 là trường hợp duy nhất KHÔNG giữ tồn khi chờ duyệt.
+      // Khác BẪY-05: ở đó rủi ro là mất một đơn sỉ, còn ở đây là một
+      // troll khoá sạch mã hot và làm cả phiên đứng hình.
       const requestId = await insertPurchaseRequest(
         client,
-        this.toDto(params, config.holdSoftSeconds),
+        this.toDto(params, guards.holdWhileReviewing ? guards.holdSeconds : null),
         "PENDING",
-        null
+        null,
+        null,
+        guards.reasons
       );
 
       // Sắp theo skuId để chống deadlock, cùng lý do như lúc tạo đơn.
@@ -445,6 +477,10 @@ export class PurchaseRequestService {
       for (const line of sortedLines) {
         if (!(await findSellableSku(client, line.skuId))) {
           throw new SkuNotFoundError(line.skuId);
+        }
+
+        if (!guards.holdWhileReviewing) {
+          continue;
         }
 
         const granted = await holdUpTo(client, line.skuId, line.quantity);
@@ -464,7 +500,10 @@ export class PurchaseRequestService {
 
       // Không giữ được gì thì không đưa vào hàng đợi: bắt nhân viên
       // duyệt một đề nghị không còn hàng là phí thời gian của họ.
-      if (!heldAny) {
+      //
+      // Trừ nhánh BẪY-01, vốn cố tình không giữ — đề nghị đó vẫn phải
+      // vào hàng đợi để nhân viên nhìn thấy có kẻ đang gom bất thường.
+      if (!heldAny && guards.holdWhileReviewing) {
         await client.query("ROLLBACK");
         throw new AllLinesOutOfStockError(rejected);
       }
@@ -476,6 +515,7 @@ export class PurchaseRequestService {
           purchaseRequestId: requestId,
           customerId: params.customerId,
           confidence: params.confidence,
+          guardReasons: guards.reasons,
         },
       });
 

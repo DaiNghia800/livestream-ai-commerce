@@ -378,7 +378,16 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
     const draft = await createDraft(sku, 1);
 
     const transport = new FakeTransport();
-    await new PublishOutboxJob(pool, transport).runOnce();
+
+    // RÚT CẠN chứ không chạy một lượt. Lô mặc định là 100 sự kiện, mà
+    // các file test khác chạy song song cũng đang sinh sự kiện — hai
+    // sự kiện của ca này không chắc cùng lọt vào một lô.
+    const job = new PublishOutboxJob(pool, transport, { batchSize: 200 });
+    for (let i = 0; i < 20; i += 1) {
+      if ((await job.runOnce()).claimed === 0) {
+        break;
+      }
+    }
 
     const cuaDonNay = transport.received.filter(
       (e) => e.aggregateId === draft.id || e.aggregateId === sku

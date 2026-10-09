@@ -5,13 +5,37 @@ import {
   OrderNotFoundError,
 } from "../../../shared/errors/domain.errors.js";
 import {
+  CancelIntentRequestSchema,
   CancelOrderRequestSchema,
   ConfirmOrderRequestSchema,
 } from "../schemas/order.schema.js";
+import type { CancelIntentService } from "../services/cancel-intent.service.js";
 import type { OrderLifecycleService } from "../services/order-lifecycle.service.js";
 
 export class OrderLifecycleController {
-  constructor(private readonly service: OrderLifecycleService) {}
+  constructor(
+    private readonly service: OrderLifecycleService,
+    private readonly cancelIntent: CancelIntentService
+  ) {}
+
+  /**
+   * POST /orders/cancel-intent — BẪY-10.
+   *
+   * AI worker gọi khi đọc được ý định huỷ từ bình luận ("thôi k lấy
+   * nữa"). Huỷ mọi thứ khách đang giữ TRONG PHIÊN đó.
+   *
+   * Luôn trả 200 kể cả khi không có gì để huỷ: AI đọc nhầm một câu
+   * bâng quơ thành ý định huỷ là chuyện thường, và không có gì để huỷ
+   * thì cũng chẳng có hại gì.
+   */
+  cancelIntentFromComment = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = CancelIntentRequestSchema.parse(req.body);
+      res.json(await this.cancelIntent.cancelAllInSession(input));
+    } catch (err) {
+      this.handleError(err, res, "cancel from comment intent");
+    }
+  };
 
   /**
    * GET /orders/confirm/:token

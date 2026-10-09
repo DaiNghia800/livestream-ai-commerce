@@ -4,7 +4,7 @@ import { createEventTransport } from "./modules/order/events/event-transport.js"
 import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
 import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
 import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
-import { DraftOrderService } from "./modules/order/services/draft-order.service.js";
+import { createDraftOrderService } from "./modules/order/services/draft-order.factory.js";
 import { PurchaseRequestService } from "./modules/order/services/purchase-request.service.js";
 import { pool, runMigrations } from "./shared/database/database.js";
 
@@ -43,7 +43,7 @@ async function bootstrap() {
   const expireRequestsJob = new ExpirePurchaseRequestsJob(
     new PurchaseRequestService(
       pool,
-      new DraftOrderService(pool, config.holdSoftSeconds, config.holdMaxSeconds)
+      createDraftOrderService(pool)
     ),
     { intervalMs: config.expireJobIntervalMs }
   );

@@ -4,8 +4,10 @@ import { config } from "../../../config.js";
 import { pool as defaultPool } from "../../../shared/database/database.js";
 import { OrderController } from "../controllers/order.controller.js";
 import { OrderLifecycleController } from "../controllers/order-lifecycle.controller.js";
-import { DraftOrderService } from "../services/draft-order.service.js";
+import { createDraftOrderService } from "../services/draft-order.factory.js";
+import { CancelIntentService } from "../services/cancel-intent.service.js";
 import { OrderLifecycleService } from "../services/order-lifecycle.service.js";
+import { PurchaseRequestService } from "../services/purchase-request.service.js";
 
 /**
  * `customPool` cho phép test bơm pool riêng vào, giống cách
@@ -16,10 +18,16 @@ export function createOrderRouter(customPool?: Pool): Router {
   const pool = customPool ?? defaultPool;
 
   const draftController = new OrderController(
-    new DraftOrderService(pool, config.holdSoftSeconds, config.holdMaxSeconds)
+    createDraftOrderService(pool)
   );
+  const lifecycle = new OrderLifecycleService(pool);
   const lifecycleController = new OrderLifecycleController(
-    new OrderLifecycleService(pool)
+    lifecycle,
+    new CancelIntentService(
+      lifecycle,
+      new PurchaseRequestService(pool, createDraftOrderService(pool)),
+      pool
+    )
   );
 
   // Luồng khách hàng — định danh bằng confirm_token trong link, không
@@ -29,6 +37,9 @@ export function createOrderRouter(customPool?: Pool): Router {
 
   // Luồng shop
   router.post("/draft", draftController.createDraft);
+  // Đặt TRƯỚC "/:orderId/..." không bắt buộc (khác số đoạn đường dẫn)
+  // nhưng để cạnh nhau cho dễ đọc.
+  router.post("/cancel-intent", lifecycleController.cancelIntentFromComment);
   router.post("/:orderId/cancel", lifecycleController.cancel);
   router.post("/:orderId/processing", lifecycleController.startProcessing);
   router.post("/:orderId/complete", lifecycleController.complete);

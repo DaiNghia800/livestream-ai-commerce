@@ -26,6 +26,16 @@ export interface AppConfig {
   realtimeEventsUrl?: string;
   /** Khoảng cách giữa hai lượt đẩy outbox. */
   outboxJobIntervalMs: number;
+
+  // ── Guard nghiệp vụ (T11) ───────────────────────────────────────
+  /** BẪY-05: một dòng xin nhiều hơn mức này thì đẩy review, vẫn giữ tồn. */
+  reviewQtyThreshold: number;
+  /** BẪY-01: khách đã giữ tới mức này trong phiên thì đẩy review, KHÔNG giữ thêm. */
+  maxHeldPerCustomerPerSession: number;
+  /** BẪY-08: từ điểm này trở lên là khách rủi ro cao. */
+  riskScoreThreshold: number;
+  /** BẪY-08: TTL rút ngắn cho khách rủi ro cao. */
+  holdRiskySeconds: number;
 }
 
 export const config: AppConfig = {
@@ -48,4 +58,17 @@ export const config: AppConfig = {
   // chạy ở chế độ ghi log, không sinh ra sự kiện FAILED giả.
   realtimeEventsUrl: process.env.REALTIME_EVENTS_URL || undefined,
   outboxJobIntervalMs: parseInt(process.env.OUTBOX_JOB_INTERVAL_MS || "2000", 10),
+
+  // "cho e 100 cái" — gõ nhầm hay khách sỉ thật? Trên 10 thì để người
+  // thật quyết, nhưng vẫn giữ tồn để không mất khách sỉ thật.
+  reviewQtyThreshold: parseInt(process.env.REVIEW_QTY_THRESHOLD || "10", 10),
+  // Troll bình luận 50 lần có thể khoá sạch mã hot. Chạm trần thì
+  // KHÔNG giữ thêm — khác BẪY-05, vì ở đây rủi ro là phá phiên.
+  maxHeldPerCustomerPerSession: parseInt(
+    process.env.MAX_HELD_PER_CUSTOMER_PER_SESSION || "10",
+    10
+  ),
+  // 0.45 = ba lần chốt rồi bỏ, hoặc một lần nghi gian lận.
+  riskScoreThreshold: parseFloat(process.env.RISK_SCORE_THRESHOLD || "0.45"),
+  holdRiskySeconds: parseInt(process.env.HOLD_RISKY_SECONDS || "180", 10),
 };
