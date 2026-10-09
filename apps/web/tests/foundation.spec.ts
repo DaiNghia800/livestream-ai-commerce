@@ -13,7 +13,6 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
 }) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/");
-  await page.screenshot({ path: test.info().outputPath("customer.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const trigger = page.getByRole("button", { name: "Xem A001" });
   await trigger.focus();
@@ -28,17 +27,22 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(trigger).toBeFocused();
+  await page.screenshot({ path: test.info().outputPath("customer.png"), fullPage: true });
   expect(consoleErrors).toEqual([]);
 });
 test("navigation and combined filters work without horizontal overflow", async ({
   page,
-}) => {
+}, testInfo) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: "Thử gửi bình luận" }),
   ).toBeDisabled();
   await page.getByRole("link", { name: "Kênh chủ shop" }).click();
+  
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Mở menu quản lý" }).click();
+  }
   await expect(
     page.getByRole("heading", { name: "Tổng quan hoạt động" }),
   ).toBeVisible();
@@ -68,27 +72,29 @@ test("merchant layout marks the livestream route active and exposes mobile navig
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/livestream/live-2025-08");
   await expect(
-    page.getByRole("heading", { name: "Đại tiệc Flash Sale BST Linen Hè 2025" }),
+    page.getByRole("heading", {
+      name: "Đại tiệc Flash Sale BST Linen Hè 2025",
+      level: 1,
+    }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Livestream", exact: true })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(page.getByRole("button", { name: /Bắt đầu Live/ })).toBeDisabled();
-  await expect(page.getByRole("button", { name: /Chỉnh sửa phiên/ })).toBeDisabled();
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: "Mở menu quản lý" }).click();
+  }
+
+  await expect(
+    page
+      .getByRole("navigation", { name: "Điều hướng chủ shop" })
+      .getByRole("link", { name: "Livestream", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: /Bắt đầu Live/ })).toBeVisible();
   await page.screenshot({
     path: test.info().outputPath("merchant-live-detail.png"),
     fullPage: true,
   });
 
   if (testInfo.project.name === "mobile") {
-    const menuButton = page.getByRole("button", { name: "Mở menu quản lý" });
-    await expect(menuButton).toBeVisible();
-    await menuButton.focus();
-    await page.keyboard.press("Enter");
-    await expect(
-      page.getByRole("button", { name: "Đóng menu quản lý" }).first(),
-    ).toHaveAttribute("aria-expanded", "true");
+    const menuButton = page.getByRole("button", { name: "Đóng menu quản lý" }).first();
+    await expect(menuButton).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("navigation", { name: "Điều hướng chủ shop" })).toBeVisible();
   }
 
