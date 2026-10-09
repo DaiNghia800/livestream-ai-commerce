@@ -83,6 +83,36 @@ async function mockProductApi(page: Page, onImport?: () => void) {
       return;
     }
 
+    const detailMatch = url.pathname.match(/\/api\/products\/([^/]+)(?:\/skus\/([^/]+))?$/);
+    if (detailMatch && !["export.xlsx", "import.xlsx", "categories"].includes(detailMatch[1])) {
+      const product = productRows.find((row) => row.id === detailMatch[1]);
+      const method = route.request().method();
+      if (!product) {
+        await route.fulfill({ status: 404, json: { message: "Product not found" } });
+      } else if (detailMatch[2]) {
+        await route.fulfill({
+          json: product.skus.find((sku) => sku.id === detailMatch[2]) ?? product.skus[0],
+        });
+      } else {
+        await route.fulfill({
+          json: {
+            ...product,
+            name: method === "GET" ? "Áo Sơ Mi Linen Cổ Tàu Cao Cấp" : product.name,
+            brand: null,
+            listPrice: null,
+            stockWarning: 15,
+            triggerCode: "AO01",
+            holdInventory: true,
+            shippingWeightGrams: null,
+            packageLengthCm: null,
+            packageWidthCm: null,
+            packageHeightCm: null,
+          },
+        });
+      }
+      return;
+    }
+
     const search = (url.searchParams.get("q") || "").toLowerCase();
     const categoryId = url.searchParams.get("categoryId");
     const status = url.searchParams.get("status");
@@ -368,9 +398,10 @@ test("product edit route matches the editing workflow on desktop and mobile", as
   expect(checkboxBox!.width).toBe(16);
   expect(checkboxBox!.height).toBe(16);
 
-  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
-  await expect(page.getByText("Đã lưu thay đổi thành công")).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
   ).toBe(true);
+
+  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
+  await expect(page).toHaveURL(/\/shop\/products$/);
 });
