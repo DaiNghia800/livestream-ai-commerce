@@ -353,4 +353,34 @@ describe("LivestreamService - Unit Tests", () => {
     expect(result).not.toBeNull();
     expect(result?.products).toEqual([]);
   });
+
+  it("UT-LS-018 - updateLivestreamStatus returns null when livestream does not exist", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(null);
+
+    const result = await service.updateLivestreamStatus("missing-id", "live");
+
+    expect(result).toBeNull();
+  });
+
+  it("UT-LS-019 - updateLivestreamStatus throws error when restarting an ended livestream", async () => {
+    vi.mocked(repository.findById).mockResolvedValue({
+      ...createdLivestream,
+      status: "ended",
+    });
+
+    await expect(
+      service.updateLivestreamStatus(createdLivestream.id, "live")
+    ).rejects.toThrow("Cannot restart an ended livestream");
+  });
+
+  it("UT-LS-020 - updateLivestreamStatus delegates to repository on valid transition", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    const updatedLivestream = { ...createdLivestream, status: "live" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const result = await service.updateLivestreamStatus(createdLivestream.id, "live");
+
+    expect(result).toEqual(updatedLivestream);
+    expect((repository as any).updateStatus).toHaveBeenCalledWith(createdLivestream.id, "live");
+  });
 });
