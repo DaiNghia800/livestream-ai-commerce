@@ -370,7 +370,7 @@ export async function findOrderDetailByCode(
             COALESCE((
                 SELECT json_agg(json_build_object(
                            'id', oi.id,
-                           'skuId', oi.sku_id,
+                           'skuId', oi.sku_id::text,
                            'skuCode', s.sku_code,
                            'productName', pr.name,
                            'variantName', s.variant_name,

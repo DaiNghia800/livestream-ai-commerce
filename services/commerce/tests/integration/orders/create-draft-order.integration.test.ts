@@ -95,7 +95,10 @@ describe("POST /api/orders/draft", () => {
   });
 
   it("SKU không tồn tại trả 404", async () => {
-    const res = await post(payload(crypto.randomUUID(), 1));
+    // Mã SKU không tồn tại phải là một SỐ không tồn tại: mã SKU giờ
+    // là số nguyên của bảng product_skus, đưa UUID vào thì bị chặn
+    // ngay ở bước kiểm tra dữ liệu (400) và không chạm tới 404.
+    const res = await post(payload("999999999", 1));
     expect(res.status).toBe(404);
   });
 

@@ -2,7 +2,12 @@ import { z } from "zod";
 
 const RequestLineSchema = z
   .object({
-    skuId: z.string().uuid({ message: "skuId must be a valid UUID" }),
+    // product_skus.id là BIGSERIAL, nên mã SKU là chuỗi số nguyên
+    // dương ("12"), không phải UUID. Dùng đúng biểu thức mà module
+    // kho đang dùng để hai bên không nhận khác nhau.
+    skuId: z
+      .string()
+      .regex(/^[1-9]\d*$/, { message: "skuId must be a positive integer id" }),
     quantity: z
       .number()
       .int({ message: "quantity must be an integer" })

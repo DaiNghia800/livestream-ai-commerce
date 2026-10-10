@@ -62,7 +62,7 @@ const VALID_DRAFT = {
   customerId: "11111111-1111-4111-8111-111111111111",
   merchantId: "22222222-2222-4222-8222-222222222222",
   source: "COMMENT_AI",
-  lines: [{ skuId: "33333333-3333-4333-8333-333333333333", quantity: 1 }],
+  lines: [{ skuId: "33", quantity: 1 }],
 };
 
 describe("OrderController — tạo đơn nháp", () => {
@@ -283,7 +283,7 @@ describe("PurchaseRequestController", () => {
     merchantId: "22222222-2222-4222-8222-222222222222",
     source: "COMMENT_AI",
     confidence: 0.7,
-    lines: [{ skuId: "33333333-3333-4333-8333-333333333333", quantity: 1 }],
+    lines: [{ skuId: "33", quantity: 1 }],
   };
 
   it("gửi đề nghị: nội dung sai trả 400", async () => {

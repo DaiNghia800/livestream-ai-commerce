@@ -370,7 +370,7 @@ export async function appendInventoryChangedEvents(
     `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
      SELECT 'inventory', inv.sku_id, 'inventory.changed',
             jsonb_build_object(
-                'skuId',    inv.sku_id,
+                'skuId',    inv.sku_id::text,
                 'onHand',   inv.on_hand_quantity,
                 'held',     inv.held_quantity,
                 'sellable', inv.on_hand_quantity - inv.held_quantity,

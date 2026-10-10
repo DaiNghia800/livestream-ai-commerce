@@ -72,19 +72,22 @@ async function taoSku(ton: number): Promise<{ id: string; ten: string; gia: numb
   const hau = `${Date.now().toString(36)}${soThuTu}`;
 
   const sp = await pool.query<{ id: string }>(
-    `INSERT INTO products (merchant_id, code, name) VALUES ($1, $2, $3) RETURNING id`,
-    [MERCHANT, `DEMO-${hau}`, ten],
+    `INSERT INTO products (shop_id, code, name) VALUES (1, $1, $2) RETURNING id`,
+    [`DEMO-${hau}`, ten],
   );
   const sku = await pool.query<{ id: string }>(
     `INSERT INTO product_skus (product_id, sku_code, variant_name, price)
      VALUES ($1, $2, $3, $4) RETURNING id`,
     [sp.rows[0].id, `DEMO-${hau}`, `${mau} · ${size}`, gia],
   );
-  // Dòng inventory do trigger tự tạo; ở đây chỉ đặt số lượng.
-  await pool.query(`UPDATE inventory SET on_hand_quantity = $2 WHERE sku_id = $1`, [
-    sku.rows[0].id,
-    ton,
-  ]);
+  // Phải tự thêm dòng inventory: bảng của module kho không có trigger
+  // sinh sẵn khi thêm SKU.
+  await pool.query(
+    `INSERT INTO inventory (sku_id, on_hand_quantity) VALUES ($1, $2)
+     ON CONFLICT (sku_id) DO UPDATE
+        SET on_hand_quantity = EXCLUDED.on_hand_quantity`,
+    [sku.rows[0].id, ton],
+  );
   return { id: sku.rows[0].id, ten, gia };
 }
 

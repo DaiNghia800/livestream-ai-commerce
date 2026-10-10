@@ -41,8 +41,8 @@ function post(path: string, body: unknown, headers: Record<string, string> = {})
 async function seedSku(): Promise<string> {
   const suffix = Date.now().toString(36);
   const product = await pool.query<{ id: string }>(
-    `INSERT INTO products (merchant_id, code, name)
-     VALUES (gen_random_uuid(), $1, 'Áo thun demo') RETURNING id`,
+    `INSERT INTO products (shop_id, code, name)
+     VALUES (1, $1, 'Áo thun demo') RETURNING id`,
     [`SMOKE-${suffix}`],
   );
   const sku = await pool.query<{ id: string }>(
@@ -50,9 +50,10 @@ async function seedSku(): Promise<string> {
      VALUES ($1, $2, 'M', 199000) RETURNING id`,
     [product.rows[0].id, `SMOKE-${suffix}-M`],
   );
-  // Dòng inventory do trigger tự tạo, ở đây chỉ đặt số lượng.
+  // Phải tự thêm dòng inventory: bảng của module kho không có trigger.
   await pool.query(
-    `UPDATE inventory SET on_hand_quantity = 10 WHERE sku_id = $1`,
+    `INSERT INTO inventory (sku_id, on_hand_quantity) VALUES ($1, 10)
+     ON CONFLICT (sku_id) DO UPDATE SET on_hand_quantity = 10`,
     [sku.rows[0].id],
   );
   return sku.rows[0].id;

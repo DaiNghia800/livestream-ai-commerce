@@ -86,7 +86,10 @@ CREATE TRIGGER trg_orders_updated_at
 CREATE TABLE order_items (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id          UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    sku_id            UUID NOT NULL REFERENCES product_skus(id) ON DELETE RESTRICT,
+    -- BIGINT, không phải UUID: product_skus.id là BIGSERIAL do
+    -- module sản phẩm định nghĩa. Khoá ngoại bắt buộc trùng kiểu
+    -- với cột được tham chiếu.
+    sku_id            BIGINT NOT NULL REFERENCES product_skus(id) ON DELETE RESTRICT,
 
     quantity          INTEGER NOT NULL CHECK (quantity > 0),
     -- Số khách thực sự muốn. Khác quantity khi chỉ giữ được một phần.
@@ -158,7 +161,10 @@ CREATE TABLE reservations (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id       UUID NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
     order_item_id  UUID NOT NULL REFERENCES order_items(id) ON DELETE RESTRICT,
-    sku_id         UUID NOT NULL REFERENCES product_skus(id) ON DELETE RESTRICT,
+    -- BIGINT, không phải UUID: product_skus.id là BIGSERIAL do
+    -- module sản phẩm định nghĩa. Khoá ngoại bắt buộc trùng kiểu
+    -- với cột được tham chiếu.
+    sku_id         BIGINT NOT NULL REFERENCES product_skus(id) ON DELETE RESTRICT,
 
     quantity       INTEGER NOT NULL CHECK (quantity > 0),
 
@@ -210,7 +216,12 @@ CREATE TRIGGER trg_payments_updated_at
 CREATE TABLE outbox_events (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     aggregate_type VARCHAR(50) NOT NULL,
-    aggregate_id   UUID NOT NULL,
+    -- VARCHAR chứ không UUID: bảng này ghi sự kiện cho nhiều loại
+    -- thực thể, mà mã của chúng không cùng kiểu — đơn hàng là UUID
+    -- còn SKU là số nguyên của module kho. Lưu dạng chuỗi để một
+    -- bảng phục vụ được cả hai; code chỉ đọc ra rồi gửi đi, không
+    -- bao giờ so sánh cột này với một UUID trong SQL.
+    aggregate_id   VARCHAR(64) NOT NULL,
     event_type     VARCHAR(100) NOT NULL,
     payload        JSONB NOT NULL,
     status         VARCHAR(10) NOT NULL DEFAULT 'PENDING'

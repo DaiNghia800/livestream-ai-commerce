@@ -3,9 +3,12 @@ import type { Pool } from "pg";
 /**
  * Tạo một SKU kèm tồn kho, trả về skuId.
  *
- * Dòng inventory do trigger trg_sku_init_inventory tự tạo khi thêm SKU,
- * ở đây chỉ đặt lại số lượng. Test gọi hàm này cũng là cách kiểm tra
- * gián tiếp rằng trigger đó hoạt động.
+ * Dòng inventory phải tự thêm: bảng của module kho không có trigger
+ * sinh sẵn, chính code tạo sản phẩm bên đó cũng chèn tay. Làm giống
+ * họ để test chạy trên đúng trạng thái dữ liệu mà chạy thật sẽ có.
+ *
+ * `shop_id` là số nguyên tự do, không trỏ tới bảng nào — khác với
+ * `orders.merchant_id` vốn là UUID. Hai mã này không liên quan nhau.
  */
 export async function createSkuWithStock(
   pool: Pool,
@@ -15,8 +18,8 @@ export async function createSkuWithStock(
   const suffix = Math.random().toString(36).slice(2, 12);
 
   const product = await pool.query<{ id: string }>(
-    `INSERT INTO products (merchant_id, code, name)
-     VALUES (gen_random_uuid(), $1, 'Sản phẩm test')
+    `INSERT INTO products (shop_id, code, name)
+     VALUES (1, $1, 'Sản phẩm test')
      RETURNING id`,
     [`P-${suffix}`]
   );
@@ -29,9 +32,11 @@ export async function createSkuWithStock(
   );
 
   await pool.query(
-    `UPDATE inventory
-        SET on_hand_quantity = $2, held_quantity = $3
-      WHERE sku_id = $1`,
+    `INSERT INTO inventory (sku_id, on_hand_quantity, held_quantity)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (sku_id) DO UPDATE
+        SET on_hand_quantity = EXCLUDED.on_hand_quantity,
+            held_quantity    = EXCLUDED.held_quantity`,
     [sku.rows[0].id, onHand, held]
   );
 

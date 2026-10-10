@@ -332,7 +332,7 @@ export async function loadPurchaseRequest(
             pr.created_at    AS "createdAt",
             COALESCE(
                 (SELECT json_agg(json_build_object(
-                            'skuId', r.sku_id,
+                            'skuId', r.sku_id::text,
                             'quantity', r.quantity,
                             'requestedQty', COALESCE(r.requested_quantity, r.quantity),
                             'status', r.status
@@ -372,7 +372,7 @@ export async function listPendingRequests(
             pr.created_at    AS "createdAt",
             COALESCE(
                 (SELECT json_agg(json_build_object(
-                            'skuId', r.sku_id,
+                            'skuId', r.sku_id::text,
                             'quantity', r.quantity,
                             'requestedQty', COALESCE(r.requested_quantity, r.quantity),
                             'status', r.status

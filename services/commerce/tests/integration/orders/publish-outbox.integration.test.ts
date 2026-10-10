@@ -56,6 +56,17 @@ class FakeTransport implements EventTransport {
  *
  * Dùng aggregate_id riêng cho từng ca để lọc ra đúng sự kiện của mình
  * giữa đống sự kiện các file test khác đang sinh song song.
+ *
+ * `created_at` lùi về một giờ trước là điều kiện SỐNG CÒN của file này,
+ * không phải chi tiết trang trí. Tầng nhận việc lấy theo
+ * `ORDER BY created_at LIMIT <lô>`, nên sự kiện vừa sinh luôn nằm cuối
+ * hàng. Các file test khác chạy song song sinh thừa một lô sự kiện mới
+ * hơn là sự kiện của ca này không bao giờ tới lượt, và mọi assert về
+ * `attempts` đều thấy 0. Máy cá nhân ít dữ liệu nên không lộ, chạy trên
+ * CI với cả bộ test thì đỏ.
+ *
+ * Lùi thời điểm tạo đẩy sự kiện lên đầu hàng, nên nó luôn nằm trong lô
+ * đầu tiên bất kể các file khác sinh bao nhiêu.
  */
 async function seedEvent(eventType = "test.event"): Promise<{
   id: string;
@@ -63,8 +74,8 @@ async function seedEvent(eventType = "test.event"): Promise<{
 }> {
   const aggregateId = crypto.randomUUID();
   const result = await pool.query<{ id: string }>(
-    `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-     VALUES ('test', $1, $2, '{"v":1}'::jsonb)
+    `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload, created_at)
+     VALUES ('test', $1, $2, '{"v":1}'::jsonb, NOW() - interval '1 hour')
      RETURNING id`,
     [aggregateId, eventType]
   );
