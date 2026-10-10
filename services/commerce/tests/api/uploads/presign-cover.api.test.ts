@@ -124,7 +124,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.uploadUrl).toBeDefined();
-    expect(res.body.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.jpg$/);
+    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.jpg$/);
     expect(res.body.coverImageUrl).toBeUndefined();
     expect(res.body.expiresIn).toBe(300);
   });
@@ -140,7 +140,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.png$/);
+    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.png$/);
   });
 
   it("TC-UP-003 - Presign valid WebP image -> HTTP 200", async () => {
@@ -154,7 +154,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.webp$/);
+    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.webp$/);
   });
 
   it("TC-UP-004 - Reject unsupported MIME type (image/gif) -> HTTP 400", async () => {

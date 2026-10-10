@@ -202,8 +202,11 @@ describe("LivestreamService - Unit Tests", () => {
     );
   });
 
-  it("UT-LS-011 - New livestream uses draft status and null streaming fields", async () => {
-    vi.mocked(repository.create).mockResolvedValue(createdLivestream);
+  it("UT-LS-011 - New livestream defaults to draft status and null streaming fields", async () => {
+    vi.mocked(repository.create).mockResolvedValue({
+      ...createdLivestream,
+      status: "draft",
+    });
 
     await service.createLivestream({
       merchantId: MERCHANT_ID,
@@ -222,6 +225,25 @@ describe("LivestreamService - Unit Tests", () => {
       startedAt: null,
       endedAt: null,
     });
+  });
+
+  it("UT-LS-018 - New livestream uses explicit scheduled status if provided", async () => {
+    vi.mocked(repository.create).mockResolvedValue({
+      ...createdLivestream,
+      status: "scheduled",
+    });
+
+    await service.createLivestream({
+      merchantId: MERCHANT_ID,
+      title: "Scheduled Sale",
+      status: "scheduled",
+    });
+
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "scheduled",
+      })
+    );
   });
 
   it("UT-LS-012 - Merchant ID is passed correctly to repository", async () => {
@@ -256,5 +278,79 @@ describe("LivestreamService - Unit Tests", () => {
         coverImageKey: "livestreams/covers/test.webp",
       }),
     );
+  });
+
+  it("UT-LS-014 - listLivestreams delegates to repository.findMany", async () => {
+    const mockListResult = {
+      items: [{ ...createdLivestream, productCount: 3 }],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+    };
+    repository.findMany = vi.fn().mockResolvedValue(mockListResult);
+
+    const query = {
+      merchantId: MERCHANT_ID,
+      status: "draft" as const,
+      search: "sale",
+      page: 1,
+      limit: 10,
+    };
+
+    const result = await service.listLivestreams(query);
+
+    expect(result).toEqual(mockListResult);
+    expect(repository.findMany).toHaveBeenCalledWith(query);
+  });
+
+  it("UT-LS-015 - getLivestreamById returns null when livestream does not exist", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(null);
+
+    const result = await service.getLivestreamById("non-existent-id");
+
+    expect(result).toBeNull();
+    expect(repository.findById).toHaveBeenCalledWith("non-existent-id");
+  });
+
+  it("UT-LS-016 - getLivestreamById returns livestream with products when productRepo is provided", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+
+    const mockProductRepo = {
+      addProduct: vi.fn(),
+      findByLivestreamId: vi.fn().mockResolvedValue([
+        {
+          id: "p-entry-1",
+          livestreamId: createdLivestream.id,
+          productId: "prod-1",
+          variantId: null,
+          displayOrder: 1,
+          isFeatured: true,
+          createdAt: "2026-10-04T00:00:00.000Z",
+        },
+      ]),
+      findByLivestreamAndProduct: vi.fn(),
+      updateProduct: vi.fn(),
+      removeProduct: vi.fn(),
+      countByLivestreamId: vi.fn(),
+      unfeatureAll: vi.fn(),
+    };
+
+    const serviceWithProducts = new LivestreamService(repository, mockProductRepo as any);
+    const result = await serviceWithProducts.getLivestreamById(createdLivestream.id);
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe(createdLivestream.id);
+    expect(result?.products).toHaveLength(1);
+    expect(result?.products[0].productId).toBe("prod-1");
+  });
+
+  it("UT-LS-017 - getLivestreamById returns empty products when no productRepo provided", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+
+    const result = await service.getLivestreamById(createdLivestream.id);
+
+    expect(result).not.toBeNull();
+    expect(result?.products).toEqual([]);
   });
 });

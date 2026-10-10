@@ -236,6 +236,19 @@ describe("POST /api/livestreams - API/Component Tests", () => {
         expect(res.body.status).toBe("draft");
     });
 
+    it('TC-CL-014B - Explicit status "scheduled" creates scheduled livestream', async () => {
+        const res = await request(app)
+            .post("/api/livestreams")
+            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .send({
+                title: "Scheduled Livestream",
+                status: "scheduled",
+            });
+
+        expect(res.status).toBe(201);
+        expect(res.body.status).toBe("scheduled");
+    });
+
     // =========================================================
     // AC07 - Livestream thuộc Merchant thực hiện request
     // =========================================================

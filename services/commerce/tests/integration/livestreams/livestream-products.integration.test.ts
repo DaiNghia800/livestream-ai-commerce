@@ -1,6 +1,7 @@
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { pool } from "../../../src/shared/database/database.js";
 import { PostgresLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { PostgresLivestreamProductRepository } from "../../../src/modules/livestream/repositories/livestream-product.repository.js";
 
@@ -11,8 +12,23 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
   const liveRepo = new PostgresLivestreamRepository();
   const productRepo = new PostgresLivestreamProductRepository();
   const liveApp = createApp(liveRepo, undefined, productRepo);
+  let dbConnected = false;
 
-  it("TC-LP-INT-001 - End-to-end add, list, update and remove products in PostgreSQL", async () => {
+  beforeAll(async () => {
+    try {
+      const client = await pool.connect();
+      client.release();
+      dbConnected = true;
+    } catch {
+      dbConnected = false;
+    }
+  });
+
+  it("TC-LP-INT-001 - End-to-end add, list, update and remove products in PostgreSQL", async (ctx) => {
+    if (!dbConnected) {
+      ctx.skip();
+      return;
+    }
     const merchantId = "99999999-9999-4999-8999-999999999999";
     const productId1 = "88888888-8888-4888-8888-888888888881";
     const productId2 = "88888888-8888-4888-8888-888888888882";

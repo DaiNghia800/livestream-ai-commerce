@@ -201,6 +201,81 @@ describe("LivestreamRepository - Unit Tests", () => {
       expect(result?.startedAt).toBeNull();
       expect(result?.endedAt).toBeNull();
     });
+
+    it("REPO-PG-006 - findMany queries with merchantId, status, search and calculates pagination", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "55555555-5555-4555-8555-555555555555",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Winter Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        productCount: 4,
+      };
+
+      const querySpy = vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [{ total: 1 }] } as any)
+        .mockResolvedValueOnce({ rows: [mockRow] } as any);
+
+      const result = await repo.findMany({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        status: "live",
+        search: "Winter",
+        page: 1,
+        limit: 10,
+      });
+
+      expect(querySpy).toHaveBeenCalledTimes(2);
+      expect(result.total).toBe(1);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].productCount).toBe(4);
+      expect(result.totalPages).toBe(1);
+    });
+
+    it("REPO-PG-007 - findMany queries with defaults when search/status are omitted", async () => {
+      const querySpy = vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [{ total: 0 }] } as any)
+        .mockResolvedValueOnce({ rows: [] } as any);
+
+      const result = await repo.findMany({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+      });
+
+      expect(querySpy).toHaveBeenCalledTimes(2);
+      expect(result.total).toBe(0);
+      expect(result.items).toHaveLength(0);
+      expect(result.totalPages).toBe(1);
+    });
+
+    it("REPO-PG-008 - findMany includes fromDate and toDate conditions in SQL query", async () => {
+      const querySpy = vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [{ total: 0 }] } as any)
+        .mockResolvedValueOnce({ rows: [] } as any);
+
+      await repo.findMany({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        fromDate: "2026-10-01T00:00:00.000Z",
+        toDate: "2026-10-09T23:59:59.999Z",
+      });
+
+      expect(querySpy).toHaveBeenCalledTimes(2);
+      const countCall = querySpy.mock.calls[0];
+      const countSql = countCall[0] as string;
+      const countValues = countCall[1] as unknown[];
+
+      expect(countSql).toContain("COALESCE(l.scheduled_at, l.created_at) >=");
+      expect(countSql).toContain("COALESCE(l.scheduled_at, l.created_at) <=");
+      expect(countValues).toContain("2026-10-01T00:00:00.000Z");
+      expect(countValues).toContain("2026-10-09T23:59:59.999Z");
+    });
   });
 
   describe("InMemoryLivestreamRepository", () => {
@@ -238,5 +313,154 @@ describe("LivestreamRepository - Unit Tests", () => {
       const found = await repo.findById("non-existent-uuid");
       expect(found).toBeNull();
     });
+
+    it("REPO-MEM-003 - findMany filters by merchantId, status, search and sorts by createdAt desc", async () => {
+      const merchantA = "a0000000-0000-0000-0000-000000000001";
+      const merchantB = "b0000000-0000-0000-0000-000000000002";
+
+      const ls1 = await repo.create({
+        merchantId: merchantA,
+        title: "Fashion Night",
+        description: null,
+        coverImageKey: null,
+        status: "draft",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const ls2 = await repo.create({
+        merchantId: merchantA,
+        title: "Fashion Live",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      // Different merchant
+      await repo.create({
+        merchantId: merchantB,
+        title: "Other Merchant Live",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      repo.setProductCount(ls2.id, 5);
+
+      // Filter by status live
+      const liveResult = await repo.findMany({
+        merchantId: merchantA,
+        status: "live",
+      });
+      expect(liveResult.total).toBe(1);
+      expect(liveResult.items[0].id).toBe(ls2.id);
+      expect(liveResult.items[0].productCount).toBe(5);
+
+      // Filter by search
+      const searchResult = await repo.findMany({
+        merchantId: merchantA,
+        search: "night",
+      });
+      expect(searchResult.total).toBe(1);
+      expect(searchResult.items[0].id).toBe(ls1.id);
+
+      // List all for merchantA
+      const allResult = await repo.findMany({
+        merchantId: merchantA,
+        status: "all",
+      });
+      expect(allResult.total).toBe(2);
+    });
+
+    it("REPO-MEM-004 - findMany handles pagination correctly", async () => {
+      const merchantId = "a0000000-0000-0000-0000-000000000001";
+      for (let i = 1; i <= 5; i++) {
+        await repo.create({
+          merchantId,
+          title: `Stream ${i}`,
+          description: null,
+          coverImageKey: null,
+          status: "draft",
+          channelArn: null,
+          playbackUrl: null,
+          scheduledAt: null,
+          startedAt: null,
+          endedAt: null,
+        });
+      }
+
+      const p1 = await repo.findMany({ merchantId, page: 1, limit: 2 });
+      expect(p1.total).toBe(5);
+      expect(p1.totalPages).toBe(3);
+      expect(p1.items).toHaveLength(2);
+
+      const p3 = await repo.findMany({ merchantId, page: 3, limit: 2 });
+      expect(p3.items).toHaveLength(1);
+    });
+
+    it("REPO-MEM-005 - findMany filters correctly by fromDate and toDate in memory", async () => {
+      const merchantId = "a0000000-0000-0000-0000-000000000001";
+      await repo.create({
+        merchantId,
+        title: "Session 1",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: "2026-10-01T10:00:00.000Z",
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const s2 = await repo.create({
+        merchantId,
+        title: "Session 2",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: "2026-10-05T10:00:00.000Z",
+        startedAt: null,
+        endedAt: null,
+      });
+
+      await repo.create({
+        merchantId,
+        title: "Session 3",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: "2026-10-15T10:00:00.000Z",
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const res = await repo.findMany({
+        merchantId,
+        fromDate: "2026-10-03T00:00:00.000Z",
+        toDate: "2026-10-07T23:59:59.999Z",
+      });
+
+      expect(res.total).toBe(1);
+      expect(res.items[0].id).toBe(s2.id);
+    });
   });
 });
+

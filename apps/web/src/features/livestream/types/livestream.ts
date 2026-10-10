@@ -17,6 +17,7 @@ export interface Livestream {
     scheduledAt?: string;
     startedAt?: string;
     endedAt?: string;
+    createdAt?: string;
     productCount: number;
     currentViewers?: number;
     peakViewers?: number;

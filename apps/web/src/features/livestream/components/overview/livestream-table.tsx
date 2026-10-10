@@ -7,6 +7,7 @@ import { LivestreamTableRow } from "./livestream-table-row";
 interface LivestreamTableProps {
   items?: Livestream[];
   isLoading?: boolean;
+  isFetching?: boolean;
   isError?: boolean;
   errorMessage?: string;
   onRetry?: () => void;
@@ -21,6 +22,7 @@ interface LivestreamTableProps {
 export function LivestreamTable({
   items = mockLivestreams,
   isLoading = false,
+  isFetching = false,
   isError = false,
   errorMessage = "Không thể tải danh sách phiên livestream. Vui lòng thử lại sau.",
   onRetry,
@@ -35,6 +37,13 @@ export function LivestreamTable({
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-xs">
+      {/* Top progress indicator when background fetching or debounced search */}
+      <div className="h-0.5 w-full bg-surface-container-low overflow-hidden">
+        {isFetching && (
+          <div className="h-full w-full bg-primary/70 animate-pulse transition-all duration-300" />
+        )}
+      </div>
+
       {/* Scrollable table container */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left">
@@ -48,10 +57,7 @@ export function LivestreamTable({
                 />
               </th>
               <th scope="col" className="py-3 px-3.5 min-w-[280px]">
-                Tên phiên &amp; Mã phiên
-              </th>
-              <th scope="col" className="py-3 px-3.5 min-w-[160px]">
-                Kênh &amp; Hạ tầng
+                Phiên Livestream &amp; Mã ID
               </th>
               <th scope="col" className="py-3 px-3.5 min-w-[160px]">
                 Thời gian phát
@@ -59,14 +65,8 @@ export function LivestreamTable({
               <th scope="col" className="py-3 px-3.5 text-center min-w-[90px]">
                 Số SP
               </th>
-              <th scope="col" className="py-3 px-3.5 text-right min-w-[110px]">
-                Người xem
-              </th>
-              <th scope="col" className="py-3 px-3.5 text-right min-w-[110px]">
-                Tin nhắn chat
-              </th>
-              <th scope="col" className="py-3 px-3.5 text-right min-w-[125px]">
-                Đơn tạo từ AI
+              <th scope="col" className="py-3 px-3.5 text-right min-w-[150px]">
+                Doanh thu &amp; Mắt xem
               </th>
               <th scope="col" className="py-3 px-3.5 text-center min-w-[125px]">
                 Trạng thái
@@ -76,9 +76,13 @@ export function LivestreamTable({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant/40 text-xs font-normal">
-            {/* Loading Skeleton State */}
-            {isLoading && (
+          <tbody
+            className={`divide-y divide-outline-variant/40 text-xs font-normal transition-opacity duration-200 ${
+              isFetching ? "opacity-60" : "opacity-100"
+            }`}
+          >
+            {/* Loading Skeleton State: only when there are no items to show */}
+            {(isLoading || (isFetching && items.length === 0)) && items.length === 0 && (
               Array.from({ length: 5 }).map((_, idx) => (
                 <tr key={idx} className="animate-pulse">
                   <td className="py-3.5 px-3.5 text-center">
@@ -95,12 +99,6 @@ export function LivestreamTable({
                   </td>
                   <td className="py-3.5 px-3.5">
                     <div className="space-y-1">
-                      <div className="h-3.5 w-20 rounded bg-surface-container" />
-                      <div className="h-2.5 w-24 rounded bg-surface-container-low" />
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-3.5">
-                    <div className="space-y-1">
                       <div className="h-3.5 w-24 rounded bg-surface-container" />
                       <div className="h-2.5 w-16 rounded bg-surface-container-low" />
                     </div>
@@ -109,13 +107,8 @@ export function LivestreamTable({
                     <div className="mx-auto h-5 w-12 rounded bg-surface-container" />
                   </td>
                   <td className="py-3.5 px-3.5 text-right">
-                    <div className="ml-auto h-3.5 w-16 rounded bg-surface-container" />
-                  </td>
-                  <td className="py-3.5 px-3.5 text-right">
-                    <div className="ml-auto h-3.5 w-16 rounded bg-surface-container" />
-                  </td>
-                  <td className="py-3.5 px-3.5 text-right">
-                    <div className="ml-auto h-3.5 w-16 rounded bg-surface-container" />
+                    <div className="ml-auto h-3.5 w-20 rounded bg-surface-container" />
+                    <div className="ml-auto mt-1 h-2.5 w-12 rounded bg-surface-container-low" />
                   </td>
                   <td className="py-3.5 px-3.5 text-center">
                     <div className="mx-auto h-5 w-20 rounded-full bg-surface-container" />
@@ -128,9 +121,9 @@ export function LivestreamTable({
             )}
 
             {/* Error State */}
-            {!isLoading && isError && (
+            {!isLoading && !isFetching && isError && (
               <tr>
-                <td colSpan={10} className="py-12 px-4 text-center">
+                <td colSpan={7} className="py-12 px-4 text-center">
                   <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-center">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600 mb-3">
                       <AlertCircle className="h-6 w-6" aria-hidden="true" />
@@ -151,9 +144,9 @@ export function LivestreamTable({
             )}
 
             {/* Empty State */}
-            {!isLoading && !isError && items.length === 0 && (
+            {!isLoading && !isFetching && !isError && items.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-14 px-4 text-center">
+                <td colSpan={7} className="py-14 px-4 text-center">
                   <div className="mx-auto flex max-w-md flex-col items-center justify-center text-center">
                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-container-low text-primary mb-3.5">
                       <Video className="h-7 w-7" aria-hidden="true" />
@@ -178,7 +171,7 @@ export function LivestreamTable({
             )}
 
             {/* Normal State: List of rows */}
-            {!isLoading && !isError && items.length > 0 && (
+            {!isError && items.length > 0 && (
               items.map((item) => (
                 <LivestreamTableRow key={item.id} item={item} />
               ))
