@@ -1,4 +1,4 @@
-import express, { Router, type NextFunction, type Request, type Response } from "express";
+﻿import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { ProductController } from "../controllers/product.controller.js";
 import {
   IProductRepository,
@@ -15,7 +15,7 @@ declare global {
   }
 }
 
-function requireShopHeader(req: Request, res: Response, next: NextFunction): void {
+export function requireShopHeader(req: Request, res: Response, next: NextFunction): void {
   const shopHeader = req.header("X-Shop-Id");
   if (!shopHeader || !/^[1-9]\d*$/.test(shopHeader)) {
     res.status(400).json({
@@ -33,7 +33,7 @@ function requireShopHeader(req: Request, res: Response, next: NextFunction): voi
   next();
 }
 
-function requireNumericId(parameter: string) {
+export function requireNumericId(parameter: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const value = req.params[parameter];
     if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {

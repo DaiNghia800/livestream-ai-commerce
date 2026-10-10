@@ -11,6 +11,8 @@ import {
   IProductRepository,
 } from "./modules/product/repositories/product.repository.js";
 import { createProductRouter } from "./modules/product/routes/product.routes.js";
+import { IInventoryRepository } from "./modules/inventory/repositories/inventory.repository.js";
+import { createInventoryRouter } from "./modules/inventory/routes/inventory.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 
@@ -20,7 +22,8 @@ export function createApp(
   customLivestreamProductRepository?: ILivestreamProductRepository,
   customProductRepository?: IProductRepository,
   customAuthRepository?: IAuthRepository,
-  customLocalProductImageStorage?: LocalProductImageStorageService
+  customLocalProductImageStorage?: LocalProductImageStorageService,
+  customInventoryRepository?: IInventoryRepository
 ): Express {
 
   const app = express();
@@ -84,6 +87,7 @@ export function createApp(
     createUploadRouter(customS3Service, localProductImageStorage)
   );
   apiRouter.use("/products", createProductRouter(customProductRepository));
+  apiRouter.use("/inventory", createInventoryRouter(customInventoryRepository));
 
 
   app.use(config.apiPrefix, apiRouter);
