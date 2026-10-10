@@ -383,4 +383,86 @@ describe("LivestreamService - Unit Tests", () => {
     expect(result).toEqual(updatedLivestream);
     expect((repository as any).updateStatus).toHaveBeenCalledWith(createdLivestream.id, "live");
   });
+
+  it("UT-LS-021 - getOrCreateIvsStreamConfig returns null when livestream is not found", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(null);
+
+    const result = await service.getOrCreateIvsStreamConfig("missing-id");
+
+    expect(result).toBeNull();
+    expect(repository.findById).toHaveBeenCalledWith("missing-id");
+  });
+
+  it("UT-LS-022 - getOrCreateIvsStreamConfig throws when IVS service is not provided", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    const serviceNoIvs = new LivestreamService(repository, undefined, undefined);
+
+    await expect(
+      serviceNoIvs.getOrCreateIvsStreamConfig(createdLivestream.id)
+    ).rejects.toThrow("AWS IVS service is not configured");
+  });
+
+  it("UT-LS-023 - getOrCreateIvsStreamConfig returns existing config if channel is already provisioned", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/existing-ch",
+      playbackUrl: "https://playback.live-video.net/existing.m3u8",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn().mockResolvedValue({
+        channelArn: livestreamWithIvs.channelArn,
+        playbackUrl: livestreamWithIvs.playbackUrl,
+        ingestEndpoint: "rtmps://existing.live-video.net:443/app/",
+        streamKeyValue: "mock-stream-key-existing",
+      }),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(livestreamWithIvs.id);
+
+    expect(result).toEqual({
+      channelArn: livestreamWithIvs.channelArn,
+      playbackUrl: livestreamWithIvs.playbackUrl,
+      ingestEndpoint: "rtmps://existing.live-video.net:443/app/",
+      streamKey: "mock-stream-key-existing",
+    });
+    expect(mockIvs.getStreamConfig).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+    expect(mockIvs.createChannel).not.toHaveBeenCalled();
+  });
+
+  it("UT-LS-024 - getOrCreateIvsStreamConfig provisions new channel and updates repository when not yet provisioned", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    (repository as any).updateIvsChannel = vi.fn().mockResolvedValue(undefined);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn().mockResolvedValue({
+        channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
+        playbackUrl: "https://playback.live-video.net/new.m3u8",
+        ingestEndpoint: "rtmps://new.live-video.net:443/app/",
+        streamKeyValue: "mock-stream-key-new",
+      }),
+      getStreamConfig: vi.fn().mockResolvedValue(null),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(createdLivestream.id);
+
+    expect(result).toEqual({
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
+      playbackUrl: "https://playback.live-video.net/new.m3u8",
+      ingestEndpoint: "rtmps://new.live-video.net:443/app/",
+      streamKey: "mock-stream-key-new",
+    });
+    expect(mockIvs.createChannel).toHaveBeenCalledWith(createdLivestream.title);
+    expect((repository as any).updateIvsChannel).toHaveBeenCalledWith(
+      createdLivestream.id,
+      "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
+      "https://playback.live-video.net/new.m3u8"
+    );
+  });
 });
