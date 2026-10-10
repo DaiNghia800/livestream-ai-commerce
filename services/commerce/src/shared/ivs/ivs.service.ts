@@ -52,18 +52,28 @@ export class IvsService implements IIvsService {
       );
     }
 
-    // Tên channel trên IVS chỉ chấp nhận a-z, 0-9, -, _
-    const sanitizedName = channelName
+    // Tên channel trên IVS tuân thủ quy tắc liveorder-dev-realtime-*
+    const rawClean = (channelName || `live-${Date.now()}`)
       .toLowerCase()
       .replace(/[^a-z0-9-_]/g, "-")
-      .slice(0, 128);
+      .slice(0, 80);
+    const sanitizedName = rawClean.startsWith("liveorder-dev-realtime-")
+      ? rawClean
+      : `liveorder-dev-realtime-${rawClean || Date.now()}`;
 
     try {
       const command = new CreateChannelCommand({
-        name: sanitizedName || `live-${Date.now()}`,
+        name: sanitizedName,
         latencyMode: "LOW",
         type: "BASIC",
         authorized: false,
+        tags: {
+          Project: "LiveOrder",
+          Environment: "dev",
+          Service: "realtime",
+          Owner: "realtime",
+          ManagedBy: "auto",
+        },
       });
 
       const response = await this.client.send(command);
