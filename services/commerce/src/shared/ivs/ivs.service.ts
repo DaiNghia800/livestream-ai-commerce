@@ -58,32 +58,42 @@ export class IvsService implements IIvsService {
       .replace(/[^a-z0-9-_]/g, "-")
       .slice(0, 128);
 
-    const command = new CreateChannelCommand({
-      name: sanitizedName || `live-${Date.now()}`,
-      latencyMode: "LOW",
-      type: "BASIC",
-      authorized: false,
-    });
+    try {
+      const command = new CreateChannelCommand({
+        name: sanitizedName || `live-${Date.now()}`,
+        latencyMode: "LOW",
+        type: "BASIC",
+        authorized: false,
+      });
 
-    const response = await this.client.send(command);
+      const response = await this.client.send(command);
 
-    if (!response.channel?.arn || !response.channel?.playbackUrl) {
-      throw new Error("AWS IVS failed to return channel ARN or playback URL");
+      if (!response.channel?.arn || !response.channel?.playbackUrl) {
+        throw new Error("AWS IVS failed to return channel ARN or playback URL");
+      }
+
+      const ingestEndpoint = response.channel.ingestEndpoint
+        ? response.channel.ingestEndpoint.startsWith("rtmps://")
+          ? response.channel.ingestEndpoint
+          : `rtmps://${response.channel.ingestEndpoint}:443/app/`
+        : "";
+
+      return {
+        channelArn: response.channel.arn,
+        playbackUrl: response.channel.playbackUrl,
+        ingestEndpoint,
+        streamKeyValue: response.streamKey?.value,
+        streamKeyArn: response.streamKey?.arn,
+      };
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[IvsService] AWS IVS CreateChannel failed (${err instanceof Error ? err.message : String(err)}). Using fallback mock channel for development.`
+        );
+        return new InMemoryIvsService().createChannel(sanitizedName);
+      }
+      throw err;
     }
-
-    const ingestEndpoint = response.channel.ingestEndpoint
-      ? response.channel.ingestEndpoint.startsWith("rtmps://")
-        ? response.channel.ingestEndpoint
-        : `rtmps://${response.channel.ingestEndpoint}:443/app/`
-      : "";
-
-    return {
-      channelArn: response.channel.arn,
-      playbackUrl: response.channel.playbackUrl,
-      ingestEndpoint,
-      streamKeyValue: response.streamKey?.value,
-      streamKeyArn: response.streamKey?.arn,
-    };
   }
 
   /**
@@ -141,6 +151,12 @@ export class IvsService implements IIvsService {
           err.message.includes("ResourceNotFound"))
       ) {
         return null;
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[IvsService] AWS IVS getStreamConfig failed (${err instanceof Error ? err.message : String(err)}). Using fallback mock config.`
+        );
+        return new InMemoryIvsService().getStreamConfig(channelArn);
       }
       throw err;
     }

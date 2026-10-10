@@ -14,6 +14,7 @@ export interface AppConfig {
   accessTokenMinutes: number;
   refreshTokenDays: number;
   awsRegion?: string;
+  awsIvsRegion?: string;
   s3BucketName?: string;
   s3PublicBaseUrl?: string;
   commercePublicUrl: string;
@@ -36,6 +37,12 @@ export const config: AppConfig = {
   accessTokenMinutes: parseInt(process.env.ACCESS_TOKEN_MINUTES || "30", 10),
   refreshTokenDays: parseInt(process.env.REFRESH_TOKEN_DAYS || "30", 10),
   awsRegion: process.env.AWS_REGION || undefined,
+  // AWS IVS is not supported in ap-southeast-1 (Singapore); default to ap-northeast-1 (Tokyo)
+  awsIvsRegion:
+    process.env.AWS_IVS_REGION ||
+    (process.env.AWS_REGION && process.env.AWS_REGION !== "ap-southeast-1"
+      ? process.env.AWS_REGION
+      : "ap-northeast-1"),
   s3BucketName: process.env.S3_BUCKET_NAME || undefined,
   s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL || undefined,
   commercePublicUrl: process.env.COMMERCE_PUBLIC_URL || `http://localhost:${port}`,

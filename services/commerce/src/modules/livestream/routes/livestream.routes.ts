@@ -25,7 +25,9 @@ export function createLivestreamRouter(
   const repo = customRepository || new PostgresLivestreamRepository();
   const productRepo =
     customProductRepository || new PostgresLivestreamProductRepository();
-  const ivs = customIvsService || new IvsService({ region: config.awsRegion });
+  const ivs =
+    customIvsService ||
+    new IvsService({ region: config.awsIvsRegion || "ap-northeast-1" });
   const service = new LivestreamService(repo, productRepo, ivs);
   const controller = new LivestreamController(service);
 
