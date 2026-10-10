@@ -1,0 +1,18 @@
+/*
+ * Sọc xen kẽ cho bảng dữ liệu.
+ *
+ * Hai hàng liền nhau khác nền để mắt bám được dòng khi đọc ngang —
+ * bảng đơn hàng có tám cột, không có sọc thì rất dễ đọc nhầm dòng.
+ *
+ * Để riêng thành module dùng chung cho màn đơn hàng và thanh toán,
+ * KHÔNG thêm vào `.data-table` ở globals.css: lớp đó đang dựng bảng
+ * cho tồn kho, sản phẩm và livestream của cả nhóm.
+ */
+
+.zebra tbody tr:nth-child(even) {
+  background: var(--color-subtle);
+}
+
+.zebra tbody tr:hover {
+  background: var(--color-secondary-subtle);
+}
