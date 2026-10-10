@@ -195,3 +195,56 @@ jobs:
       # Run all AI Worker tests with verbose output
       - name: Run AI Worker tests
         run: python -m pytest tests/ai-worker/ -v --tb=short
+
+
+  commerce-test:
+    name: "Commerce — Vitest"
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: commerce_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/commerce_db
+
+    defaults:
+      run:
+        working-directory: services/commerce
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/commerce/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Migration chạy tự động lúc server khởi động, nhưng test gọi thẳng
+      # repository nên phải dựng schema trước bằng chính runner đó.
+      - name: Run migrations
+        run: npx tsx --eval "import('./src/shared/database/database.js').then(m => m.runMigrations()).then(() => process.exit(0))"
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      # Dùng test:coverage chứ không phải test: ngưỡng 90% khai trong
+      # vitest.config.ts chỉ có tác dụng khi chạy kèm --coverage. Chạy
+      # `npm test` suông thì độ phủ trôi dần theo từng PR mà CI vẫn xanh.
+      - name: Run Commerce tests with coverage gate
+        run: npm run test:coverage

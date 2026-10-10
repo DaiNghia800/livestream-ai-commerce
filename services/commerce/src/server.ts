@@ -1,6 +1,12 @@
 import { createApp } from "./app.js";
 import { config } from "./config.js";
-import { runMigrations } from "./shared/database/database.js";
+import { createEventTransport } from "./modules/order/events/event-transport.js";
+import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
+import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
+import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
+import { createDraftOrderService } from "./modules/order/services/draft-order.factory.js";
+import { PurchaseRequestService } from "./modules/order/services/purchase-request.service.js";
+import { pool, runMigrations } from "./shared/database/database.js";
 
 async function bootstrap() {
   console.log("[Commerce Service] Starting up...");
@@ -16,10 +22,52 @@ async function bootstrap() {
 
   const app = createApp();
 
-  app.listen(config.port, () => {
+  // Job trả tồn cho đơn quá hạn. Bật sau khi migration xong để chắc
+  // chắn bảng orders đã tồn tại.
+  const expireOrdersJob = new ExpireOrdersJob(pool, {
+    intervalMs: config.expireJobIntervalMs,
+  });
+  expireOrdersJob.start();
+
+  // Đẩy sự kiện outbox ra ngoài. Chưa cấu hình REALTIME_EVENTS_URL thì chỉ
+  // ghi log — vẫn chạy để thấy được luồng sự kiện khi phát triển.
+  const publishOutboxJob = new PublishOutboxJob(
+    pool,
+    createEventTransport(config.realtimeEventsUrl),
+    { intervalMs: config.outboxJobIntervalMs }
+  );
+  publishOutboxJob.start();
+
+  // Trả tồn cho đề nghị nằm trong hàng đợi duyệt quá lâu. Không có
+  // job này thì một hàng đợi không ai ngó sẽ giam sạch kho.
+  const expireRequestsJob = new ExpirePurchaseRequestsJob(
+    new PurchaseRequestService(
+      pool,
+      createDraftOrderService(pool)
+    ),
+    { intervalMs: config.expireJobIntervalMs }
+  );
+  expireRequestsJob.start();
+
+  const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
     console.log(`[Commerce Service] API Prefix: ${config.apiPrefix}`);
   });
+
+  // Tắt êm: dừng job rồi đóng server, tránh để một lượt quét đang chạy
+  // dở bị cắt ngang giữa transaction.
+  const shutdown = (signal: string) => {
+    console.log(`[Commerce Service] Nhận ${signal}, đang tắt...`);
+    expireOrdersJob.stop();
+    publishOutboxJob.stop();
+    expireRequestsJob.stop();
+    server.close(() => {
+      void pool.end().finally(() => process.exit(0));
+    });
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 bootstrap().catch((err) => {

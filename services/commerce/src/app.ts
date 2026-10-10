@@ -7,6 +7,9 @@ import { ILivestreamRepository } from "./modules/livestream/repositories/livestr
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
 import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js";
+import { createOrderRouter } from "./modules/order/routes/order.routes.js";
+import { createPurchaseRequestRouter } from "./modules/order/routes/purchase-request.routes.js";
+import { createPaymentRouter } from "./modules/payment/routes/payment.routes.js";
 import {
   IProductRepository,
 } from "./modules/product/repositories/product.repository.js";
@@ -82,6 +85,9 @@ export function createApp(
     "/livestreams",
     createLivestreamRouter(customRepository, customLivestreamProductRepository)
   );
+  apiRouter.use("/orders", createOrderRouter());
+  apiRouter.use("/purchase-requests", createPurchaseRequestRouter());
+  apiRouter.use("/payments", createPaymentRouter());
   apiRouter.use(
     "/uploads",
     createUploadRouter(customS3Service, localProductImageStorage)
