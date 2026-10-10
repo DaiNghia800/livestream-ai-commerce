@@ -36,6 +36,34 @@ export interface AppConfig {
   riskScoreThreshold: number;
   /** BẪY-08: TTL rút ngắn cho khách rủi ro cao. */
   holdRiskySeconds: number;
+
+  // ── Cổng thanh toán điện tử, TOÀN BỘ là sandbox ─────────────────
+  /** Gốc đường dẫn của chính service này, để cổng gọi ngược về. */
+  publicBaseUrl: string;
+  /** Cổng dùng khi client không nêu rõ. */
+  defaultGateway: string;
+  vnpay: {
+    tmnCode: string;
+    hashSecret: string;
+    payUrl: string;
+    returnUrl: string;
+  };
+  momo: {
+    partnerCode: string;
+    accessKey: string;
+    secretKey: string;
+    createUrl: string;
+    returnUrl: string;
+    ipnUrl: string;
+  };
+  zalopay: {
+    appId: string;
+    key1: string;
+    key2: string;
+    createUrl: string;
+    callbackUrl: string;
+  };
+  mockGatewaySecret: string;
 }
 
 export const config: AppConfig = {
@@ -64,11 +92,64 @@ export const config: AppConfig = {
   reviewQtyThreshold: parseInt(process.env.REVIEW_QTY_THRESHOLD || "10", 10),
   // Troll bình luận 50 lần có thể khoá sạch mã hot. Chạm trần thì
   // KHÔNG giữ thêm — khác BẪY-05, vì ở đây rủi ro là phá phiên.
+  //
+  // PHẢI lớn hơn hẳn reviewQtyThreshold. Đặt bằng nhau (cả hai = 10)
+  // thì mọi dòng vượt ngưỡng BẪY-05 cũng vượt luôn trần này, và
+  // BẪY-01 thắng ở chỗ "không giữ tồn" — nhánh giữ chân khách sỉ của
+  // BẪY-05 trở thành code chết trong phiên live. 30 để khoảng 11–30
+  // thuộc về BẪY-05, còn gom quá 30 mới là dấu hiệu phá phiên.
   maxHeldPerCustomerPerSession: parseInt(
-    process.env.MAX_HELD_PER_CUSTOMER_PER_SESSION || "10",
+    process.env.MAX_HELD_PER_CUSTOMER_PER_SESSION || "30",
     10
   ),
   // 0.45 = ba lần chốt rồi bỏ, hoặc một lần nghi gian lận.
   riskScoreThreshold: parseFloat(process.env.RISK_SCORE_THRESHOLD || "0.45"),
   holdRiskySeconds: parseInt(process.env.HOLD_RISKY_SECONDS || "180", 10),
+
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:8000",
+
+  // Mặc định là cổng giả chạy trong máy: người mới kéo repo về chạy
+  // được ngay cả luồng thanh toán mà không cần đăng ký tài khoản thử
+  // ở bất kỳ nhà cung cấp nào.
+  defaultGateway: process.env.PAYMENT_GATEWAY || "mock",
+
+  vnpay: {
+    tmnCode: process.env.VNPAY_TMN_CODE || "",
+    hashSecret: process.env.VNPAY_HASH_SECRET || "",
+    // Chỉ sandbox. assertSandbox() từ chối mọi host khác.
+    payUrl:
+      process.env.VNPAY_PAY_URL ||
+      "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
+    returnUrl:
+      process.env.VNPAY_RETURN_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/vnpay/return`,
+  },
+
+  momo: {
+    partnerCode: process.env.MOMO_PARTNER_CODE || "",
+    accessKey: process.env.MOMO_ACCESS_KEY || "",
+    secretKey: process.env.MOMO_SECRET_KEY || "",
+    createUrl:
+      process.env.MOMO_CREATE_URL ||
+      "https://test-payment.momo.vn/v2/gateway/api/create",
+    returnUrl:
+      process.env.MOMO_RETURN_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/momo/return`,
+    ipnUrl:
+      process.env.MOMO_IPN_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/momo/ipn`,
+  },
+
+  zalopay: {
+    appId: process.env.ZALOPAY_APP_ID || "",
+    key1: process.env.ZALOPAY_KEY1 || "",
+    key2: process.env.ZALOPAY_KEY2 || "",
+    createUrl:
+      process.env.ZALOPAY_CREATE_URL || "https://sb-openapi.zalopay.vn/v2/create",
+    callbackUrl:
+      process.env.ZALOPAY_CALLBACK_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/zalopay/callback`,
+  },
+
+  mockGatewaySecret: process.env.MOCK_GATEWAY_SECRET || "sandbox-only-secret",
 };
