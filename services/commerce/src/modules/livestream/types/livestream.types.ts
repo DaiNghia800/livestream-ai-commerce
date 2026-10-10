@@ -1,3 +1,5 @@
+import { LivestreamProduct } from "./livestream-product.types.js";
+
 export type LivestreamStatus =
   | "draft"
   | "scheduled"
@@ -19,4 +21,30 @@ export interface Livestream {
   endedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LivestreamListItem extends Livestream {
+  productCount: number;
+}
+
+export interface LivestreamListQuery {
+  merchantId: string;
+  status?: LivestreamStatus | "all";
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface LivestreamListResult {
+  items: LivestreamListItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface LivestreamDetailResult extends Livestream {
+  products: LivestreamProduct[];
 }

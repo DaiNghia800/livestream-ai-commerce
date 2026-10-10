@@ -84,10 +84,6 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
               {item.title}
             </Link>
             <div className="mt-0.5 flex items-center gap-2">
-              <span className="font-mono text-[11px] font-medium text-outline">
-                {item.id}
-              </span>
-              <span className="text-[10px] text-outline">•</span>
               <span
                 className={`flex items-center gap-1 text-[11px] truncate ${isLive ? "font-medium text-primary" : "text-on-surface-variant"
                   }`}
@@ -100,110 +96,7 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
         </div>
       </td>
 
-      {/* 3. Kênh & Hạ tầng (theo quy tắc Amazon IVS Channel Pool) */}
-      <td className="py-3 px-3.5 min-w-[160px]">
-        {/* Case DRAFT: Chưa cấp IVS Channel */}
-        {isDraft && (
-          <div className="flex flex-col">
-            <span className="text-[11px] font-medium text-outline">
-              Chưa cấp IVS Channel
-            </span>
-            <span className="mt-0.5 text-[10px] text-outline/80">
-              Cấp khi bắt đầu phiên
-            </span>
-          </div>
-        )}
-
-        {/* Case STARTING: Đang kết nối IVS */}
-        {isStarting && (
-          <div className="flex flex-col">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Đang kết nối IVS
-            </span>
-            <span className="mt-0.5 text-[10px] text-outline">
-              Đang phân bổ từ Pool
-            </span>
-          </div>
-        )}
-
-        {/* Case SCHEDULED: Đã gán trước hoặc sẽ cấp khi bắt đầu */}
-        {isScheduled && (
-          item.ivsChannel ? (
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-900">
-                  {item.ivsChannel}
-                </span>
-                {item.resolution && (
-                  <span className="text-[11px] font-medium text-on-surface-variant">
-                    {item.resolution}
-                  </span>
-                )}
-              </div>
-              <span className="mt-0.5 text-[11px] text-outline truncate max-w-[140px]">
-                {item.channelName || "Kênh gán trước"}
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-on-surface-variant">
-                Sẽ cấp khi bắt đầu
-              </span>
-              <span className="mt-0.5 text-[10px] text-outline">
-                Amazon IVS Pool
-              </span>
-            </div>
-          )
-        )}
-
-        {/* Case LIVE: Hiển thị channel thực tế */}
-        {isLive && (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-emerald-900">
-                {item.ivsChannel || "IVS Pool Active"}
-              </span>
-              {item.resolution && (
-                <span className="text-[11px] font-medium text-on-surface-variant">
-                  {item.resolution}
-                </span>
-              )}
-            </div>
-            <span className="mt-0.5 text-[11px] text-outline truncate max-w-[140px]">
-              {item.channelName || "Kênh phát chính"}
-            </span>
-          </div>
-        )}
-
-        {/* Case ENDED: Hiển thị channel đã sử dụng nếu dữ liệu còn lưu */}
-        {isEnded && (
-          <div className="flex flex-col">
-            {item.ivsChannel ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 font-mono text-[10px] font-semibold text-on-surface-variant">
-                    {item.ivsChannel}
-                  </span>
-                  <span className="text-[10px] text-outline">Đã dùng</span>
-                </div>
-                <span className="mt-0.5 text-[11px] text-outline truncate max-w-[140px]">
-                  {item.channelName || "Đã giải phóng về Pool"}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="text-[11px] text-outline font-medium">
-                  Đã giải phóng về Pool
-                </span>
-                <span className="mt-0.5 text-[10px] text-outline">--</span>
-              </>
-            )}
-          </div>
-        )}
-      </td>
-
-      {/* 4. Thời gian phát */}
+      {/* 3. Thời gian phát */}
       <td className="py-3 px-3.5 min-w-[160px]">
         <div className="flex flex-col">
           <span
@@ -223,12 +116,11 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
               }`}
           >
             {isLive && <Timer className="h-3 w-3 shrink-0" aria-hidden="true" />}
-            <span>{item.subTimeDisplay || "--"}</span>
           </span>
         </div>
       </td>
 
-      {/* 5. Số sản phẩm */}
+      {/* 4. Số sản phẩm */}
       <td className="py-3 px-3.5 text-center min-w-[90px]">
         <span
           className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold tabular-nums ${item.productCount > 0
@@ -240,69 +132,40 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
         </span>
       </td>
 
-      {/* 6. Người xem */}
-      <td className="py-3 px-3.5 text-right min-w-[110px]">
-        {item.currentViewers ? (
+      {/* 5. Doanh thu & Mắt xem */}
+      <td className="py-3 px-3.5 text-right min-w-[150px]">
+        {isLive ? (
           <div className="flex flex-col items-end">
-            <span
-              className={`flex items-center gap-1 font-bold tabular-nums text-xs ${isLive ? "text-red-600" : "text-on-surface"
-                }`}
-            >
+            <span className="flex items-center gap-1 font-bold tabular-nums text-xs text-red-600">
               <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>{item.currentViewers.toLocaleString("vi-VN")}</span>
+              <span>{(item.currentViewers ?? 0).toLocaleString("vi-VN")} xem</span>
             </span>
-            {item.peakViewers && (
-              <span className="text-[11px] text-outline tabular-nums">
-                Đỉnh: {item.peakViewers.toLocaleString("vi-VN")}
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="text-xs text-outline font-medium">--</span>
-        )}
-      </td>
-
-      {/* 7. Tin nhắn chat */}
-      <td className="py-3 px-3.5 text-right min-w-[110px]">
-        {item.chatDisplay ? (
-          <div className="flex flex-col items-end">
-            <span className="font-semibold text-on-surface tabular-nums text-xs">
-              {item.chatDisplay}
-            </span>
-            <span
-              className={`text-[11px] font-medium tabular-nums ${isLive ? "text-emerald-600" : "text-outline"
-                }`}
-            >
-              {item.chatSubDisplay}
+            <span className="text-[11px] font-medium tabular-nums text-on-surface-variant">
+              {item.revenueDisplay || (item.revenue ? `${item.revenue.toLocaleString("vi-VN")} ₫` : "0 ₫")}
+              {item.aiOrderCount ? ` • ${item.aiOrderCount} đơn` : ""}
             </span>
           </div>
-        ) : (
-          <span className="text-xs text-outline font-medium">--</span>
-        )}
-      </td>
-
-      {/* 8. Đơn tạo từ AI */}
-      <td className="py-3 px-3.5 text-right min-w-[125px]">
-        {item.aiOrderCount ? (
+        ) : isEnded ? (
           <div className="flex flex-col items-end">
-            <span
-              className={`font-bold tabular-nums text-xs ${isLive ? "text-primary" : "text-on-surface"
-                }`}
-            >
-              {item.aiOrderCount.toLocaleString("vi-VN")} đơn
+            <span className="font-bold tabular-nums text-xs text-on-surface">
+              {item.revenueDisplay || (item.revenue ? `${item.revenue.toLocaleString("vi-VN")} ₫` : "0 ₫")}
             </span>
             <span className="text-[11px] font-medium tabular-nums text-outline">
-              {item.revenueDisplay || "Chờ thanh toán"}
+              {item.aiOrderCount ? `${item.aiOrderCount} đơn` : "0 đơn"}
+              {item.peakViewers ? ` • Đỉnh ${item.peakViewers.toLocaleString("vi-VN")}` : ""}
             </span>
           </div>
+        ) : isStarting ? (
+          <div className="flex flex-col items-end">
+            <span className="text-xs font-semibold text-amber-600">Đang khởi tạo</span>
+            <span className="text-[11px] text-outline">Chờ mắt xem</span>
+          </div>
         ) : (
-          <span className="text-xs text-outline font-medium">
-            {isScheduled || isStarting ? "Chờ kích hoạt" : "--"}
-          </span>
+          <span className="text-xs text-outline font-medium">--</span>
         )}
       </td>
 
-      {/* 9. Trạng thái */}
+      {/* 6. Trạng thái */}
       <td className="py-3 px-3.5 text-center min-w-[125px]">
         {isLive && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
@@ -340,10 +203,10 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
         )}
       </td>
 
-      {/* 10. Thao tác chuẩn theo trạng thái phiên */}
+      {/* 7. Thao tác chuẩn theo trạng thái phiên */}
       <td className="py-3 px-3.5 text-right min-w-[145px]">
         <div className="flex items-center justify-end gap-1.5">
-          {/* Nút chính theo bảng: DRAFT: Chỉnh sửa | SCHEDULED: Chi tiết & Chỉnh sửa | STARTING/LIVE: Chi tiết | ENDED: Chi tiết */}
+          {/* Nút chính theo bảng: DRAFT: Chỉnh sửa | SCHEDULED: Vào Studio & Chỉnh sửa | STARTING/LIVE: Vào Studio | ENDED: Báo cáo & Chi tiết */}
           {isLive && (
             <Link
               href={`/shop/livestream/${item.id}/studio`}

@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import { ZodError } from "zod";
-import { CreateLivestreamRequestSchema } from "../schemas/livestream.schema.js";
+import {
+  CreateLivestreamRequestSchema,
+  GetLivestreamParamSchema,
+  ListLivestreamsQuerySchema,
+} from "../schemas/livestream.schema.js";
 import { LivestreamService } from "../services/livestream.service.js";
 
 export class LivestreamController {
@@ -21,6 +25,7 @@ export class LivestreamController {
         description: validatedInput.description,
         scheduledAt: validatedInput.scheduledAt,
         coverImageKey: validatedInput.coverImageKey,
+        status: validatedInput.status,
       });
 
       // 4. Return HTTP 201 with public response contract (camelCase)
@@ -55,4 +60,71 @@ export class LivestreamController {
       });
     }
   };
+
+  list = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const validatedQuery = ListLivestreamsQuerySchema.parse(req.query);
+      const merchantId = req.merchantId!;
+
+      const result = await this.livestreamService.listLivestreams({
+        merchantId,
+        status: validatedQuery.status,
+        search: validatedQuery.search,
+        fromDate: validatedQuery.fromDate,
+        toDate: validatedQuery.toDate,
+        page: validatedQuery.page,
+        limit: validatedQuery.limit,
+      });
+
+      res.status(200).json(result);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: err.errors.map((e) => e.message).join("; "),
+          details: err.errors,
+        });
+        return;
+      }
+
+      console.error("[LivestreamController] Internal error listing livestreams:", err);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to list livestream sessions",
+      });
+    }
+  };
+
+  getById = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = GetLivestreamParamSchema.parse(req.params);
+
+      const livestream = await this.livestreamService.getLivestreamById(id);
+      if (!livestream) {
+        res.status(404).json({
+          error: "NotFoundError",
+          message: "Livestream session not found",
+        });
+        return;
+      }
+
+      res.status(200).json(livestream);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: err.errors.map((e) => e.message).join("; "),
+          details: err.errors,
+        });
+        return;
+      }
+
+      console.error("[LivestreamController] Internal error getting livestream:", err);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to get livestream session",
+      });
+    }
+  };
 }
+

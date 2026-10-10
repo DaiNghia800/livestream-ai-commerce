@@ -43,7 +43,7 @@ export class S3StorageService {
     return Boolean(this.config.bucketName && (this.config.region || this.s3Client));
   }
 
-  generateObjectKey(contentType: string, prefix = "livestreams/covers"): string {
+  generateObjectKey(contentType: string, prefix = "public/livestreams/covers"): string {
     const ext = MIME_EXTENSION_MAP[contentType] || "bin";
     const uuid = crypto.randomUUID();
     return `${prefix}/${uuid}.${ext}`;
@@ -53,7 +53,7 @@ export class S3StorageService {
     contentType: string,
     fileSize: number
   ): Promise<PresignedUploadResult> {
-    return this.createPresignedUpload(contentType, fileSize, "livestreams/covers");
+    return this.createPresignedUpload(contentType, fileSize, "public/livestreams/covers");
   }
 
   async createPresignedProductImageUpload(
