@@ -1266,7 +1266,10 @@ textarea {
   color: var(--color-warning);
 }
 
-.countdown-over {
+.countdown-over,
+/* Dưới một phút là lúc shop phải quyết: gọi khách, hay để hàng về kho.
+   Cùng một màu vàng từ đầu tới cuối thì không ai nhận ra khoảnh khắc đó. */
+.countdown[data-urgent="true"] {
   color: var(--color-error);
 }
 
@@ -1717,5 +1720,27 @@ dialog::backdrop {
 
   .data-table .col-secondary {
     display: none;
+  }
+}
+
+/*
+ * In phiếu giao hàng loạt.
+ *
+ * Chỉ có tác dụng khi mã của màn đơn hàng gắn lớp `printing` lên thẻ
+ * <html> — không gắn thì mọi trang khác in ra y như cũ. Viết ở đây vì
+ * CSS module không với tới được `body > *`.
+ */
+@media print {
+  html.printing body > *:not(#print-root) {
+    display: none !important;
+  }
+
+  html.printing #print-root {
+    display: block !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 0;
   }
 }

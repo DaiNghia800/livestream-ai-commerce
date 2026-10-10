@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ClipboardCheck,
   ArrowLeftRight,
   BarChart3,
   Bell,
@@ -30,6 +31,7 @@ const navigation = [
   { label: "Tổng quan", href: "/shop", icon: LayoutDashboard, exact: true },
   { label: "Livestream", href: "/shop/livestream", icon: Radio },
   { label: "Đơn hàng", href: "/shop/orders", icon: ShoppingCart },
+  { label: "Hàng đợi duyệt", href: "/shop/review-queue", icon: ClipboardCheck },
   { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", href: "/shop/inventory", icon: Warehouse },
   { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
