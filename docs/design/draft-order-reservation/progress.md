@@ -16,18 +16,19 @@
 | T6 Gộp đơn | ✅ | 17 test |
 | T8 Job quét hết hạn | ✅ | 9 test |
 | T10 Outbox publisher | ✅ | 23 test · chạy ở chế độ ghi log tới khi `services/realtime` lên |
-| T9 Hàng đợi duyệt | 🟡 | 32 test · backend xong, **màn hình nhân viên chưa làm** |
+| T9 Hàng đợi duyệt | ✅ | 32 test backend + 5 ca e2e cho màn hình nhân viên |
 | T11 Guard BẪY-01…12 | 🟡 | 27 test · 8 bẫy thuộc backend đã xong, 4 bẫy thuộc AI worker |
-| T12 Bộ test đầy đủ | ✅ | 29/30 ca thiết kế · độ phủ 99.26% dòng, 95.81% nhánh |
-| Backend thanh toán | ✅ | 60 test · COD, VietQR, đối soát tiền về, hoàn tiền |
-| Màn hình hàng đợi duyệt | ❌ | API đã đủ, frontend chưa dựng |
-| Nối frontend vào API | ❌ | 4 màn vẫn chạy `src/mocks/` |
+| T12 Bộ test đầy đủ | ✅ | 29/30 ca thiết kế · độ phủ 99.27% dòng, 95.65% nhánh |
+| Backend thanh toán | ✅ | 71 test · COD, chuyển khoản, 3 cổng sandbox, đối soát, hoàn tiền |
+| Màn hình hàng đợi duyệt | ✅ | 5 ca e2e |
+| Nối frontend vào API | ✅ | 4 màn đã bỏ `src/mocks/`, 16 ca e2e |
 
-Toàn bộ test của service: **450 passed**, trong đó 304 ca thuộc phần đơn hàng và thanh toán.
+Toàn bộ test của service: **554 passed**, trong đó 408 ca thuộc phần đơn hàng và thanh toán.
+Giao diện: **65 ca Playwright** trên hai khổ màn hình.
 
 | Độ phủ | Câu lệnh | Nhánh | Hàm | Dòng |
 |---|---|---|---|---|
-| Toàn service | 99.26% | 95.81% | 100% | 99.26% |
+| Toàn service | 99.27% | 95.65% | 100% | 99.27% |
 
 Mọi file thuộc phần đơn hàng và thanh toán đều ≥ 90% trên cả bốn chỉ số. File duy nhất còn dưới là `livestream-product.repository.ts` (88.09% nhánh) — thuộc module livestream của đồng đội.
 
@@ -412,6 +413,91 @@ Sau khi chạy hết 450 test, đối soát `payments.paid_amount == SUM(payment
 
 ---
 
+## Cổng thanh toán điện tử — toàn bộ sandbox
+
+Bốn cổng sau một giao diện chung `PaymentGateway`:
+
+| Cổng | Đặc điểm |
+|---|---|
+| `mock` | Chạy trong máy, **mặc định**. Kéo repo về là chạy được trọn luồng, không cần đăng ký ở đâu |
+| `vnpay` | Dựng và ký URL tại chỗ, không gọi HTTP. HMAC-SHA512 |
+| `momo` | Phải gọi HTTP để xin đường dẫn. HMAC-SHA256 |
+| `zalopay` | HMAC-SHA256, **hai khoá**: key1 ký tạo đơn, key2 xác thực callback |
+
+**`assertSandbox()` chặn ngay lúc khởi tạo** nếu URL trỏ ra ngoài danh sách host sandbox. Đây là đồ án, không có lý do gì để một đồng tiền thật chạy qua — mà một dòng cấu hình chép nhầm từ tài liệu nhà cung cấp là đủ để sang môi trường thật mà không ai nhận ra.
+
+### Hai kênh kết quả, độ tin cậy khác hẳn nhau
+
+| Kênh | Dùng để |
+|---|---|
+| `RETURN` — trình duyệt khách quay về | **Chỉ hiển thị.** Khách tự gõ tay được đường dẫn này; tin nó để ghi nhận đã thu tiền là mở cửa cho người ta tự tạo đơn đã thanh toán mà không trả đồng nào |
+| `IPN` — cổng gọi thẳng vào server | **Nguồn sự thật.** Không đi qua máy khách nên không giả được |
+
+Có ca test riêng chứng minh gọi kênh RETURN với gói hợp lệ vẫn **không** làm khoản thu chuyển sang đã thu.
+
+### Những chỗ dễ sai, mỗi chỗ một ca test
+
+- **VNPay nhân 100**: quên thì khách trả đúng 1/100 số tiền, sổ sách lệch mà không ai thấy lỗi ở đâu.
+- **Phải đúng CẢ HAI mã** `vnp_ResponseCode` và `vnp_TransactionStatus`: cái đầu nói giao dịch được chấp nhận, cái sau mới nói tiền đã chuyển.
+- **Thứ tự trường trong chuỗi ký của MoMo khác nhau giữa lúc tạo và lúc nhận IPN**: dùng nhầm thì mọi IPN đều bị coi là giả mạo.
+- **ZaloPay dùng key2 cho callback**: dùng nhầm key1 thì tạo được đơn nhưng lỗi chỉ lộ ra sau khi khách đã trả tiền.
+- **So chữ ký bằng `timingSafeEqual`**: so bằng `===` thì thời gian trả lời tiết lộ số ký tự đầu khớp.
+- **Số tiền lệch dù chữ ký đúng → từ chối**. Khác hẳn chuyển khoản tay: cổng thu đúng số ta yêu cầu, nên lệch nghĩa là ta dựng sai.
+- **Trả đúng hình dạng phản hồi từng cổng**: VNPay đọc `RspCode` trong thân và coi HTTP khác 200 là ta sập; MoMo chỉ nhìn mã HTTP; ZaloPay dùng `return_code`.
+
+---
+
+## Giao diện — đã bỏ dữ liệu giả
+
+Bốn màn đơn hàng/thanh toán và màn hàng đợi duyệt nay gọi API thật qua `src/lib/api.ts`.
+
+| Màn | Đường dẫn |
+|---|---|
+| Danh sách đơn | `/shop/orders` |
+| Chi tiết đơn | `/shop/orders/[orderCode]` |
+| Danh sách khoản thu | `/shop/payments` |
+| Chi tiết khoản thu | `/shop/payments/[txnRef]` |
+| **Hàng đợi duyệt** (mới) | `/shop/review-queue` |
+
+Backend phải thêm hai endpoint đọc cho màn hình: `GET /api/orders` (gộp sẵn số dòng hàng và trạng thái thu tiền, để màn danh sách không gọi thêm một vòng cho mỗi dòng) và `GET /api/orders/by-code/:orderCode`. Endpoint thứ hai **không trả `confirm_token`** — token là thứ thay cho mật khẩu của khách, lọt vào màn quản trị là lộ đường xác nhận hộ.
+
+**Giữ dữ liệu cũ trong lúc tải lại** (`useApi`): thay bảng bằng khối "đang tải" ngắn hơn rồi giãn lại khiến trang nhảy dưới ngón tay, trên điện thoại đủ để bấm trượt sang phần tử khác.
+
+Nhãn sr-only của các link thao tác nay kèm mã đơn / mã giao dịch. Trước đó mọi dòng đều đọc là "Xem chi tiết" nên người dùng trình đọc màn hình không biết mình đang ở dòng nào.
+
+E2E **chặn API bằng `page.route`** thay vì chạy kèm Postgres: bộ này kiểm giao diện, còn đúng đắn của backend đã có 554 test riêng lo. Nhờ vậy dựng được cả những tình huống không tạo nổi bằng dữ liệu thật — dịch vụ sập, khách chuyển thiếu tiền.
+
+---
+
+## Hai ngưỡng guard từng triệt tiêu nhau
+
+Phát hiện khi dựng script demo, không phải khi chạy test.
+
+`REVIEW_QTY_THRESHOLD` và `MAX_HELD_PER_CUSTOMER_PER_SESSION` ban đầu **cùng bằng 10**, đúng theo con số ví dụ trong [README.md](README.md) mục 7. Hệ quả: mọi dòng vượt ngưỡng BẪY-05 cũng vượt luôn trần BẪY-01, mà BẪY-01 thắng ở chỗ "không giữ tồn".
+
+Nhánh **"vẫn giữ tồn để không mất khách sỉ" của BẪY-05 thành code chết** — đúng trong phiên live, tức đúng lúc nó cần chạy nhất. Test cũ không bắt được vì ca kiểm BẪY-05 gửi đơn **ngoài phiên** (`livestreamId: null`), mà BẪY-01 chỉ kiểm khi có phiên.
+
+Đã nâng trần phiên lên **30**: khoảng 11–30 thuộc BẪY-05 (giữ tồn, đẩy duyệt), gom quá 30 mới là dấu hiệu phá phiên (không giữ thêm). Thêm hai ca test khoá hành vi này lại, cả hai đều chạy **trong phiên live**.
+
+Con số ví dụ ở README mục 7 vì thế mâu thuẫn nội tại — cần sửa lại cho khớp.
+
+---
+
+## Chạy thử và kiểm tra tay
+
+| Lệnh | Việc |
+|---|---|
+| `npm run migrate` | Áp migration mà không phải bật cả server |
+| `npm run smoke` | Chạy một vòng đời đơn hàng qua HTTP thật, in tồn kho từng bước |
+| `npm run seed:demo` | Dựng 20 kịch bản phủ mọi trạng thái giao diện |
+| `npm run seed:demo -- --reset` | Như trên nhưng xoá sạch trước |
+
+Checklist kiểm thử tay trên UI: [kiem-thu-tay.md](kiem-thu-tay.md).
+
+`scripts/start-local-dev.ps1` đã viết lại — bản cũ còn gọi `uvicorn app.main:app` từ thời backend Python, chạy là lỗi.
+
+---
+
 ## Hạ tầng đã đụng tới
 
 | Thay đổi | Lý do |
@@ -419,6 +505,7 @@ Sau khi chạy hết 450 test, đối soát `payments.paid_amount == SUM(payment
 | `docker-compose.yml`: `${POSTGRES_PORT:-5432}` | Máy đã cài sẵn PostgreSQL sẽ chiếm 5432; mặc định không đổi nên đồng đội không ảnh hưởng |
 | `.env.example`: thêm `HOLD_*_SECONDS` | TTL hai tầng phải cấu hình được, không hard-code |
 | `ci.yml`: `Commerce — Pytest` → `Commerce — Vitest` | Theo sau việc chuyển ngôn ngữ |
+| `playwright.config.ts`: `timeout: 60s`, `retries: 1`, 3 worker | Bộ e2e tăng từ 40 lên 66 ca mà vẫn chạy song song trên một tiến trình `next start`. Ca đỏ vì tranh chấp tài nguyên không nói lên điều gì về giao diện |
 | `ci.yml`: Commerce chạy `npm run test:coverage` thay vì `npm test` | Ngưỡng 90% chỉ có tác dụng khi chạy kèm `--coverage`; chạy `npm test` suông thì độ phủ trôi dần theo từng PR mà CI vẫn xanh |
 | `ci.yml`: chỉ lint commit chưa có trên `main` | Ba commit khởi tạo repo không theo Conventional Commits, đã publish nên không rebase được |
 | `playwright.config.ts`: timeout 60s, 4 worker, `retries: 1` | 40 test trên 6 worker cùng một server gây flaky — mỗi lần đỏ một bộ khác nhau |
