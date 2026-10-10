@@ -14,15 +14,20 @@
 import type { Pool, PoolClient } from "pg";
 import {
   AllLinesOutOfStockError,
+  IdempotencyKeyReusedError,
+  LivestreamNotOpenError,
   SkuNotFoundError,
 } from "../../../shared/errors/domain.errors.js";
 import { holdUpTo } from "../repositories/inventory.repository.js";
 import {
   appendInventoryChangedEvents,
   appendOutboxEvent,
+  fingerprintDraftRequest,
+  findIdempotencyRecord,
   findOrderIdByIdempotencyKey,
   findSellableSku,
   loadOrder,
+  readLivestreamStatus,
   recordIdempotencyKey,
   refreshDraftHold,
   upsertOrderItem,
@@ -66,21 +71,40 @@ export class DraftOrderService {
     const client = await this.pool.connect();
 
     try {
-      // ── 1. Chống trùng ───────────────────────────────────────────
+      // ── 1. Phiên live có đang nhận đơn không (ca #22) ────────────
+      await this.requireOpenLivestream(client, params.livestreamId ?? null);
+
+      // ── 2. Chống trùng ───────────────────────────────────────────
       // Phải kiểm TRƯỚC khi giữ tồn. Đảo thứ tự thì request lặp sẽ giữ
       // thêm một lần nữa rồi mới phát hiện trùng — tồn bị giữ dư.
-      const replayed = await findOrderIdByIdempotencyKey(
+      const fingerprint = fingerprintDraftRequest({
+        customerId: params.customerId,
+        merchantId: params.merchantId,
+        livestreamId: params.livestreamId ?? null,
+        lines: params.lines,
+      });
+
+      const replayed = await findIdempotencyRecord(
         client,
         params.customerId,
         idempotencyKey
       );
       if (replayed) {
-        return { ...(await loadOrder(client, replayed)), rejected: [] };
+        // Cùng khoá mà khác nội dung là lỗi phía gọi, không phải lần
+        // gửi lại. Trả đơn cũ ở đây sẽ làm bình luận thứ hai IM LẶNG
+        // biến mất — khách chốt mà không có đơn, log không ghi gì.
+        //
+        // requestHash NULL là dòng có từ trước migration 009, không có
+        // gì để so nên cho qua.
+        if (replayed.requestHash && replayed.requestHash !== fingerprint) {
+          throw new IdempotencyKeyReusedError(idempotencyKey);
+        }
+        return { ...(await loadOrder(client, replayed.orderId)), rejected: [] };
       }
 
       await client.query("BEGIN");
 
-      // ── 2. BẪY-08: khách có lịch sử bom hàng thì giữ ngắn hơn ────
+      // ── 3. BẪY-08: khách có lịch sử bom hàng thì giữ ngắn hơn ────
       // Người đã chốt rồi bỏ ba lần không đáng được giam tồn đủ 5 phút
       // như người mua thật. Cờ cod_blocked ghi luôn vào đơn để module
       // thanh toán sau này không phải tính lại điểm — tính lại nghĩa
@@ -91,7 +115,7 @@ export class DraftOrderService {
         ? this.riskyHoldSeconds
         : this.holdSeconds;
 
-      // ── 3. Lấy đơn để ghi vào: tạo mới hoặc gộp vào đơn đang mở ───
+      // ── 4. Lấy đơn để ghi vào: tạo mới hoặc gộp vào đơn đang mở ───
       const target = await this.resolveTargetOrder(
         client,
         params,
@@ -103,17 +127,22 @@ export class DraftOrderService {
       // đơn đã có, tuyệt đối không giữ thêm tồn.
       if (target === ALREADY_EXISTS) {
         await client.query("ROLLBACK");
-        const existingId = await findOrderIdByIdempotencyKey(
+        const winner = await findIdempotencyRecord(
           client,
           params.customerId,
           idempotencyKey
         );
-        return { ...(await loadOrder(client, existingId!)), rejected: [] };
+        // Cùng kiểm vân tay như nhánh thường, để hai request khác nội
+        // dung chạy song song không im lặng nhận chung một đơn.
+        if (winner!.requestHash && winner!.requestHash !== fingerprint) {
+          throw new IdempotencyKeyReusedError(idempotencyKey);
+        }
+        return { ...(await loadOrder(client, winner!.orderId)), rejected: [] };
       }
 
       const { orderId, merged } = target;
 
-      // ── 4. Giữ tồn từng dòng ─────────────────────────────────────
+      // ── 5. Giữ tồn từng dòng ─────────────────────────────────────
       // Sắp xếp theo skuId để chống deadlock: hai đơn cùng mua A và B
       // mà khoá theo thứ tự ngược nhau sẽ ôm nhau chết.
       const sortedLines = [...params.lines].sort((a, b) =>
@@ -166,7 +195,7 @@ export class DraftOrderService {
         throw new AllLinesOutOfStockError(rejected);
       }
 
-      // ── 5. Gia hạn giữ hàng khi gộp ──────────────────────────────
+      // ── 6. Gia hạn giữ hàng khi gộp ──────────────────────────────
       // Khách vừa chốt thêm mã nghĩa là vẫn đang mua, không có lý do
       // để cắt đồng hồ của những mã đã chốt trước đó.
       if (merged) {
@@ -177,16 +206,17 @@ export class DraftOrderService {
         });
       }
 
-      // ── 6. Ghi nhận khoá chống trùng ─────────────────────────────
+      // ── 7. Ghi nhận khoá chống trùng ─────────────────────────────
       // Nằm trong cùng transaction với phần giữ tồn: nếu giữ tồn hỏng
       // thì khoá cũng biến mất, request được phép thử lại sạch sẽ.
       await recordIdempotencyKey(client, {
         customerId: params.customerId,
         key: idempotencyKey,
         orderId,
+        requestHash: fingerprint,
       });
 
-      // ── 7. Sự kiện, cùng transaction ─────────────────────────────
+      // ── 8. Sự kiện, cùng transaction ─────────────────────────────
       const result = await loadOrder(client, orderId);
       await appendOutboxEvent(client, {
         aggregateId: orderId,
@@ -236,6 +266,31 @@ export class DraftOrderService {
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Ca #22 — phiên đã kết thúc thì không nhận đơn.
+   *
+   * `scheduled` vẫn cho qua: host hay bấm phát trước rồi mới đổi
+   * trạng thái, và chặn ở đó sẽ làm mất những đơn đầu phiên.
+   */
+  private async requireOpenLivestream(
+    client: PoolClient,
+    livestreamId: string | null
+  ): Promise<void> {
+    if (!livestreamId) {
+      return;
+    }
+
+    const status = await readLivestreamStatus(client, livestreamId);
+    if (status === null) {
+      // Khoá ngoại sẽ bắt ở bước chèn, nhưng báo sớm thì thông điệp
+      // rõ hơn nhiều so với lỗi ràng buộc của Postgres.
+      throw new LivestreamNotOpenError(livestreamId, "NOT_FOUND");
+    }
+    if (status !== "live" && status !== "scheduled") {
+      throw new LivestreamNotOpenError(livestreamId, status);
     }
   }
 

@@ -243,5 +243,8 @@ jobs:
       - name: TypeScript typecheck
         run: npm run typecheck
 
-      - name: Run Commerce tests
-        run: npm test
+      # Dùng test:coverage chứ không phải test: ngưỡng 90% khai trong
+      # vitest.config.ts chỉ có tác dụng khi chạy kèm --coverage. Chạy
+      # `npm test` suông thì độ phủ trôi dần theo từng PR mà CI vẫn xanh.
+      - name: Run Commerce tests with coverage gate
+        run: npm run test:coverage

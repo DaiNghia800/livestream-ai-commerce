@@ -273,12 +273,17 @@ describe("Gộp đơn nháp trong phiên live", () => {
 
     await postDraft({ skuId: skuA, quantity: 2, customerId, livestreamId: live });
 
-    // Bình luận thứ hai mang khoá riêng của nó
+    // Bình luận thứ hai mang khoá riêng của nó.
+    // merchantId phải CỐ ĐỊNH: vân tay chống trùng (ca #9) bao gồm cả
+    // trường này, nên để helper tự sinh ngẫu nhiên thì lần "gửi lại"
+    // hoá ra là một request khác và nhận 422.
     const key2 = crypto.randomUUID();
+    const merchantId = crypto.randomUUID();
     const second = await postDraft({
       skuId: skuB,
       quantity: 3,
       customerId,
+      merchantId,
       livestreamId: live,
       idempotencyKey: key2,
     });
@@ -291,6 +296,7 @@ describe("Gộp đơn nháp trong phiên live", () => {
       skuId: skuB,
       quantity: 3,
       customerId,
+      merchantId,
       livestreamId: live,
       idempotencyKey: key2,
     });
@@ -308,11 +314,11 @@ describe("Gộp đơn nháp trong phiên live", () => {
     const customerId = crypto.randomUUID();
     const sku = await createSkuWithStock(pool, 10);
     const key = crypto.randomUUID();
+    // Cùng khoá PHẢI đi với cùng nội dung, kể cả merchantId — xem ca #9.
+    const merchantId = crypto.randomUUID();
+    const sent = { skuId: sku, quantity: 2, customerId, merchantId, livestreamId: live, idempotencyKey: key };
 
-    const [a, b] = await Promise.all([
-      postDraft({ skuId: sku, quantity: 2, customerId, livestreamId: live, idempotencyKey: key }),
-      postDraft({ skuId: sku, quantity: 2, customerId, livestreamId: live, idempotencyKey: key }),
-    ]);
+    const [a, b] = await Promise.all([postDraft(sent), postDraft(sent)]);
 
     expect(a.status).toBe(201);
     expect(b.status).toBe(201);

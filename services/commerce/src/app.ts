@@ -7,6 +7,7 @@ import { createLivestreamRouter } from "./modules/livestream/routes/livestream.r
 import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js";
 import { createOrderRouter } from "./modules/order/routes/order.routes.js";
 import { createPurchaseRequestRouter } from "./modules/order/routes/purchase-request.routes.js";
+import { createPaymentRouter } from "./modules/payment/routes/payment.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 
 export function createApp(
@@ -58,6 +59,7 @@ export function createApp(
   apiRouter.use("/uploads", createUploadRouter(customS3Service));
   apiRouter.use("/orders", createOrderRouter());
   apiRouter.use("/purchase-requests", createPurchaseRequestRouter());
+  apiRouter.use("/payments", createPaymentRouter());
 
 
   app.use(config.apiPrefix, apiRouter);

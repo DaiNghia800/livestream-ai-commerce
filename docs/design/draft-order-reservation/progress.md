@@ -17,12 +17,21 @@
 | T8 Job quét hết hạn | ✅ | 9 test |
 | T10 Outbox publisher | ✅ | 23 test · chạy ở chế độ ghi log tới khi `services/realtime` lên |
 | T9 Hàng đợi duyệt | 🟡 | 32 test · backend xong, **màn hình nhân viên chưa làm** |
-| T11 Guard BẪY-01…12 | 🟡 | 26 test · 8 bẫy thuộc backend đã xong, 4 bẫy thuộc AI worker |
-| T12 | ❌ | |
-| Backend thanh toán | ❌ | Bảng `payments` đã có, chưa có module |
+| T11 Guard BẪY-01…12 | 🟡 | 27 test · 8 bẫy thuộc backend đã xong, 4 bẫy thuộc AI worker |
+| T12 Bộ test đầy đủ | ✅ | 29/30 ca thiết kế · độ phủ 99.26% dòng, 95.81% nhánh |
+| Backend thanh toán | ✅ | 60 test · COD, VietQR, đối soát tiền về, hoàn tiền |
+| Màn hình hàng đợi duyệt | ❌ | API đã đủ, frontend chưa dựng |
 | Nối frontend vào API | ❌ | 4 màn vẫn chạy `src/mocks/` |
 
-Toàn bộ test của service: **294 passed**, trong đó 148 ca thuộc phần đơn hàng.
+Toàn bộ test của service: **450 passed**, trong đó 304 ca thuộc phần đơn hàng và thanh toán.
+
+| Độ phủ | Câu lệnh | Nhánh | Hàm | Dòng |
+|---|---|---|---|---|
+| Toàn service | 99.26% | 95.81% | 100% | 99.26% |
+
+Mọi file thuộc phần đơn hàng và thanh toán đều ≥ 90% trên cả bốn chỉ số. File duy nhất còn dưới là `livestream-product.repository.ts` (88.09% nhánh) — thuộc module livestream của đồng đội.
+
+Ngưỡng 90% khai trong `vitest.config.ts` và CI chạy `npm run test:coverage`, nên tụt dưới ngưỡng là đỏ chứ không trôi âm thầm.
 
 ---
 
@@ -314,6 +323,95 @@ Công thức `risk_score` là **cột tính sẵn trong schema**, không nằm t
 
 ---
 
+## T12 — Bộ test đầy đủ
+
+Đối chiếu 30 ca ở [README.md](README.md) mục 9 với những gì đã có: **24 ca** đã nằm rải trong T3–T11, **5 ca** bổ sung ở `t12-design-cases`, **1 ca** không thuộc backend này.
+
+Hai trong số các ca còn thiếu hoá ra thiếu vì **code chưa làm**, không phải vì quên viết test:
+
+| Ca | Lỗ hổng | Đã vá |
+|---|---|---|
+| #9 cùng khoá khác nội dung | Khoá chống trùng trả đơn cũ bất kể nội dung. AI worker tái dùng nhầm khoá → bình luận thứ hai **im lặng biến mất**, khách chốt mà không có đơn, log không ghi gì vì trả về 200 | Lưu vân tay SHA-256 của nội dung đã chuẩn hoá. Khác nội dung → **422** |
+| #22 phiên đã kết thúc | Không ai kiểm trạng thái phiên. Bình luận đến muộn vài giây sau khi host tắt sóng vẫn tạo đơn — shop không thấy nó ở đâu, hàng giam tới hết TTL | Chặn `ended`/`cancelled`, cho qua `live`/`scheduled` → **409** |
+
+Vân tay **chuẩn hoá trước khi băm** (sắp dòng theo `skuId`), nếu không client gửi lại cùng nội dung nhưng khác thứ tự sẽ nhận 422 oan. `scheduled` vẫn cho qua vì host hay bấm phát trước rồi mới đổi trạng thái.
+
+Ca #29 (lọc bình luận của chính shop) nằm ở tầng đọc bình luận của AI worker, phải chặn trước khi gọi sang commerce — không test được ở đây.
+
+### Ca #19 phải thu hẹp phạm vi, và lý do
+
+Bản đầu tôi viết kiểm bất biến trên **toàn bộ** bảng `inventory` và nó đỏ. Không phải rò tồn: helper `createSkuWithStock(pool, 5, 5)` đặt thẳng `held_quantity` để dựng tình huống "người khác đang giữ hết" mà không sinh dòng `reservations` nào.
+
+Phép kiểm giờ chỉ xét các mã **đã từng có lượt giữ**. Không làm yếu đi: mọi đường rò thật đều để lại dòng reservation, vì giữ tồn và ghi reservation nằm chung một transaction.
+
+### Ba loại nhánh phải test bằng đồ giả
+
+Không dựng lại được bằng database thật, nên service và pool đều là đồ giả:
+
+- **Nhánh 500 của controller** — không có cách nào bắt database thật ném `ECONNRESET` đúng lúc. Có ca kiểm rằng chuỗi kết nối không lọt ra phản hồi.
+- **Hẹn giờ của job** — lượt trước chưa xong mà lượt sau tới giờ, và lượt quét ném lỗi. Nhánh thứ hai quan trọng: nuốt sai chỗ thì một lượt quét nền hỏng sẽ giết cả tiến trình và shop mất luôn API.
+- **Chốt chặn phòng thủ ở repository** — `holdStock(client, sku, 0)`, `mergeHoldInto` khi lượt giữ nguồn đã bị dồn đi. Chúng tồn tại để lỗi lập trình nổ ra to và sớm, nên không bao giờ chạy ở test tích hợp.
+
+### Độ phủ
+
+| | Câu lệnh | Nhánh | Hàm | Dòng |
+|---|---|---|---|---|
+| Toàn service | 98.99% | 95.34% | 100% | 98.99% |
+
+Loại trừ khỏi phép đo: `server.ts` (chạy nó nghĩa là mở cổng thật và bật job nền), các file `index.ts` chỉ `export *`, và các file `*.types.ts` chỉ khai báo kiểu — v8 đếm chúng là 0% và kéo tụt con số thật.
+
+Ngưỡng 90% cho cả bốn chỉ số khai trong `vitest.config.ts`. Đã kiểm cổng chặn thật sự hoạt động: đặt ngưỡng 99% thì lệnh trả mã lỗi 1.
+
+---
+
+## Thanh toán
+
+Trước đó bảng `payments` đã có từ T2 nhưng **không có một dòng code nào**. Module này lấp chỗ đó.
+
+```
+POST /api/payments/orders/:orderId         shop chọn COD hay chuyển khoản
+GET  /api/payments/orders/:orderId         xem khoản thu kèm lịch sử tiền về
+POST /api/payments/bank-webhook            ngân hàng báo có tiền
+POST /api/payments/orders/:orderId/fail    khách bỏ không chuyển
+POST /api/payments/orders/:orderId/refund  hoàn tiền
+GET  /api/payments?status=PAID             danh sách cho màn hình shop
+```
+
+### Tách bản ghi thu tiền khỏi từng lần tiền về
+
+Bảng `payments` cũ có một cột `txn_ref`, tức ngầm định mỗi đơn đúng một lần tiền về. Bán live không như vậy: khách chuyển thiếu 10k rồi chuyển bù, khách chuyển nhầm đơn rồi chuyển lại, ngân hàng bắn webhook lại khi ta trả lỗi.
+
+Nhồi tất cả vào một dòng thì không cộng được tổng đã nhận, và không có cách nào chống webhook trùng ngoài ghi đè — mà ghi đè làm mất dấu lần chuyển trước. Migration 010 thêm `payment_transactions` ghi **từng** lần tiền về, `payments.paid_amount` là tổng của chúng.
+
+Khoá chống trùng là `(provider, provider_txn_id)`, **gồm cả provider**: mỗi ngân hàng đánh số giao dịch riêng nên trùng số giữa hai nơi là chuyện bình thường.
+
+### Tiền về không bao giờ được tin là đúng số
+
+| Tình huống | Xử lý |
+|---|---|
+| Chuyển **đủ** | → `PAID` |
+| Chuyển **thiếu** | vẫn `PENDING`, ghi `paid_amount`. Đánh PAID nghĩa là shop giao hàng khi chưa đủ tiền |
+| Chuyển **thừa** | `PAID` + cờ `OVERPAID` để hoàn lại |
+| Chuyển **bù** lần hai | cộng vào, đủ thì chuyển `PAID` |
+| **Webhook bắn lại** | trả 200 kèm trạng thái hiện tại, không cộng tiền lần nữa |
+| **Không khớp đơn nào** | **409** — tiền đã vào tài khoản thật, nuốt im lặng là shop mất dấu một khoản tiền |
+
+`paid_amount` **tính lại từ bảng giao dịch** chứ không cộng dồn vào cột. Cộng dồn thì một lần chạy lại thổi phồng con số vĩnh viễn, không có cách nào dựng lại sự thật.
+
+Tình trạng đối chiếu (`UNPAID / UNDERPAID / SETTLED / OVERPAID / REFUNDED`) **suy ra** từ hai con số chứ không lưu thành cột — lưu thì sớm muộn lệch khỏi số tiền thật, và lúc đó không ai biết nên tin cột nào. Tính ở controller để ba màn hình không ai tự so lại rồi so sai.
+
+### Nối với các phần trước
+
+- **COD**: khoản thu đứng `PENDING` tới khi đơn `COMPLETED`, đánh dấu trong **cùng transaction** với việc hoàn tất đơn. Tách ra thì sẽ có đơn đã giao mà sổ thu tiền vẫn ghi đang chờ.
+- **BẪY-08**: cờ `orders.cod_blocked` từ T11 giờ có người đọc. Khách rủi ro cao không chọn được COD, nhưng vẫn chuyển khoản trước được — chặn COD không phải là cấm bán.
+- Cờ đọc từ đơn chứ **không tính lại điểm rủi ro** ở bước thu tiền: tính lại nghĩa là khách qua được cửa này mà trượt cửa kia tuỳ thời điểm.
+
+Nội dung chuyển khoản sinh từ mã đơn, chỉ `[A-Z0-9]`: khách phải **gõ tay** chuỗi này trên app ngân hàng, mà nhiều app còn tự lọc ký tự đặc biệt — lọc xong là lệch chuỗi đối soát và tiền về không khớp đơn nào.
+
+Sau khi chạy hết 450 test, đối soát `payments.paid_amount == SUM(payment_transactions)` lệch **0** khoản.
+
+---
+
 ## Hạ tầng đã đụng tới
 
 | Thay đổi | Lý do |
@@ -321,6 +419,7 @@ Công thức `risk_score` là **cột tính sẵn trong schema**, không nằm t
 | `docker-compose.yml`: `${POSTGRES_PORT:-5432}` | Máy đã cài sẵn PostgreSQL sẽ chiếm 5432; mặc định không đổi nên đồng đội không ảnh hưởng |
 | `.env.example`: thêm `HOLD_*_SECONDS` | TTL hai tầng phải cấu hình được, không hard-code |
 | `ci.yml`: `Commerce — Pytest` → `Commerce — Vitest` | Theo sau việc chuyển ngôn ngữ |
+| `ci.yml`: Commerce chạy `npm run test:coverage` thay vì `npm test` | Ngưỡng 90% chỉ có tác dụng khi chạy kèm `--coverage`; chạy `npm test` suông thì độ phủ trôi dần theo từng PR mà CI vẫn xanh |
 | `ci.yml`: chỉ lint commit chưa có trên `main` | Ba commit khởi tạo repo không theo Conventional Commits, đã publish nên không rebase được |
 | `playwright.config.ts`: timeout 60s, 4 worker, `retries: 1` | 40 test trên 6 worker cùng một server gây flaky — mỗi lần đỏ một bộ khác nhau |
 | Dọn database chuyển từ `setupFiles` sang `globalSetup` | `setupFiles` chạy lại cho **từng** file test mà vitest chạy song song — file này `TRUNCATE` giữa chừng xoá mất dữ liệu file kia đang dùng, gây 21 ca đỏ dù chạy riêng từng file đều xanh |

@@ -31,12 +31,56 @@ export async function findOrderIdByIdempotencyKey(
   customerId: string,
   key: string
 ): Promise<string | null> {
-  const result = await client.query<{ order_id: string }>(
-    `SELECT order_id FROM order_idempotency_keys
+  return (await findIdempotencyRecord(client, customerId, key))?.orderId ?? null;
+}
+
+/**
+ * Như trên nhưng kèm vân tay nội dung — phục vụ ca #9.
+ *
+ * `requestHash` NULL với các dòng tạo trước migration 009. Coi như
+ * hợp lệ thay vì chặn: khoá cũ không có gì để so, mà chặn chúng nghĩa
+ * là mọi đơn đang chạy dở lúc deploy đều hỏng.
+ */
+export async function findIdempotencyRecord(
+  client: PoolClient,
+  customerId: string,
+  key: string
+): Promise<{ orderId: string; requestHash: string | null } | null> {
+  const result = await client.query<{
+    order_id: string;
+    request_hash: string | null;
+  }>(
+    `SELECT order_id, request_hash FROM order_idempotency_keys
       WHERE customer_id = $1 AND idempotency_key = $2`,
     [customerId, key]
   );
-  return result.rows[0]?.order_id ?? null;
+  const row = result.rows[0];
+  return row ? { orderId: row.order_id, requestHash: row.request_hash } : null;
+}
+
+/**
+ * Vân tay của nội dung request.
+ *
+ * Chuẩn hoá trước khi băm, nếu không thì cùng một đơn gửi lại với các
+ * dòng đảo thứ tự sẽ bị coi là nội dung khác và nhận 422 oan:
+ *   - sắp dòng theo skuId
+ *   - chỉ lấy những trường thật sự định nghĩa đơn hàng
+ */
+export function fingerprintDraftRequest(params: {
+  customerId: string;
+  merchantId: string;
+  livestreamId: string | null;
+  lines: Array<{ skuId: string; quantity: number }>;
+}): string {
+  const canonical = JSON.stringify({
+    customerId: params.customerId,
+    merchantId: params.merchantId,
+    livestreamId: params.livestreamId,
+    lines: [...params.lines]
+      .map((l) => ({ skuId: l.skuId, quantity: l.quantity }))
+      .sort((a, b) => a.skuId.localeCompare(b.skuId)),
+  });
+  return crypto.createHash("sha256").update(canonical).digest("hex");
 }
 
 /**
@@ -47,14 +91,40 @@ export async function findOrderIdByIdempotencyKey(
  */
 export async function recordIdempotencyKey(
   client: PoolClient,
-  params: { customerId: string; key: string; orderId: string }
+  params: {
+    customerId: string;
+    key: string;
+    orderId: string;
+    requestHash?: string | null;
+  }
 ): Promise<void> {
   await client.query(
-    `INSERT INTO order_idempotency_keys (customer_id, idempotency_key, order_id)
-     VALUES ($1, $2, $3)
+    `INSERT INTO order_idempotency_keys
+         (customer_id, idempotency_key, order_id, request_hash)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (customer_id, idempotency_key) DO NOTHING`,
-    [params.customerId, params.key, params.orderId]
+    [params.customerId, params.key, params.orderId, params.requestHash ?? null]
   );
+}
+
+/**
+ * Ca #22: phiên live có đang nhận đơn không.
+ *
+ * Bình luận đến muộn vài giây sau khi host tắt sóng là chuyện thường.
+ * Nhận đơn vào phiên đã đóng thì shop không thấy nó ở đâu — màn hình
+ * phiên đã chốt sổ — và hàng bị giam tới hết TTL.
+ *
+ * Trả null khi không có phiên nào mang id đó.
+ */
+export async function readLivestreamStatus(
+  client: PoolClient,
+  livestreamId: string
+): Promise<string | null> {
+  const result = await client.query<{ status: string }>(
+    `SELECT status FROM livestreams WHERE id = $1`,
+    [livestreamId]
+  );
+  return result.rows[0]?.status ?? null;
 }
 
 /**

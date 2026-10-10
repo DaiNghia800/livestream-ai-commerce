@@ -148,6 +148,28 @@ describe("Xác nhận đơn", () => {
     expect(second.body.status).toBe("CONFIRMED");
   });
 
+  it("xác nhận bằng token không tồn tại trả 404", async () => {
+    const res = await request(app)
+      .post(`/api/orders/confirm/${"x".repeat(43)}`)
+      .send({
+        recipientName: "Hoàng Minh Tuấn",
+        recipientPhone: "0911222333",
+        shippingAddress: "9 Phan Chu Trinh, phường Phú Nhuận, Huế",
+      });
+    expect(res.status).toBe(404);
+  });
+
+  it("đơn nháp chưa xác nhận thì không chuyển sang đóng gói được", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const draft = await createDraft(sku, 1);
+
+    const res = await request(app).post(`/api/orders/${draft.id}/processing`).send({});
+
+    // Đóng gói trước khi khách chốt địa chỉ nghĩa là gói xong không
+    // biết gửi đi đâu.
+    expect(res.status).toBe(409);
+  });
+
   it("số điện thoại sai định dạng bị chặn", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const draft = await createDraft(sku, 1);
