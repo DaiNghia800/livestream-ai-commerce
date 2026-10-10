@@ -311,6 +311,9 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     setPinnedProduct(null);
   };
 
+  // Banner thông báo kết nối phát sóng
+  const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
+
   // Bắt đầu Livestream
   const handleStartLive = async () => {
     setIsStarting(true);
@@ -319,27 +322,56 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       // 1. Cập nhật trạng thái backend
       await updateLivestreamStatus(livestreamId, "live");
 
-      // 2. Cách 1: Tự động khởi tạo và kết nối AWS IVS Web Broadcast bằng Camera/Mic trình duyệt
-      if (localStream) {
+      // 2. Lấy cấu hình AWS IVS (tự động tạo kênh trên AWS nếu chưa có)
+      let conf = ivsConfig;
+      try {
+        if (!conf) {
+          conf = await getIvsStreamConfig(livestreamId);
+          setIvsConfig(conf);
+        }
+      } catch (confErr) {
+        console.warn("[Studio] Error fetching IVS stream config:", confErr);
+      }
+
+      // 3. Tự động kích hoạt Camera & Micro nếu người bán chưa bật trước đó
+      let stream = localStream;
+      if (!stream && typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
         try {
-          let conf = ivsConfig;
-          if (!conf) {
-            conf = await getIvsStreamConfig(livestreamId);
-            setIvsConfig(conf);
-          }
-          if (conf?.ingestEndpoint && conf?.streamKey) {
-            await startBroadcast({
-              ingestEndpoint: conf.ingestEndpoint,
-              streamKey: conf.streamKey,
-              localStream,
-            });
-          }
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: selectedCameraId
+              ? { deviceId: { exact: selectedCameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+              : { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
+          });
+          setLocalStream(stream);
+          setCameraStatus("active");
+          setCameraEnabled(true);
+          setMicEnabled(true);
+        } catch (mediaErr) {
+          console.warn("[Studio] Could not auto-acquire camera on start live:", mediaErr);
+        }
+      }
+
+      // 4. Cách 1: Đẩy luồng video & audio từ trình duyệt lên AWS IVS Web Broadcast
+      if (stream && conf?.ingestEndpoint && conf?.streamKey) {
+        try {
+          await startBroadcast({
+            ingestEndpoint: conf.ingestEndpoint,
+            streamKey: conf.streamKey,
+            localStream: stream,
+          });
         } catch (streamErr) {
           console.warn("[Studio] IVS Web Broadcast connection note:", streamErr);
         }
       }
 
       setCurrentStatus("LIVE");
+      setLiveToastMessage(
+        conf?.channelArn
+          ? `Đã phát sóng trực tiếp thành công lên AWS IVS!`
+          : "Đã bắt đầu phát sóng phòng Studio!"
+      );
+      setTimeout(() => setLiveToastMessage(null), 6000);
     } catch (err) {
       console.warn("Failed to update status on server, falling back to local:", err);
       setCurrentStatus("LIVE");
@@ -450,7 +482,22 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   const canStartLive = Boolean(session.title && hasProducts && !isEnded);
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-132px)] min-h-[540px] lg:h-[calc(100dvh-132px)] lg:min-h-[580px] lg:max-h-[calc(100dvh-132px)] w-full rounded-xl sm:rounded-2xl border border-slate-800 shadow-md bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="relative flex flex-col h-[calc(100dvh-132px)] min-h-[540px] lg:h-[calc(100dvh-132px)] lg:min-h-[580px] lg:max-h-[calc(100dvh-132px)] w-full rounded-xl sm:rounded-2xl border border-slate-800 shadow-md bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Toast Notification khi Bắt đầu phát sóng */}
+      {liveToastMessage && (
+        <div className="absolute top-3 right-3 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-emerald-600 text-white rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          <span>{liveToastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setLiveToastMessage(null)}
+            className="ml-2 hover:opacity-80 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* 1. Top Session Bar */}
       <StudioSessionBar
         sessionId={session.id}
