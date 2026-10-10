@@ -334,6 +334,26 @@ describe("BẪY-08 — bom hàng", () => {
     expect((await readOrderRow(res.body.id)).codBlocked).toBe(false);
   });
 
+  it("khách rủi ro đi qua ĐƯỜNG BÌNH LUẬN cũng bị đẩy review và giữ ngắn", async () => {
+    const customerId = crypto.randomUUID();
+    await seedRisk(customerId, { fraud: 1 });
+    const sku = await createSkuWithStock(pool, 10);
+
+    // Điểm tin cậy rất cao nhưng vẫn không được tự chốt: lịch sử bom
+    // hàng là lý do độc lập với việc AI đọc câu có chắc hay không.
+    const res = await submit({ skuId: sku, quantity: 1, confidence: 0.99, customerId });
+
+    expect(res.body.decision).toBe("NEEDS_REVIEW");
+    expect(res.body.purchaseRequest.guardReasons).toContain("HIGH_RISK_CUSTOMER");
+
+    // TTL rút ngắn áp cho cả lượt giữ của đề nghị
+    const heldUntil = new Date(res.body.purchaseRequest.heldUntil).getTime();
+    const createdAt = new Date(res.body.purchaseRequest.createdAt).getTime();
+    expect(Math.round((heldUntil - createdAt) / 1000)).toBeLessThanOrEqual(
+      config.holdRiskySeconds + 2
+    );
+  });
+
   it("một lần nghi gian lận là đủ chạm ngưỡng", async () => {
     const customerId = crypto.randomUUID();
     await seedRisk(customerId, { fraud: 1 });

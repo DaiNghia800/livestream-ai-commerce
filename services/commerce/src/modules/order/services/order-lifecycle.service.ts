@@ -44,6 +44,7 @@ import {
   loadOrder,
 } from "../repositories/order.repository.js";
 import { bumpRisk } from "../repositories/customer-risk.repository.js";
+import { markCodCollected } from "../../payment/repositories/payment.repository.js";
 import type { Order, OrderStatus } from "../types/order.types.js";
 
 export interface ShippingInfo {
@@ -267,6 +268,14 @@ export class OrderLifecycleService {
         toStatus: "COMPLETED",
         changedBy,
       });
+
+      // COD: đây mới là lúc tiền thật sự vào tay shop. Đánh dấu trong
+      // CÙNG transaction với việc hoàn tất đơn — tách ra thì sẽ có
+      // những đơn đã giao mà sổ thu tiền vẫn ghi đang chờ.
+      //
+      // Hàm có guard `status = 'PENDING'` nên gọi lại vô hại, và đơn
+      // chuyển khoản trước (đã PAID) không bị đụng tới.
+      await markCodCollected(client, orderId);
 
       // Mẫu số của điểm rủi ro: khách mua nhiều lần không bị phạt oan
       // vì một hai lần lỡ.

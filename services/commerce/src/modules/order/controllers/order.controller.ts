@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import {
   AllLinesOutOfStockError,
+  IdempotencyKeyReusedError,
+  LivestreamNotOpenError,
   SkuNotFoundError,
 } from "../../../shared/errors/domain.errors.js";
 import { CreateDraftOrderRequestSchema } from "../schemas/order.schema.js";
@@ -36,6 +38,27 @@ export class OrderController {
           error: "ValidationError",
           message: err.errors.map((e) => e.message).join("; "),
           details: err.errors,
+        });
+        return;
+      }
+
+      // 422 chứ không 409: nội dung gửi lên tự nó không mâu thuẫn với
+      // trạng thái hệ thống, mà là bên gọi dùng sai khoá — thử lại y
+      // nguyên cũng không bao giờ thành công.
+      if (err instanceof IdempotencyKeyReusedError) {
+        res.status(422).json({
+          error: "IdempotencyKeyReused",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamNotOpenError) {
+        res.status(409).json({
+          error: "LivestreamNotOpen",
+          message: err.message,
+          livestreamId: err.livestreamId,
+          status: err.status,
         });
         return;
       }

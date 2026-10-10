@@ -79,3 +79,39 @@ export class AllLinesOutOfStockError extends DomainError {
     super("Không giữ được dòng hàng nào");
   }
 }
+
+/**
+ * Ca #9: khoá chống trùng bị dùng lại cho một nội dung khác.
+ *
+ * Trả đơn cũ trong trường hợp này nghe thì an toàn nhưng lại che mất
+ * một lỗi thật ở phía gọi: bình luận thứ hai IM LẶNG biến mất, khách
+ * chốt mà không có đơn, và log không ghi gì vì request trả về 200.
+ */
+export class IdempotencyKeyReusedError extends DomainError {
+  readonly code = "IDEMPOTENCY_KEY_REUSED";
+
+  constructor(readonly key: string) {
+    super(
+      `Idempotency-Key ${key} đã dùng cho một nội dung khác. ` +
+        `Mỗi lần chốt phải có khoá riêng.`
+    );
+  }
+}
+
+/**
+ * Ca #22: phiên live đã kết thúc hoặc bị huỷ.
+ *
+ * Bình luận đến muộn vài giây sau khi host tắt sóng là chuyện thường.
+ * Nhận đơn vào phiên đã đóng thì shop không thấy nó ở đâu cả — màn
+ * hình phiên đã chốt sổ, và hàng bị giam tới hết TTL.
+ */
+export class LivestreamNotOpenError extends DomainError {
+  readonly code = "LIVESTREAM_NOT_OPEN";
+
+  constructor(
+    readonly livestreamId: string,
+    readonly status: string
+  ) {
+    super(`Phiên live ${livestreamId} đang ở trạng thái ${status}, không nhận đơn mới`);
+  }
+}

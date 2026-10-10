@@ -15,6 +15,8 @@ import { config } from "../src/config.js";
 
 const TABLES = [
   "outbox_events",
+  "payment_transactions",
+  "payments",
   "order_status_history",
   "reservations",
   "order_items",

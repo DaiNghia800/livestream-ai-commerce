@@ -2,7 +2,9 @@ import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import {
   AllLinesOutOfStockError,
+  IdempotencyKeyReusedError,
   InvalidOrderStateError,
+  LivestreamNotOpenError,
   OrderNotFoundError,
   SkuNotFoundError,
 } from "../../../shared/errors/domain.errors.js";
@@ -113,6 +115,21 @@ export class PurchaseRequestController {
 
     if (err instanceof OrderNotFoundError) {
       res.status(404).json({ error: "NotFound", message: err.message });
+      return;
+    }
+
+    if (err instanceof IdempotencyKeyReusedError) {
+      res.status(422).json({ error: "IdempotencyKeyReused", message: err.message });
+      return;
+    }
+
+    if (err instanceof LivestreamNotOpenError) {
+      res.status(409).json({
+        error: "LivestreamNotOpen",
+        message: err.message,
+        livestreamId: err.livestreamId,
+        status: err.status,
+      });
       return;
     }
 

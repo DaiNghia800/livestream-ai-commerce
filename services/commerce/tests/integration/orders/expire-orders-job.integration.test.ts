@@ -152,11 +152,22 @@ describe("Job quét đơn hết hạn", () => {
     const smallBatch = new ExpireOrdersJob(pool, { batchSize: 1 });
     const result = await smallBatch.runOnce();
 
-    expect(result.scanned).toBe(1);
-    // Đúng một trong hai đơn còn ở DRAFT, đơn kia đã EXPIRED
+    // Chỉ khẳng định đúng điều batchSize hứa. KHÔNG được assert
+    // `scanned === 1`: job quét toàn bộ database, mà các file test
+    // chạy song song cũng đang sinh đơn quá hạn — suất duy nhất của
+    // lô này có thể rơi vào đơn của file khác.
+    expect(result.scanned).toBeLessThanOrEqual(1);
+
+    // Chạy đủ số lượt thì cả hai đơn đều phải hết hạn.
+    for (let i = 0; i < 10; i += 1) {
+      const now = await Promise.all(drafts.map((d) => readStatus(d.id)));
+      if (now.every((s) => s === "EXPIRED")) {
+        break;
+      }
+      await smallBatch.runOnce();
+    }
     const statuses = await Promise.all(drafts.map((d) => readStatus(d.id)));
-    expect(statuses.filter((s) => s === "EXPIRED")).toHaveLength(1);
-    expect(statuses.filter((s) => s === "DRAFT")).toHaveLength(1);
+    expect(statuses).toEqual(["EXPIRED", "EXPIRED"]);
   });
 
   it("ghi sự kiện order.expired vào outbox", async () => {
