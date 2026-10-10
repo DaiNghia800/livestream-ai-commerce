@@ -27,6 +27,8 @@ import {
   findHoldingReservationIds,
   findOrderByConfirmToken,
   findOrderById,
+  findOrderDetailByCode,
+  listOrders,
   markCancelled,
   markCompleted,
   markConfirmed,
@@ -299,6 +301,39 @@ export class OrderLifecycleService {
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Danh sách cho màn hình đơn hàng của shop. */
+  async listForMerchant(filter: {
+    merchantId?: string;
+    status?: string;
+    source?: string;
+    limit?: number;
+  }): Promise<unknown[]> {
+    const client = await this.pool.connect();
+    try {
+      return await listOrders(client, {
+        ...filter,
+        // Chặn trần để một cú gọi không kéo cả bảng về.
+        limit: Math.min(filter.limit ?? 50, 200),
+      });
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Chi tiết theo mã đơn đọc được, dùng cho đường dẫn màn chi tiết. */
+  async getDetailByCode(orderCode: string): Promise<unknown> {
+    const client = await this.pool.connect();
+    try {
+      const detail = await findOrderDetailByCode(client, orderCode);
+      if (!detail) {
+        throw new OrderNotFoundError(orderCode);
+      }
+      return detail;
     } finally {
       client.release();
     }

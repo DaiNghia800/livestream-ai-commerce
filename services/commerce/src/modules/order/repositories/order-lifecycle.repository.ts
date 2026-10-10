@@ -285,3 +285,128 @@ export async function saveShippingInfo(
     ]
   );
 }
+
+export interface OrderListFilter {
+  merchantId?: string;
+  status?: string;
+  source?: string;
+  limit: number;
+}
+
+/**
+ * Danh sách đơn cho màn hình shop.
+ *
+ * Gộp sẵn số dòng hàng và trạng thái thu tiền để màn danh sách không
+ * phải gọi thêm một vòng API cho mỗi dòng — một phiên live có hàng
+ * trăm đơn, mỗi đơn một request là treo trình duyệt.
+ *
+ * Mỗi bộ lọc dùng kiểu `$n IS NULL OR cột = $n`: một câu SQL cố định
+ * cho mọi tổ hợp lọc, thay vì nối chuỗi động. Nối chuỗi là nơi lỗi
+ * tiêm SQL chui vào, và cũng làm Postgres phải lập kế hoạch lại mỗi
+ * lần đổi bộ lọc.
+ */
+export async function listOrders(
+  client: PoolClient,
+  filter: OrderListFilter
+): Promise<unknown[]> {
+  const result = await client.query(
+    `SELECT o.id,
+            o.order_code       AS "orderCode",
+            o.status,
+            o.source,
+            o.total_amount     AS "totalAmount",
+            o.held_until       AS "heldUntil",
+            o.recipient_name   AS "recipientName",
+            o.recipient_phone  AS "recipientPhone",
+            o.livestream_id    AS "livestreamId",
+            o.cod_blocked      AS "codBlocked",
+            o.created_at       AS "createdAt",
+            (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id)
+                               AS "itemCount",
+            p.status           AS "paymentStatus",
+            p.method           AS "paymentMethod"
+       FROM orders o
+       LEFT JOIN payments p ON p.order_id = o.id
+      WHERE ($1::uuid    IS NULL OR o.merchant_id = $1)
+        AND ($2::varchar IS NULL OR o.status      = $2)
+        AND ($3::varchar IS NULL OR o.source      = $3)
+      ORDER BY o.created_at DESC
+      LIMIT $4`,
+    [filter.merchantId ?? null, filter.status ?? null, filter.source ?? null, filter.limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Chi tiết đơn theo MÃ ĐỌC ĐƯỢC.
+ *
+ * Shop đọc mã trên live và gõ vào thanh địa chỉ, nên màn chi tiết đi
+ * theo `order_code` chứ không phải UUID. `confirm_token` cố tình
+ * không nằm trong kết quả: nó là thứ thay cho mật khẩu của khách,
+ * lọt vào màn hình quản trị là lộ đường xác nhận hộ.
+ */
+export async function findOrderDetailByCode(
+  client: PoolClient,
+  orderCode: string
+): Promise<unknown | null> {
+  const result = await client.query(
+    `SELECT o.id,
+            o.order_code      AS "orderCode",
+            o.status,
+            o.source,
+            -- Cần cho nút "Tạo lại đơn": đơn mới phải thuộc đúng
+            -- khách, đúng shop và đúng phiên của đơn cũ.
+            o.customer_id     AS "customerId",
+            o.merchant_id     AS "merchantId",
+            o.total_amount    AS "totalAmount",
+            o.held_until      AS "heldUntil",
+            o.recipient_name  AS "recipientName",
+            o.recipient_phone AS "recipientPhone",
+            o.shipping_address AS "shippingAddress",
+            o.note,
+            o.cod_blocked     AS "codBlocked",
+            o.livestream_id   AS "livestreamId",
+            o.created_at      AS "createdAt",
+            COALESCE((
+                SELECT json_agg(json_build_object(
+                           'id', oi.id,
+                           'skuId', oi.sku_id,
+                           'skuCode', s.sku_code,
+                           'productName', pr.name,
+                           'variantName', s.variant_name,
+                           'quantity', oi.quantity,
+                           'requestedQty', oi.requested_qty,
+                           'isPartial', oi.is_partial,
+                           'unitPrice', oi.unit_price
+                       ) ORDER BY oi.created_at)
+                  FROM order_items oi
+                  JOIN product_skus s ON s.id = oi.sku_id
+                  JOIN products pr    ON pr.id = s.product_id
+                 WHERE oi.order_id = o.id
+            ), '[]'::json) AS items,
+            COALESCE((
+                SELECT json_agg(json_build_object(
+                           'fromStatus', h.from_status,
+                           'toStatus', h.to_status,
+                           'note', h.note,
+                           'changedAt', h.created_at
+                       ) ORDER BY h.created_at)
+                  FROM order_status_history h
+                 WHERE h.order_id = o.id
+            ), '[]'::json) AS history,
+            (SELECT json_build_object(
+                        'id', p.id,
+                        'method', p.method,
+                        'status', p.status,
+                        'amount', p.amount,
+                        'paidAmount', p.paid_amount,
+                        'txnRef', p.txn_ref,
+                        'provider', p.provider
+                    )
+               FROM payments p WHERE p.order_id = o.id) AS payment
+       FROM orders o
+      WHERE o.order_code = $1`,
+    [orderCode]
+  );
+  return result.rows[0] ?? null;
+}

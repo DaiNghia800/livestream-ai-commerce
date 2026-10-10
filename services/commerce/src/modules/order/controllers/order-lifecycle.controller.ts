@@ -37,6 +37,32 @@ export class OrderLifecycleController {
     }
   };
 
+  /** GET /orders — danh sách cho màn hình shop. */
+  list = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const pick = (v: unknown) =>
+        typeof v === "string" && v ? v : undefined;
+      const items = await this.service.listForMerchant({
+        merchantId: pick(req.query.merchantId),
+        status: pick(req.query.status),
+        source: pick(req.query.source),
+        limit: Number(req.query.limit) || undefined,
+      });
+      res.json({ items });
+    } catch (err) {
+      this.handleError(err, res, "list orders");
+    }
+  };
+
+  /** GET /orders/by-code/:orderCode — chi tiết cho màn hình shop. */
+  detailByCode = async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(await this.service.getDetailByCode(req.params.orderCode));
+    } catch (err) {
+      this.handleError(err, res, "load order detail");
+    }
+  };
+
   /**
    * GET /orders/confirm/:token
    *
