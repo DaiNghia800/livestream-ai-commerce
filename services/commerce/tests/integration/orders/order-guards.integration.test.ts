@@ -71,6 +71,25 @@ function createDraft(args: {
     });
 }
 
+/**
+ * Gom đúng tới trần giữ hàng của phiên bằng nhiều bình luận nhỏ.
+ *
+ * Dùng một bình luận lớn bằng cả trần sẽ vượt luôn ngưỡng BẪY-05 và
+ * rơi vào hàng đợi, nên không dựng được tình huống "đã giữ đủ trần".
+ */
+async function gomToiTran(
+  skuId: string,
+  args: { customerId: string; merchantId?: string; livestreamId: string },
+) {
+  const buoc = config.reviewQtyThreshold;
+  let daGom = 0;
+  while (daGom < config.maxHeldPerCustomerPerSession) {
+    const them = Math.min(buoc, config.maxHeldPerCustomerPerSession - daGom);
+    await submit({ skuId, quantity: them, ...args });
+    daGom += them;
+  }
+}
+
 /** Dựng sẵn lịch sử xấu cho khách. */
 async function seedRisk(
   customerId: string,
@@ -153,6 +172,39 @@ describe("BẪY-05 — số lượng vô lý", () => {
     expect((await readStock(pool, sku)).held).toBe(qty);
   });
 
+  it("TRONG PHIÊN LIVE vẫn giữ tồn cho khách sỉ", async () => {
+    const live = await createLivestream(pool);
+    const sku = await createSkuWithStock(pool, 100);
+    const qty = config.reviewQtyThreshold + 5;
+
+    const res = await submit({
+      skuId: sku,
+      quantity: qty,
+      confidence: 0.99,
+      livestreamId: live,
+    });
+
+    // Ca này là lý do MAX_HELD_PER_CUSTOMER_PER_SESSION phải lớn hơn
+    // hẳn REVIEW_QTY_THRESHOLD. Đặt bằng nhau thì BẪY-01 cũng kích
+    // hoạt và nó thắng ở chỗ "không giữ tồn" — nhánh giữ chân khách
+    // sỉ của BẪY-05 thành code chết đúng trong phiên live, tức đúng
+    // lúc nó cần chạy nhất.
+    expect(res.body.purchaseRequest.guardReasons).toEqual(["QTY_ABOVE_THRESHOLD"]);
+    expect((await readStock(pool, sku)).held).toBe(qty);
+  });
+
+  it("gom vượt trần phiên thì KHÔNG giữ, dù từng dòng đều nhỏ", async () => {
+    const live = await createLivestream(pool);
+    const customerId = crypto.randomUUID();
+    const sku = await createSkuWithStock(pool, 100);
+
+    // Từng dòng đều dưới ngưỡng BẪY-05, nhưng cộng dồn thì vượt trần.
+    await gomToiTran(sku, { customerId, livestreamId: live });
+    const res = await submit({ skuId: sku, quantity: 1, customerId, livestreamId: live });
+
+    expect(res.body.purchaseRequest.guardReasons).toEqual(["SESSION_HOLD_CAP"]);
+  });
+
   it("đúng ngưỡng thì vẫn tự chốt", async () => {
     const sku = await createSkuWithStock(pool, 100);
     const res = await submit({
@@ -172,12 +224,7 @@ describe("BẪY-01 — một account khoá sạch kho", () => {
     const skuB = await createSkuWithStock(pool, 100);
 
     // Gom dần tới sát trần bằng các bình luận hợp lệ
-    await submit({
-      skuId: skuA,
-      quantity: config.maxHeldPerCustomerPerSession,
-      customerId,
-      livestreamId: live,
-    });
+    await gomToiTran(skuA, { customerId, livestreamId: live });
     expect((await readStock(pool, skuA)).held).toBe(
       config.maxHeldPerCustomerPerSession
     );
@@ -203,13 +250,10 @@ describe("BẪY-01 — một account khoá sạch kho", () => {
     const merchantId = crypto.randomUUID();
     const sku = await createSkuWithStock(pool, 100);
 
-    await submit({
-      skuId: sku,
-      quantity: config.maxHeldPerCustomerPerSession,
-      customerId,
-      merchantId,
-      livestreamId: live,
-    });
+    // Gom dần bằng các bình luận BÌNH THƯỜNG (dưới ngưỡng BẪY-05) để
+    // chúng tự chốt đơn, không rơi vào hàng đợi. Chỉ cú vượt trần mới
+    // được xuất hiện ở đó.
+    await gomToiTran(sku, { customerId, merchantId, livestreamId: live });
     await submit({ skuId: sku, quantity: 1, customerId, merchantId, livestreamId: live });
 
     const queue = await request(app).get(
@@ -254,12 +298,7 @@ describe("BẪY-01 — một account khoá sạch kho", () => {
     const skuA = await createSkuWithStock(pool, 100);
     const skuB = await createSkuWithStock(pool, 100);
 
-    await submit({
-      skuId: skuA,
-      quantity: config.maxHeldPerCustomerPerSession,
-      customerId,
-      livestreamId: liveA,
-    });
+    await gomToiTran(skuA, { customerId, livestreamId: liveA });
     const res = await submit({
       skuId: skuB,
       quantity: 1,
@@ -275,12 +314,7 @@ describe("BẪY-01 — một account khoá sạch kho", () => {
     const live = await createLivestream(pool);
     const sku = await createSkuWithStock(pool, 100);
 
-    await submit({
-      skuId: sku,
-      quantity: config.maxHeldPerCustomerPerSession,
-      customerId: crypto.randomUUID(),
-      livestreamId: live,
-    });
+    await gomToiTran(sku, { customerId: crypto.randomUUID(), livestreamId: live });
     const res = await submit({
       skuId: sku,
       quantity: 2,

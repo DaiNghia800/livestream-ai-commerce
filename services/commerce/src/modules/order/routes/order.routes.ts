@@ -32,6 +32,10 @@ export function createOrderRouter(customPool?: Pool): Router {
 
   // Luồng khách hàng — định danh bằng confirm_token trong link, không
   // cần đăng nhập. Token sinh từ 32 byte ngẫu nhiên nên không đoán được.
+  // Màn hình shop
+  router.get("/", lifecycleController.list);
+  router.get("/by-code/:orderCode", lifecycleController.detailByCode);
+
   router.get("/confirm/:token", lifecycleController.openConfirmLink);
   router.post("/confirm/:token", lifecycleController.confirm);
 
