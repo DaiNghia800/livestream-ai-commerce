@@ -38,6 +38,8 @@ export default defineConfig({
 
         "dist/**",
         "tests/**",
+        "src/**/index.ts",
+        "src/**/types/**",
       ],
 
       // Ngưỡng cứng: tụt xuống dưới là `npm run test:coverage` đỏ, nên
@@ -51,3 +53,4 @@ export default defineConfig({
     },
   },
 });
+

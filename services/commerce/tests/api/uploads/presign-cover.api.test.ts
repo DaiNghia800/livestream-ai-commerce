@@ -1,6 +1,10 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "fs/promises";
+import os from "os";
+import path from "path";
 import { createApp } from "../../../src/app.js";
+import { LocalProductImageStorageService } from "../../../src/shared/storage/local-product-image-storage.service.js";
 import { S3StorageService } from "../../../src/shared/storage/s3-storage.service.js";
 
 const VALID_MERCHANT_ID = "a0000000-0000-0000-0000-000000000001";
@@ -22,6 +26,92 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
     app = createApp(undefined, mockS3Service);
   });
 
+  it("uses S3 signed uploads and a stable image URL when S3 is configured", async () => {
+    const s3App = createApp(undefined, new S3StorageService({
+      region: "ap-southeast-1",
+      bucketName: "liveorder-covers",
+    }));
+    const response = await request(s3App)
+      .post("/api/uploads/product-image/presign")
+      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .send({ fileName: "shirt.webp", contentType: "image/webp", fileSize: 1024 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.objectKey).toMatch(/^products\/images\/[0-9a-f-]+\.webp$/);
+    expect(response.body.imageUrl).toBe("https://liveorder-covers.s3.ap-southeast-1.amazonaws.com/presigned-put-url");
+    expect(response.body.expiresIn).toBe(300);
+  });
+
+  it("uses the configured public CDN base URL for S3 product images", async () => {
+    const s3App = createApp(undefined, new S3StorageService({
+      region: "ap-southeast-1",
+      bucketName: "liveorder-covers",
+      publicBaseUrl: "https://images.example.com/catalog/",
+    }));
+    const response = await request(s3App)
+      .post("/api/uploads/product-image/presign")
+      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .send({ fileName: "shirt.png", contentType: "image/png", fileSize: 1024 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.imageUrl).toMatch(/^https:\/\/images\.example\.com\/catalog\/products\/images\/[0-9a-f-]+\.png$/);
+  });
+
+  it("stores and serves product images locally when S3 is not configured", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "commerce-product-images-"));
+    try {
+      const localStorage = new LocalProductImageStorageService(directory, "http://localhost:8000");
+      const localApp = createApp(
+        undefined,
+        new S3StorageService({}),
+        undefined,
+        undefined,
+        undefined,
+        localStorage
+      );
+      const content = Buffer.from("test image bytes");
+      const presign = await request(localApp)
+        .post("/api/uploads/product-image/presign")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ fileName: "shirt.png", contentType: "image/png", fileSize: content.byteLength });
+
+      expect(presign.status).toBe(200);
+      expect(presign.body.storage).toBe("local");
+      expect(presign.body.imageUrl).toMatch(/^http:\/\/localhost:8000\/uploads\/products\/[0-9a-f-]+\.png$/);
+
+      const uploaded = await request(localApp)
+        .put(new URL(presign.body.uploadUrl).pathname)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set("Content-Type", "image/png")
+        .send(content);
+      expect(uploaded.status).toBe(204);
+
+      const served = await request(localApp).get(new URL(presign.body.imageUrl).pathname);
+      expect(served.status).toBe(200);
+      expect(served.body).toEqual(content);
+
+      const reusedUploadUrl = await request(localApp)
+        .put(new URL(presign.body.uploadUrl).pathname)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set("Content-Type", "image/png")
+        .send(content);
+      expect(reusedUploadUrl.status).toBe(400);
+
+      const wrongSizePresign = await request(localApp)
+        .post("/api/uploads/product-image/presign")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ fileName: "shirt.png", contentType: "image/png", fileSize: content.byteLength + 1 });
+      const wrongSizeUpload = await request(localApp)
+        .put(new URL(wrongSizePresign.body.uploadUrl).pathname)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set("Content-Type", "image/png")
+        .send(content);
+      expect(wrongSizeUpload.status).toBe(400);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("TC-UP-001 - Presign valid JPEG image -> HTTP 200", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
@@ -34,7 +124,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.uploadUrl).toBeDefined();
-    expect(res.body.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.jpg$/);
+    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.jpg$/);
     expect(res.body.coverImageUrl).toBeUndefined();
     expect(res.body.expiresIn).toBe(300);
   });
@@ -50,7 +140,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.png$/);
+    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.png$/);
   });
 
   it("TC-UP-003 - Presign valid WebP image -> HTTP 200", async () => {
@@ -64,7 +154,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.webp$/);
+    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.webp$/);
   });
 
   it("TC-UP-004 - Reject unsupported MIME type (image/gif) -> HTTP 400", async () => {

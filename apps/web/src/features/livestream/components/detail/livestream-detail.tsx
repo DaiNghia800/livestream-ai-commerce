@@ -11,7 +11,6 @@ interface LivestreamDetailProps {
 }
 
 export function LivestreamDetail({ livestreamId }: LivestreamDetailProps) {
-  // Tìm phiên trong mockLivestreams tập trung
   const session = mockLivestreams.find((item) => item.id === livestreamId);
 
   // Xử lý phiên không tồn tại

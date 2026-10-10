@@ -1,6 +1,7 @@
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { pool } from "../../../src/shared/database/database.js";
 import {
     PostgresLivestreamRepository,
 } from "../../../src/modules/livestream/repositories/livestream.repository.js";
@@ -11,12 +12,27 @@ const UUID_REGEX =
 describe("POST /api/livestreams - PostgreSQL Integration Tests", () => {
     const liveRepo = new PostgresLivestreamRepository();
     const liveApp = createApp(liveRepo);
+    let dbConnected = false;
+
+    beforeAll(async () => {
+        try {
+            const client = await pool.connect();
+            client.release();
+            dbConnected = true;
+        } catch {
+            dbConnected = false;
+        }
+    });
 
     // =========================================================
     // AC10 - Dữ liệu được lưu bền vững trong PostgreSQL
     // =========================================================
 
-    it("TC-CL-022 - Persist livestream into commerce_db", async () => {
+    it("TC-CL-022 - Persist livestream into commerce_db", async (ctx) => {
+        if (!dbConnected) {
+            ctx.skip();
+            return;
+        }
         const merchantId =
             "99999999-9999-4999-8999-999999999999";
 
@@ -48,7 +64,11 @@ describe("POST /api/livestreams - PostgreSQL Integration Tests", () => {
         expect(stored?.coverImageKey).toBeNull();
     });
 
-    it("TC-CL-023 - Persist livestream with coverImageKey into commerce_db", async () => {
+    it("TC-CL-023 - Persist livestream with coverImageKey into commerce_db", async (ctx) => {
+        if (!dbConnected) {
+            ctx.skip();
+            return;
+        }
         const merchantId = "99999999-9999-4999-8999-999999999999";
         const coverKey = "livestreams/covers/integ-test-key.webp";
 

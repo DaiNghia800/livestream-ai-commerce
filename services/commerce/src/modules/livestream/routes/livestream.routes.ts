@@ -19,16 +19,18 @@ export function createLivestreamRouter(
 ): Router {
   const router = Router();
   const repo = customRepository || new PostgresLivestreamRepository();
-  const service = new LivestreamService(repo);
-  const controller = new LivestreamController(service);
-
   const productRepo =
     customProductRepository || new PostgresLivestreamProductRepository();
+  const service = new LivestreamService(repo, productRepo);
+  const controller = new LivestreamController(service);
+
   const productService = new LivestreamProductService(repo, productRepo);
   const productController = new LivestreamProductController(productService);
 
   // Livestream session
   router.post("/", requireMerchantHeader, controller.create);
+  router.get("/", requireMerchantHeader, controller.list);
+  router.get("/:id", controller.getById);
 
   // Livestream products
   router.post("/:id/products", requireMerchantHeader, productController.addProduct);

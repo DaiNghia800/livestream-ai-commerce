@@ -8,6 +8,7 @@ export interface CreateLivestreamPayload {
   description?: string;
   scheduledAt?: string;
   coverImageKey?: string;
+  status?: "draft" | "scheduled";
 }
 
 export interface CreatedLivestreamResult {
@@ -83,13 +84,13 @@ export async function createLivestream(
 ): Promise<CreatedLivestreamResult> {
   const url = `${COMMERCE_API_BASE_URL}/api/livestreams`;
 
-  // Chỉ gửi các trường backend hỗ trợ (title, description?, scheduledAt?, coverImageKey?)
-  // KHÔNG gửi: id, merchantId trong body, status, products,...
+  // Gửi các trường backend hỗ trợ (title, description?, scheduledAt?, coverImageKey?, status?)
   const body: {
     title: string;
     description?: string;
     scheduledAt?: string;
     coverImageKey?: string;
+    status?: "draft" | "scheduled";
   } = {
     title: payload.title.trim(),
   };
@@ -104,6 +105,10 @@ export async function createLivestream(
 
   if (payload.coverImageKey && payload.coverImageKey.trim()) {
     body.coverImageKey = payload.coverImageKey.trim();
+  }
+
+  if (payload.status) {
+    body.status = payload.status;
   }
 
   let response: Response;

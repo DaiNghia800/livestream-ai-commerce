@@ -39,7 +39,7 @@ describe("S3StorageService Unit Tests", () => {
       bucketName: "liveorder-covers",
     });
     const key = service.generateObjectKey("image/jpeg");
-    expect(key).toMatch(/^livestreams\/covers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/);
+    expect(key).toMatch(/^public\/livestreams\/covers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/);
   });
 
   it("should generate object keys with correct extension for PNG", () => {
@@ -48,7 +48,7 @@ describe("S3StorageService Unit Tests", () => {
       bucketName: "liveorder-covers",
     });
     const key = service.generateObjectKey("image/png");
-    expect(key).toMatch(/^livestreams\/covers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/);
+    expect(key).toMatch(/^public\/livestreams\/covers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/);
   });
 
   it("should generate object keys with correct extension for WebP", () => {
@@ -57,7 +57,7 @@ describe("S3StorageService Unit Tests", () => {
       bucketName: "liveorder-covers",
     });
     const key = service.generateObjectKey("image/webp");
-    expect(key).toMatch(/^livestreams\/covers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.webp$/);
+    expect(key).toMatch(/^public\/livestreams\/covers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.webp$/);
   });
 
   it("should support custom S3Client instance", () => {
@@ -72,7 +72,7 @@ describe("S3StorageService Unit Tests", () => {
       bucketName: "liveorder-covers",
     });
     const key = service.generateObjectKey("application/octet-stream");
-    expect(key).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.bin$/);
+    expect(key).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.bin$/);
   });
 
   it("should create presigned upload result with uploadUrl, objectKey, and expiresIn (no public coverImageUrl)", async () => {
@@ -85,7 +85,7 @@ describe("S3StorageService Unit Tests", () => {
     expect(result.uploadUrl).toBe(
       "https://test-bucket.s3.ap-southeast-1.amazonaws.com/presigned-put-url"
     );
-    expect(result.objectKey).toMatch(/^livestreams\/covers\/[0-9a-f-]+\.webp$/);
+    expect(result.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.webp$/);
     expect(result.expiresIn).toBe(300);
     expect((result as any).coverImageUrl).toBeUndefined();
   });

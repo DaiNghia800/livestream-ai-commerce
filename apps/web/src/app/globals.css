@@ -440,6 +440,64 @@ select:disabled {
 .auth-layout-single .auth-left-inner {
   max-width: 760px;
 }
+
+.auth-left-compact {
+  padding-top: 1.25rem;
+  padding-bottom: 1rem;
+}
+
+.auth-left-inner-compact .auth-brand {
+  margin-bottom: 1rem;
+}
+
+.auth-left-inner-compact .auth-mode-switch {
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.auth-left-inner-compact .auth-mode-switch button {
+  min-height: 2.7rem;
+  padding: 0.45rem 0.7rem;
+}
+
+.auth-left-inner-compact .auth-register-form {
+  gap: 0.38rem;
+}
+
+.auth-left-inner-compact .auth-heading h1 {
+  font-size: clamp(1.4rem, 1.65vw, 1.7rem);
+}
+
+.auth-left-inner-compact .auth-heading p {
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.auth-left-inner-compact .field {
+  gap: 0.25rem;
+}
+
+.auth-left-inner-compact .field label,
+.auth-left-inner-compact .field-label-row label {
+  font-size: 0.88rem;
+}
+
+.auth-left-inner-compact .field input {
+  min-height: 2.65rem;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+.auth-left-inner-compact .checkbox {
+  gap: 0.55rem;
+  font-size: 0.82rem;
+}
+
+.auth-left-inner-compact .auth-submit {
+  min-height: 2.4rem;
+  margin-top: 0;
+}
+
 .auth-right {
   position: relative;
   overflow: hidden;
@@ -547,10 +605,10 @@ select:disabled {
 
 .auth-hero h2 {
   font-family: var(--font-heading);
-  font-size: clamp(2rem, 3.2vw, 3.15rem);
+  font-size: clamp(1.9rem, 3vw, 2.9rem);
   line-height: 1.12;
   margin: 0 0 1rem;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.015em;
   font-weight: 700;
   color: #ffffff;
   max-width: 620px;
@@ -675,6 +733,61 @@ select:disabled {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 2.2rem;
+}
+
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.auth-mode-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 3.35rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #deddea;
+  border-radius: 0.85rem;
+  background: #fff;
+  color: #53566a;
+  box-shadow: 0 2px 7px rgba(25, 27, 46, 0.045);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.auth-mode-switch button:hover {
+  border-color: #b7aef2;
+  background: #f8f7ff;
+  color: #3525cd;
+  transform: translateY(-1px);
+}
+
+.auth-mode-switch button.is-active {
+  border-color: #4d34d2;
+  background: linear-gradient(135deg, #4d34d2 0%, #6937d7 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(77, 52, 210, 0.2);
+}
+
+.auth-mode-switch button.is-active:hover {
+  background: linear-gradient(135deg, #4430c2 0%, #5e30ca 100%);
+  color: #fff;
+}
+
+.auth-mode-switch button:focus-visible {
+  outline: 3px solid rgba(77, 52, 210, 0.28);
+  outline-offset: 3px;
 }
 
 .auth-server-badge {
@@ -1606,6 +1719,22 @@ dialog::backdrop {
   .auth-brand {
     margin-bottom: 0.8rem;
   }
+  .auth-left-compact {
+    padding: 0.75rem 1.1rem;
+  }
+  .auth-left-inner-compact .auth-brand {
+    margin-bottom: 0.65rem;
+  }
+  .auth-mode-switch {
+    gap: 0.55rem;
+    margin-bottom: 1rem;
+  }
+  .auth-mode-switch button {
+    min-height: 3.1rem;
+    gap: 0.4rem;
+    padding: 0.6rem 0.45rem;
+    font-size: 0.88rem;
+  }
   .auth-server-badge {
     display: none;
   }
@@ -1620,6 +1749,9 @@ dialog::backdrop {
   }
   .auth-form {
     gap: 0.55rem;
+  }
+  .auth-left-inner-compact .auth-register-form {
+    gap: 0.38rem;
   }
   .auth-right {
     min-height: auto;
