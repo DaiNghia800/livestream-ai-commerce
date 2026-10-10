@@ -58,6 +58,18 @@ export const GetLivestreamParamSchema = z.object({
   }),
 });
 
+export const UpdateLivestreamStatusSchema = z
+  .object({
+    status: z.enum(["draft", "scheduled", "live", "ended", "cancelled"], {
+      required_error: "status is required",
+    }),
+  })
+  .strict();
+
+export type UpdateLivestreamStatusInput = z.infer<
+  typeof UpdateLivestreamStatusSchema
+>;
+
 export type GetLivestreamParamInput = z.infer<typeof GetLivestreamParamSchema>;
 
 export { isValidUuid };

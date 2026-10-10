@@ -13,6 +13,7 @@ import {
 import { createProductRouter } from "./modules/product/routes/product.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
+import { IIvsService } from "./shared/ivs/ivs.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
@@ -20,7 +21,8 @@ export function createApp(
   customLivestreamProductRepository?: ILivestreamProductRepository,
   customProductRepository?: IProductRepository,
   customAuthRepository?: IAuthRepository,
-  customLocalProductImageStorage?: LocalProductImageStorageService
+  customLocalProductImageStorage?: LocalProductImageStorageService,
+  customIvsService?: IIvsService
 ): Express {
 
   const app = express();
@@ -77,7 +79,11 @@ export function createApp(
   apiRouter.use("/auth", createAuthRouter(customAuthRepository));
   apiRouter.use(
     "/livestreams",
-    createLivestreamRouter(customRepository, customLivestreamProductRepository)
+    createLivestreamRouter(
+      customRepository,
+      customLivestreamProductRepository,
+      customIvsService
+    )
   );
   apiRouter.use(
     "/uploads",

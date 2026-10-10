@@ -18,16 +18,28 @@ import { StudioDeviceControls } from "./studio-device-controls";
 import { StudioBroadcastActions } from "./studio-broadcast-actions";
 import { StudioPreliveChecklist } from "./studio-prelive-checklist";
 import { StudioProductsPanel } from "./studio-products-panel";
+import { StudioIvsConfigModal } from "./studio-ivs-config-modal";
+import {
+  getLivestreamDetail,
+  updateLivestreamStatus,
+  mapBackendLivestreamToFrontend,
+  getIvsStreamConfig,
+  type IvsStreamConfig,
+} from "../../api/get-livestreams";
 import type { StudioProductItem } from "../../types/studio";
-import type { LivestreamStatus } from "../../types/livestream";
+import type { Livestream, LivestreamStatus } from "../../types/livestream";
+import { useIvsBroadcast } from "../../hooks/use-ivs-broadcast";
 
 export interface BroadcastStudioProps {
   livestreamId: string;
 }
 
 export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
-  // 1. Lấy thông tin phiên từ mockLivestreams
-  const session = mockLivestreams.find((item) => item.id === livestreamId);
+  // 1. Quản lý thông tin phiên (từ DB hoặc fallback mock)
+  const [session, setSession] = useState<Livestream | null>(() => {
+    return mockLivestreams.find((item) => item.id === livestreamId) || null;
+  });
+  const [isLoadingSession, setIsLoadingSession] = useState<boolean>(!session);
 
   // 2. Trạng thái phiên (DRAFT | SCHEDULED | STARTING | LIVE | ENDED)
   const [currentStatus, setCurrentStatus] = useState<LivestreamStatus>(
@@ -35,13 +47,66 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   );
   const [isStarting, setIsStarting] = useState(false);
 
+  // 2.1 Cấu hình AWS IVS & Stream Key Modal
+  const [isIvsModalOpen, setIsIvsModalOpen] = useState(false);
+  const [ivsConfig, setIvsConfig] = useState<IvsStreamConfig | null>(null);
+  const [isLoadingIvsConfig, setIsLoadingIvsConfig] = useState(false);
+
+  // 2.2 AWS IVS Web Broadcast (Cách 1: Phát trực tiếp ngay trên trình duyệt web)
+  const {
+    broadcastState,
+    broadcastError,
+    startBroadcast,
+    stopBroadcast,
+  } = useIvsBroadcast();
+
+  const handleOpenIvsModal = async () => {
+    setIsIvsModalOpen(true);
+    if (!ivsConfig) {
+      setIsLoadingIvsConfig(true);
+      try {
+        const conf = await getIvsStreamConfig(livestreamId);
+        setIvsConfig(conf);
+      } catch (err) {
+        console.warn("Could not fetch IVS stream config:", err);
+      } finally {
+        setIsLoadingIvsConfig(false);
+      }
+    }
+  };
+
+  // Tải chi tiết phiên từ backend
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSessionDetail() {
+      try {
+        const detail = await getLivestreamDetail(livestreamId);
+        if (!isMounted) return;
+        const mapped = mapBackendLivestreamToFrontend(detail);
+        setSession(mapped);
+        setCurrentStatus(mapped.status);
+      } catch (err) {
+        console.warn("[Studio] Could not load session from API:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoadingSession(false);
+        }
+      }
+    }
+
+    loadSessionDetail();
+    return () => {
+      isMounted = false;
+    };
+  }, [livestreamId]);
+
   // 3. Tab di động (Stage vs Products/Chat)
   const [mobileTab, setMobileTab] = useState<"stage" | "products" | "chat">("stage");
 
   // 4. Danh sách sản phẩm từ session
-  const [allProducts] = useState<StudioProductItem[]>(() => {
-    if (!session?.products) return [];
-    return session.products.map((p, index) => ({
+  const [allProducts, setAllProducts] = useState<StudioProductItem[]>(() => {
+    const prods = session?.products || mockLivestreams[0]?.products || [];
+    return prods.map((p, index) => ({
       id: p.id || `P-${index + 1}`,
       name: p.name,
       sku: p.sku,
@@ -54,6 +119,25 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       salesCount: p.chatOrders || 0,
     }));
   });
+
+  useEffect(() => {
+    if (session?.products && session.products.length > 0) {
+      setAllProducts(
+        session.products.map((p, index) => ({
+          id: p.id || `P-${index + 1}`,
+          name: p.name,
+          sku: p.sku,
+          price: p.price,
+          originalPrice: p.originalPrice,
+          stock: p.stock,
+          image: p.image,
+          isPinned: Boolean(p.isPinned),
+          orderCode: p.id,
+          salesCount: p.chatOrders || 0,
+        }))
+      );
+    }
+  }, [session]);
 
   // Sản phẩm đang ghim
   const [pinnedProduct, setPinnedProduct] = useState<StudioProductItem | null>(() => {
@@ -227,24 +311,70 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     setPinnedProduct(null);
   };
 
-  // Bắt đầu Livestream (Demo Mode)
-  const handleStartLive = () => {
+  // Bắt đầu Livestream
+  const handleStartLive = async () => {
     setIsStarting(true);
     setCurrentStatus("STARTING");
-    setTimeout(() => {
-      setIsStarting(false);
+    try {
+      // 1. Cập nhật trạng thái backend
+      await updateLivestreamStatus(livestreamId, "live");
+
+      // 2. Cách 1: Tự động khởi tạo và kết nối AWS IVS Web Broadcast bằng Camera/Mic trình duyệt
+      if (localStream) {
+        try {
+          let conf = ivsConfig;
+          if (!conf) {
+            conf = await getIvsStreamConfig(livestreamId);
+            setIvsConfig(conf);
+          }
+          if (conf?.ingestEndpoint && conf?.streamKey) {
+            await startBroadcast({
+              ingestEndpoint: conf.ingestEndpoint,
+              streamKey: conf.streamKey,
+              localStream,
+            });
+          }
+        } catch (streamErr) {
+          console.warn("[Studio] IVS Web Broadcast connection note:", streamErr);
+        }
+      }
+
       setCurrentStatus("LIVE");
-    }, 1500);
+    } catch (err) {
+      console.warn("Failed to update status on server, falling back to local:", err);
+      setCurrentStatus("LIVE");
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   // Kết thúc Livestream
-  const handleEndLive = () => {
+  const handleEndLive = async () => {
+    // 1. Dừng phát sóng AWS IVS Web Broadcast
+    stopBroadcast();
+
+    // 2. Cập nhật trạng thái backend sang ended
+    try {
+      await updateLivestreamStatus(livestreamId, "ended");
+    } catch (err) {
+      console.warn("Failed to update status on server, falling back to local:", err);
+    }
     setCurrentStatus("ENDED");
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       setLocalStream(null);
     }
   };
+
+  // Trạng thái đang tải dữ liệu phiên
+  if (isLoadingSession) {
+    return (
+      <div className="max-w-2xl mx-auto my-16 p-12 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-medium text-on-surface-variant">Đang tải phòng Livestream Studio...</p>
+      </div>
+    );
+  }
 
   // 6. Xử lý phiên không tồn tại
   if (!session) {
@@ -339,12 +469,24 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         className="shrink-0"
       />
 
-      {/* 2. Amazon IVS Stream Telemetry Header */}
-      <StudioStreamStatus
-        isLive={isLive}
-        channelName={session.ivsChannel}
-        hasVideoSignal={cameraReady}
-      />
+      {/* 2. Amazon IVS Stream Telemetry Header with OBS Config button */}
+      <div className="flex items-center justify-between bg-[#141C2E] border-b border-slate-800 pr-3">
+        <div className="flex-1 min-w-0">
+          <StudioStreamStatus
+            isLive={isLive}
+            channelName={ivsConfig?.channelArn ? "AWS IVS ACTIVE" : session.ivsChannel}
+            hasVideoSignal={cameraReady}
+            broadcastState={broadcastState}
+          />
+        </div>
+        <button
+          onClick={handleOpenIvsModal}
+          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md bg-primary/20 text-blue-200 border border-primary/40 hover:bg-primary/30 transition-all shrink-0 active:scale-95 shadow-xs"
+        >
+          <Radio className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+          <span>Cấu hình OBS / IVS</span>
+        </button>
+      </div>
 
       {/* Mobile Tab Switcher (Visible on < 1024px) */}
       <div className="lg:hidden flex items-center bg-[#141C2E] border-b border-slate-800 text-xs shrink-0">
@@ -489,7 +631,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             onPinProduct={handlePinProduct}
             onUnpinProduct={handleUnpinProduct}
             activeTab={mobileTab === "stage" ? undefined : mobileTab}
-            onTabChange={(tab) => {
+            onTabChange={(tab: "products" | "chat") => {
               if (mobileTab !== "stage") {
                 setMobileTab(tab);
               }
@@ -500,6 +642,14 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           />
         </div>
       </div>
+
+      {/* Modal Cấu hình OBS / AWS IVS */}
+      <StudioIvsConfigModal
+        isOpen={isIvsModalOpen}
+        onClose={() => setIsIvsModalOpen(false)}
+        config={ivsConfig}
+        isLoading={isLoadingIvsConfig}
+      />
     </div>
   );
 }

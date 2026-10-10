@@ -265,3 +265,70 @@ export async function getLivestreamDetail(
 
   return (await res.json()) as BackendLivestreamDetailResponse;
 }
+
+/**
+ * Gọi API PATCH /api/livestreams/:id/status cập nhật trạng thái phiên livestream (bắt đầu, kết thúc...)
+ */
+export async function updateLivestreamStatus(
+  id: string,
+  status: "draft" | "scheduled" | "live" | "ended" | "cancelled",
+  merchantId: string = DEFAULT_DEV_MERCHANT_ID
+): Promise<BackendLivestreamItem> {
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/status`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Merchant-Id": merchantId,
+    },
+    body: JSON.stringify({ status }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Cập nhật trạng thái livestream thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as BackendLivestreamItem;
+}
+
+export interface IvsStreamConfig {
+  channelArn: string;
+  playbackUrl: string;
+  ingestEndpoint: string;
+  streamKey?: string;
+}
+
+/**
+ * Gọi API GET /api/livestreams/:id/stream-config để lấy hoặc tự động khởi tạo Channel IVS & Stream Key
+ */
+export async function getIvsStreamConfig(
+  id: string,
+  merchantId: string = DEFAULT_DEV_MERCHANT_ID
+): Promise<IvsStreamConfig> {
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/stream-config`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "X-Merchant-Id": merchantId,
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Lấy cấu hình phát sóng IVS thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as IvsStreamConfig;
+}
+
+
