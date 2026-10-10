@@ -3,6 +3,22 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     globalSetup: ["./tests/global-setup.ts"],
+
+    // Khoá GIẢ cho các cổng thanh toán, chỉ để test chạy được. Không
+    // phải khoá sandbox thật của nhà cung cấp nào — endpoint vẫn trỏ
+    // về sandbox và assertSandbox() chặn mọi host khác.
+    env: {
+      PUBLIC_BASE_URL: "http://localhost:8000",
+      VNPAY_TMN_CODE: "TESTTMN1",
+      VNPAY_HASH_SECRET: "khoa-gia-chi-dung-cho-test-khong-phai-khoa-that",
+      MOMO_PARTNER_CODE: "MOMOTEST",
+      MOMO_ACCESS_KEY: "access-key-gia",
+      MOMO_SECRET_KEY: "secret-key-gia",
+      ZALOPAY_APP_ID: "2553",
+      ZALOPAY_KEY1: "key1-gia",
+      ZALOPAY_KEY2: "key2-gia",
+      MOCK_GATEWAY_SECRET: "mock-secret-gia",
+    },
     coverage: {
       provider: "v8",
       include: ["src/**"],

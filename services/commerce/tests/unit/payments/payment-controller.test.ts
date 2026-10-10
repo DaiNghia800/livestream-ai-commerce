@@ -19,6 +19,7 @@ import {
   markPaymentRefunded,
 } from "../../../src/modules/payment/repositories/payment.repository.js";
 import { reconcileState } from "../../../src/modules/payment/types/payment.types.js";
+import { UnknownGatewayError } from "../../../src/modules/payment/gateways/index.js";
 import {
   CodNotAllowedError,
   PaymentNotFoundError,
@@ -47,7 +48,14 @@ function fakeRes() {
 }
 
 function fakeReq(overrides: Record<string, unknown> = {}) {
-  return { body: {}, params: {}, query: {}, ...overrides } as never;
+  return {
+    body: {},
+    params: {},
+    query: {},
+    header: () => undefined,
+    socket: {},
+    ...overrides,
+  } as never;
 }
 
 /** Service giả: mọi phương thức đều ném cùng một lỗi. */
@@ -331,5 +339,125 @@ describe("reconcileState — suy ra tình trạng đối chiếu", () => {
     expect(
       reconcileState({ ...base, status: "REFUNDED", paidAmount: "100000.00" })
     ).toBe("REFUNDED");
+  });
+});
+
+describe("PaymentController — luồng cổng điện tử", () => {
+  it("lấy IP thật của khách từ x-forwarded-for", async () => {
+    const startCheckout = vi
+      .fn()
+      .mockResolvedValue({ payUrl: "http://x", provider: "mock", payment: {} });
+    const res = fakeRes();
+
+    await new PaymentController({ startCheckout } as never).checkout(
+      fakeReq({
+        ...ORDER,
+        body: {},
+        header: (n: string) => (n === "x-forwarded-for" ? "203.0.113.9, 10.0.0.1" : undefined),
+        ip: "10.0.0.1",
+      }),
+      res
+    );
+
+    // Sau proxy thì req.ip là IP của proxy. VNPay đưa IP vào chữ ký
+    // nên lấy sai sẽ làm mọi giao dịch bị từ chối.
+    expect(startCheckout.mock.calls[0][0].clientIp).toBe("203.0.113.9");
+  });
+
+  it("không có header thì lấy req.ip", async () => {
+    const startCheckout = vi
+      .fn()
+      .mockResolvedValue({ payUrl: "http://x", provider: "mock", payment: {} });
+    const res = fakeRes();
+
+    await new PaymentController({ startCheckout } as never).checkout(
+      fakeReq({ ...ORDER, body: {}, header: () => undefined, ip: "198.51.100.7" }),
+      res
+    );
+    expect(startCheckout.mock.calls[0][0].clientIp).toBe("198.51.100.7");
+  });
+
+  it("không có gì thì lùi về localhost", async () => {
+    const startCheckout = vi
+      .fn()
+      .mockResolvedValue({ payUrl: "http://x", provider: "mock", payment: {} });
+    const res = fakeRes();
+
+    await new PaymentController({ startCheckout } as never).checkout(
+      fakeReq({ ...ORDER, body: {}, header: () => undefined }),
+      res
+    );
+    // Để trống thì VNPay từ chối, nên phải có một giá trị hợp lệ.
+    expect(startCheckout.mock.calls[0][0].clientIp).toBe("127.0.0.1");
+  });
+
+  it("gateway không phải chuỗi thì bỏ qua, dùng cổng mặc định", async () => {
+    const startCheckout = vi
+      .fn()
+      .mockResolvedValue({ payUrl: "http://x", provider: "mock", payment: {} });
+    const res = fakeRes();
+
+    await new PaymentController({ startCheckout } as never).checkout(
+      fakeReq({ ...ORDER, body: { gateway: 123 }, header: () => undefined }),
+      res
+    );
+    expect(startCheckout.mock.calls[0][0].gateway).toBeUndefined();
+  });
+
+  it("checkout: lỗi lạ trả 500", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = fakeRes();
+    await new PaymentController({
+      startCheckout: vi.fn().mockRejectedValue(new Error("bất ngờ")),
+    } as never).checkout(fakeReq({ ...ORDER, body: {}, header: () => undefined }), res);
+    expect(res.statusCode).toBe(500);
+    vi.restoreAllMocks();
+  });
+
+  it("trang quay về: cổng lạ trả 404", async () => {
+    const res = fakeRes();
+    // Service ném UnknownGatewayError từ bên trong getGateway().
+    await new PaymentController({
+      handleGatewayCallback: vi
+        .fn()
+        .mockRejectedValue(new UnknownGatewayError("stripe")),
+    } as never).gatewayReturn(
+      fakeReq({ params: { gateway: "stripe" }, query: {} }),
+      res
+    );
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error).toBe("UnknownGateway");
+  });
+
+  it("trang quay về: lỗi lạ trả 500", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi.fn().mockRejectedValue(new Error("bất ngờ")),
+    } as never).gatewayReturn(fakeReq({ params: { gateway: "mock" }, query: {} }), res);
+    expect(res.statusCode).toBe(500);
+    vi.restoreAllMocks();
+  });
+
+  it("IPN: lỗi lạ trả 500", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi.fn().mockRejectedValue(new Error("bất ngờ")),
+    } as never).gatewayIpn(fakeReq({ params: { gateway: "mock" }, query: {} }), res);
+    expect(res.statusCode).toBe(500);
+    vi.restoreAllMocks();
+  });
+
+  it("trang quay về trả null khi chưa có khoản thu nào khớp", async () => {
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi
+        .fn()
+        .mockResolvedValue({ outcome: "ORDER_NOT_FOUND", payment: null }),
+    } as never).gatewayReturn(fakeReq({ params: { gateway: "mock" }, query: {} }), res);
+
+    expect(res.body.payment).toBeNull();
+    expect(res.body.outcome).toBe("ORDER_NOT_FOUND");
   });
 });

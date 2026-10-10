@@ -5,3 +5,4 @@ export * from "./routes/payment.routes.js";
 export * from "./schemas/payment.schema.js";
 export * from "./services/payment.service.js";
 export * from "./types/payment.types.js";
+export * from "./gateways/index.js";

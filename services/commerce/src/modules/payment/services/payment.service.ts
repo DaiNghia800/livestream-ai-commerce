@@ -37,6 +37,11 @@ import {
   recalcPaidAmount,
 } from "../repositories/payment.repository.js";
 import type { Payment, PaymentMethod } from "../types/payment.types.js";
+import {
+  getGateway,
+  type AcknowledgeOutcome,
+  type CallbackChannel,
+} from "../gateways/index.js";
 
 /** Chỉ thu tiền cho đơn đã chốt địa chỉ và chưa bị huỷ. */
 const THU_DUOC = new Set(["CONFIRMED", "PROCESSING", "COMPLETED"]);
@@ -45,6 +50,18 @@ export interface CreatePaymentParams {
   orderId: string;
   method: PaymentMethod;
   provider?: string | null;
+}
+
+export interface CheckoutParams {
+  orderId: string;
+  /** Tên cổng. Bỏ trống thì dùng cổng mặc định trong cấu hình. */
+  gateway?: string;
+  clientIp: string;
+}
+
+export interface GatewayCallbackResult {
+  outcome: AcknowledgeOutcome;
+  payment: Payment | null;
 }
 
 export interface BankTransferParams {
@@ -186,6 +203,146 @@ export class PaymentService {
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Xin đường dẫn thanh toán từ cổng điện tử.
+   *
+   * Khoản thu phải tồn tại trước: đường dẫn mang theo số tiền và nội
+   * dung đối soát, mà cả hai đều lấy từ khoản thu. Sinh đường dẫn
+   * trước rồi mới tạo khoản thu thì hai bên có thể lệch nhau.
+   */
+  async startCheckout(params: CheckoutParams): Promise<{
+    payUrl: string;
+    provider: string;
+    payment: Payment;
+  }> {
+    const payment = await this.getByOrder(params.orderId);
+
+    // Đã thu xong rồi thì không dựng đường dẫn mới: khách bấm vào sẽ
+    // trả tiền lần thứ hai.
+    if (payment.status !== "PENDING") {
+      throw new InvalidOrderStateError(
+        payment.id,
+        payment.status,
+        "tạo đường dẫn thanh toán"
+      );
+    }
+
+    const gateway = getGateway(params.gateway);
+    const checkout = await gateway.createCheckout({
+      txnRef: payment.txnRef!,
+      amount: payment.amount,
+      orderCode: payment.orderCode ?? payment.orderId,
+      clientIp: params.clientIp,
+    });
+
+    const client = await this.pool.connect();
+    try {
+      // Ghi lại cổng đã dùng để lúc đối soát biết hỏi ai.
+      await client.query(
+        `UPDATE payments SET provider = $2, updated_at = NOW() WHERE id = $1`,
+        [payment.id, checkout.provider]
+      );
+    } finally {
+      client.release();
+    }
+
+    return {
+      payUrl: checkout.payUrl,
+      provider: checkout.provider,
+      payment: { ...payment, provider: checkout.provider },
+    };
+  }
+
+  /**
+   * Cổng báo kết quả về.
+   *
+   * Trả về một `outcome` thay vì ném lỗi, vì mỗi cổng đòi một hình
+   * dạng phản hồi riêng và controller mới là chỗ biết dịch sang hình
+   * dạng đó. Ném lỗi ở đây sẽ khiến cổng nhận HTTP 500 và bắn lại mãi.
+   *
+   * Kênh RETURN (trình duyệt khách quay về) KHÔNG được ghi nhận tiền:
+   * nó đi qua máy khách nên ai cũng tự gõ được. Chỉ IPN mới là nguồn
+   * sự thật.
+   */
+  async handleGatewayCallback(
+    gatewayName: string,
+    params: Record<string, unknown>,
+    channel: CallbackChannel
+  ): Promise<GatewayCallbackResult> {
+    const gateway = getGateway(gatewayName);
+    const parsed = gateway.parseCallback(params, channel);
+
+    if (!parsed.signatureValid) {
+      return { outcome: "INVALID_SIGNATURE", payment: null };
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const payment = await findPaymentByTxnRefForUpdate(client, parsed.txnRef);
+      if (!payment) {
+        await client.query("ROLLBACK");
+        return { outcome: "ORDER_NOT_FOUND", payment: null };
+      }
+
+      // Khác hẳn chuyển khoản tay: cổng điện tử thu ĐÚNG số ta yêu
+      // cầu, nên lệch một đồng nghĩa là gói tin bị sửa hoặc ta dựng
+      // sai số tiền. Ghi nhận nó sẽ làm hỏng sổ sách.
+      if (Number(parsed.amount) !== Number(payment.amount)) {
+        await client.query("ROLLBACK");
+        return { outcome: "INVALID_AMOUNT", payment: null };
+      }
+
+      if (channel === "RETURN" || !parsed.succeeded) {
+        const current = await loadPayment(client, payment.id);
+        await client.query("COMMIT");
+        return {
+          outcome: parsed.succeeded ? "SUCCESS" : "ERROR",
+          payment: current,
+        };
+      }
+
+      const laMoi = await insertTransaction(client, {
+        paymentId: payment.id,
+        provider: gateway.name,
+        providerTxnId: parsed.providerTxnId,
+        amount: parsed.amount,
+        rawPayload: parsed.rawPayload,
+      });
+
+      if (!laMoi) {
+        // Cổng bắn lại gói đã xử lý. Phải trả "đã ghi nhận" chứ không
+        // phải lỗi, nếu không họ bắn mãi.
+        const current = await loadPayment(client, payment.id);
+        await client.query("COMMIT");
+        return { outcome: "ALREADY_CONFIRMED", payment: current };
+      }
+
+      const updated = await recalcPaidAmount(client, payment.id);
+
+      await appendOutboxEvent(client, {
+        aggregateId: payment.orderId,
+        eventType: "payment.settled",
+        payload: {
+          orderId: payment.orderId,
+          paymentId: payment.id,
+          provider: gateway.name,
+          amount: updated.amount,
+        },
+      });
+
+      await client.query("COMMIT");
+      return { outcome: "SUCCESS", payment: updated };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error(`[PaymentService] Lỗi khi xử lý callback ${gatewayName}:`, err);
+      return { outcome: "ERROR", payment: null };
     } finally {
       client.release();
     }

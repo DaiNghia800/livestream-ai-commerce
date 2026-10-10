@@ -65,3 +65,80 @@ describe("config - nguồn biến môi trường", () => {
     expect(cfg.realtimeEventsUrl).toBe("http://realtime.test/events");
   });
 });
+
+describe("config - giá trị mặc định khi không đặt biến môi trường", () => {
+  /**
+   * Xoá sạch biến môi trường rồi nạp lại, để chạy qua các nhánh mặc
+   * định. Đây là trạng thái của người vừa kéo repo về và chưa tạo
+   * file .env — họ phải chạy được ngay, không phải đi điền mười mấy
+   * biến mới khởi động nổi service.
+   */
+  async function reloadSach(giuLai: string[] = []) {
+    const cu = { ...process.env };
+    for (const k of Object.keys(process.env)) {
+      if (
+        !giuLai.includes(k) &&
+        /^(VNPAY_|MOMO_|ZALOPAY_|MOCK_GATEWAY|PUBLIC_BASE_URL|PAYMENT_GATEWAY|HOLD_|REVIEW_QTY|MAX_HELD|RISK_SCORE|OUTBOX_|EXPIRE_|REALTIME_|API_PREFIX|PORT|AWS_REGION|S3_BUCKET)/.test(k)
+      ) {
+        delete process.env[k];
+      }
+    }
+    vi.resetModules();
+    try {
+      return (await import("../../../src/config.js")).config;
+    } finally {
+      process.env = cu;
+      vi.resetModules();
+    }
+  }
+
+  it("CFG-005 - endpoint cổng thanh toán mặc định đều là sandbox", async () => {
+    const cfg = await reloadSach();
+
+    // Mặc định phải là sandbox. Một người quên đặt biến môi trường
+    // không được vô tình chạy vào môi trường thật.
+    expect(cfg.vnpay.payUrl).toContain("sandbox.vnpayment.vn");
+    expect(cfg.momo.createUrl).toContain("test-payment.momo.vn");
+    expect(cfg.zalopay.createUrl).toContain("sb-openapi.zalopay.vn");
+  });
+
+  it("CFG-006 - cổng mặc định là cổng giả chạy trong máy", async () => {
+    const cfg = await reloadSach();
+    expect(cfg.defaultGateway).toBe("mock");
+    expect(cfg.publicBaseUrl).toBe("http://localhost:8000");
+  });
+
+  it("CFG-007 - đường dẫn callback dựng từ publicBaseUrl", async () => {
+    const cfg = await reloadSach();
+    expect(cfg.vnpay.returnUrl).toBe(
+      "http://localhost:8000/api/payments/vnpay/return"
+    );
+    expect(cfg.momo.ipnUrl).toBe("http://localhost:8000/api/payments/momo/ipn");
+    expect(cfg.zalopay.callbackUrl).toBe(
+      "http://localhost:8000/api/payments/zalopay/callback"
+    );
+  });
+
+  it("CFG-008 - khoá cổng để trống khi chưa đăng ký", async () => {
+    const cfg = await reloadSach();
+    // Để trống chứ không bịa giá trị: cổng tự báo thiếu khoá gì khi
+    // ai đó thật sự chọn dùng nó.
+    expect(cfg.vnpay.tmnCode).toBe("");
+    expect(cfg.momo.secretKey).toBe("");
+    expect(cfg.zalopay.key1).toBe("");
+  });
+
+  it("CFG-009 - các ngưỡng nghiệp vụ có mặc định hợp lý", async () => {
+    const cfg = await reloadSach();
+    expect(cfg.holdSoftSeconds).toBe(300);
+    expect(cfg.holdConfirmSeconds).toBe(900);
+    expect(cfg.holdMaxSeconds).toBe(1800);
+    expect(cfg.reviewQtyThreshold).toBe(10);
+    expect(cfg.riskScoreThreshold).toBe(0.45);
+    expect(cfg.apiPrefix).toBe("/api");
+    expect(cfg.port).toBe(8000);
+    // Không cấu hình realtime thì publisher chạy chế độ ghi log.
+    expect(cfg.realtimeEventsUrl).toBeUndefined();
+    expect(cfg.awsRegion).toBeUndefined();
+  });
+});
