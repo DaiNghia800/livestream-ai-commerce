@@ -9,6 +9,12 @@
  *     0 <= held_quantity <= on_hand_quantity
  *     khả dụng = on_hand_quantity - held_quantity
  *
+ * Không có cột `version` trong câu UPDATE: bảng `inventory` do module
+ * kho định nghĩa và không có cột đó. Cũng không cần — tính nguyên tử ở
+ * đây đến từ điều kiện `on_hand_quantity - held_quantity >= $n` ngay
+ * trong WHERE, nên hai yêu cầu giữ cùng lúc thì đúng một cái thắng mà
+ * không cần bộ đếm phiên bản.
+ *
  * Không hàm nào tự COMMIT. Người gọi giữ quyền quyết định ranh giới
  * transaction — nếu hàm tự commit, một lỗi ngay sau đó sẽ để lại tồn bị
  * giữ mà không có đơn nào sở hữu, rò rỉ vĩnh viễn.
@@ -62,7 +68,6 @@ export async function holdStock(
   const result = await client.query(
     `UPDATE inventory
         SET held_quantity = held_quantity + $2,
-            version       = version + 1,
             updated_at    = NOW()
       WHERE sku_id = $1
         AND on_hand_quantity - held_quantity >= $2`,
@@ -106,7 +111,6 @@ export async function holdUpTo(
   await client.query(
     `UPDATE inventory
         SET held_quantity = held_quantity + $2,
-            version       = version + 1,
             updated_at    = NOW()
       WHERE sku_id = $1`,
     [skuId, granted]
@@ -150,7 +154,6 @@ export async function releaseStock(
   await client.query(
     `UPDATE inventory
         SET held_quantity = held_quantity - $2,
-            version       = version + 1,
             updated_at    = NOW()
       WHERE sku_id = $1`,
     [skuId, quantity]
@@ -190,7 +193,6 @@ export async function commitStock(
     `UPDATE inventory
         SET on_hand_quantity = on_hand_quantity - $2,
             held_quantity    = held_quantity - $2,
-            version          = version + 1,
             updated_at       = NOW()
       WHERE sku_id = $1`,
     [skuId, quantity]

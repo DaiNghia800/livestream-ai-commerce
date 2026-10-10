@@ -85,7 +85,6 @@ export function createApp(
     "/livestreams",
     createLivestreamRouter(customRepository, customLivestreamProductRepository)
   );
-  apiRouter.use("/uploads", createUploadRouter(customS3Service));
   apiRouter.use("/orders", createOrderRouter());
   apiRouter.use("/purchase-requests", createPurchaseRequestRouter());
   apiRouter.use("/payments", createPaymentRouter());
