@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -13,231 +13,171 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CirclePlus,
   Download,
   Edit3,
   History,
-  MapPin,
   PackageCheck,
   RotateCcw,
   Search,
   Settings2,
   ShoppingBasket,
   Store,
-  Warehouse,
 } from "lucide-react";
-import { productMockList } from "@/mocks/product";
 import { formatMoney } from "@/lib/format";
+import {
+  getInventory,
+  updateLowStockThreshold,
+  type InventoryItem,
+  type InventoryPage,
+} from "./api/inventory";
+import { getProductCategories, type ProductCategory } from "@/features/product/api/products";
 import styles from "./inventory.module.css";
 
-type InventoryProductId = "AO01" | "DM02" | "JN04" | "PK03" | "DM05";
-type InventoryRow = {
-  id: string;
-  productId?: InventoryProductId;
-  name: string;
-  sku: string;
-  category: "Thời trang nữ" | "Thời trang nam" | "Phụ kiện";
-  warehouseId: "tan-binh" | "long-bien" | "thu-duc";
-  warehouse: string;
-  shelf: string;
-  total: number;
-  reserved: number;
-  available: number;
-  price: number;
-  cost: number;
-  threshold: number;
-  updated: string;
-  imageUrl?: string;
-};
+const numberFormat = new Intl.NumberFormat("vi-VN");
+const PAGE_SIZES = [10, 20, 50];
 
-const poloImage =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuCeMjvrmRAFxijSubZr2C1ezhZWptJDfpIMDFfxkDiVml5_R-9nm_DNfm6TPAMj7Muw0PyqXAa0RnnNhBYuePOYT8h5R4iHzBM4jrkiu6pYvjxvhcOZpNfX8iM4EKZ0srTkvwWk4_hmavM6UiYKis9OaZDXD-suvmwAnv1EgLoHQecamwK7EeWURE1iboUMOiW9BqT6sU-EWolPVemgRdqmRjqiFNYZU4cOpYrCFiUVs2jWiMaRcg57";
+function formatRelativeTime(iso: string | null) {
+  if (!iso) return "—";
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "Vừa xong";
+  if (minutes < 60) return `${minutes} phút trước`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  return `${Math.floor(hours / 24)} ngày trước`;
+}
 
-const inventoryRows: InventoryRow[] = [
-  {
-    id: "linen",
-    productId: "AO01",
-    name: "Áo sơ mi Linen Cổ Tàu Form Rộng",
-    sku: "SP-LINEN-001",
-    category: "Thời trang nữ",
-    warehouseId: "tan-binh",
-    warehouse: "Kho Tân Bình",
-    shelf: "A1-04",
-    total: 160,
-    reserved: 18,
-    available: 142,
-    price: 285_000,
-    cost: 140_000,
-    threshold: 50,
-    updated: "2 phút trước",
-  },
-  {
-    id: "dress",
-    productId: "DM02",
-    name: "Đầm Suông Tay Bồng Phong Cách Pháp",
-    sku: "SP-DRESS-008",
-    category: "Thời trang nữ",
-    warehouseId: "tan-binh",
-    warehouse: "Kho Tân Bình",
-    shelf: "B2-12",
-    total: 80,
-    reserved: 24,
-    available: 56,
-    price: 450_000,
-    cost: 220_000,
-    threshold: 30,
-    updated: "15 phút trước",
-  },
-  {
-    id: "jeans",
-    productId: "JN04",
-    name: "Quần Jean Ống Suông Lưng Cao Vintage",
-    sku: "SP-JEAN-044",
-    category: "Thời trang nữ",
-    warehouseId: "tan-binh",
-    warehouse: "Kho Tân Bình",
-    shelf: "A3-01",
-    total: 16,
-    reserved: 12,
-    available: 4,
-    price: 360_000,
-    cost: 195_000,
-    threshold: 10,
-    updated: "5 phút trước",
-  },
-  {
-    id: "scarf",
-    productId: "PK03",
-    name: "Set Khăn Lụa Satin Họa Tiết Monogram",
-    sku: "SP-ACC-019",
-    category: "Phụ kiện",
-    warehouseId: "long-bien",
-    warehouse: "Kho Long Biên",
-    shelf: "C1-02",
-    total: 0,
-    reserved: 0,
-    available: 0,
-    price: 190_000,
-    cost: 85_000,
-    threshold: 10,
-    updated: "Hôm qua",
-  },
-  {
-    id: "chiffon",
-    productId: "DM05",
-    name: "Đầm Voan Tơ Hoa Nhí Cổ Vuông",
-    sku: "SP-DRESS-021",
-    category: "Thời trang nữ",
-    warehouseId: "thu-duc",
-    warehouse: "Kho Thủ Đức",
-    shelf: "B1-08",
-    total: 97,
-    reserved: 9,
-    available: 88,
-    price: 390_000,
-    cost: 180_000,
-    threshold: 50,
-    updated: "30 phút trước",
-  },
-  {
-    id: "polo",
-    name: "Áo Polo Nam Classic Pique",
-    sku: "SP-POLO-012",
-    category: "Thời trang nam",
-    warehouseId: "tan-binh",
-    warehouse: "Kho Tân Bình",
-    shelf: "A2-05",
-    total: 45,
-    reserved: 15,
-    available: 30,
-    price: 310_000,
-    cost: 145_000,
-    threshold: 35,
-    updated: "12 phút trước",
-    imageUrl: poloImage,
-  },
-];
-
-function getProductImage(row: InventoryRow) {
-  if (row.imageUrl) return row.imageUrl;
-  const product = productMockList.find((item) => item.id === row.productId);
-  if (!product) {
-    throw new Error(`Missing product image for inventory row "${row.id}".`);
-  }
-  return product.imageUrl;
+function itemName(item: InventoryItem) {
+  return item.variantName && item.variantName !== "Default"
+    ? `${item.productName} - ${item.variantName}`
+    : item.productName;
 }
 
 export function InventoryManagement() {
   const [query, setQuery] = useState("");
-  const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [data, setData] = useState<InventoryPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const filteredRows = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase("vi");
-    return inventoryRows.filter((row) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        row.name.toLocaleLowerCase("vi").includes(normalizedQuery) ||
-        row.sku.toLocaleLowerCase("vi").includes(normalizedQuery) ||
-        row.warehouse.toLocaleLowerCase("vi").includes(normalizedQuery);
-      const matchesWarehouse =
-        warehouseFilter === "all" || row.warehouseId === warehouseFilter;
-      const matchesCategory =
-        categoryFilter === "all" || row.category === categoryFilter;
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "in-stock" && row.available > 20) ||
-        (statusFilter === "low" &&
-          row.available > 0 &&
-          row.available < 10) ||
-        (statusFilter === "out" && row.available === 0) ||
-        (statusFilter === "high-hold" && row.reserved >= 15);
-      return (
-        matchesQuery && matchesWarehouse && matchesCategory && matchesStatus
-      );
-    });
-  }, [categoryFilter, query, statusFilter, warehouseFilter]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    getProductCategories(controller.signal)
+      .then(setCategories)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getInventory(
+      {
+        q: debouncedQuery || undefined,
+        status: statusFilter === "all" ? undefined : (statusFilter as "low"),
+        categoryId: categoryFilter === "all" ? undefined : categoryFilter,
+        page,
+        pageSize,
+      },
+      controller.signal,
+    )
+      .then((result) => {
+        setData(result);
+        setError("");
+        setLoading(false);
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(reason instanceof Error ? reason.message : "Không thể tải tồn kho.");
+        setLoading(false);
+      });
+    return () => controller.abort();
+  }, [categoryFilter, debouncedQuery, page, pageSize, reloadKey, statusFilter]);
+
+  const rows = data?.data ?? [];
+  const summary = data?.summary;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const firstShown = rows.length ? (page - 1) * pageSize + 1 : 0;
+  const lastShown = (page - 1) * pageSize + rows.length;
   const allSelected =
-    filteredRows.length > 0 &&
-    filteredRows.every((row) => selectedIds.includes(row.id));
+    rows.length > 0 && rows.every((row) => selectedIds.includes(row.skuId));
 
-  function toggleRow(id: string) {
+  const toggleRow = useCallback((id: string) => {
     setSelectedIds((current) =>
-      current.includes(id)
-        ? current.filter((selectedId) => selectedId !== id)
-        : [...current, id],
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
     );
-  }
+  }, []);
 
   function resetFilters() {
     setQuery("");
-    setWarehouseFilter("all");
+    setDebouncedQuery("");
     setStatusFilter("all");
     setCategoryFilter("all");
+    setPage(1);
     setSelectedIds([]);
   }
 
-  function exportInventory() {
-    const header = [
-      "Sản phẩm",
-      "SKU",
-      "Kho",
-      "Tổng tồn",
-      "Đang giữ",
-      "Tồn khả dụng",
-      "Giá niêm yết",
-    ];
-    const csvRows = filteredRows.map((row) => [
-      row.name,
-      row.sku,
-      row.warehouse,
-      row.total,
-      row.reserved,
-      row.available,
+  async function editThreshold(item: InventoryItem) {
+    const input = window.prompt(
+      `Ngưỡng cảnh báo tồn thấp cho ${itemName(item)}`,
+      String(item.lowStockThreshold),
+    );
+    if (input === null) return;
+    const value = Number(input);
+    if (!Number.isInteger(value) || value < 0) {
+      setNotice("Ngưỡng cảnh báo phải là số nguyên không âm.");
+      return;
+    }
+    try {
+      await updateLowStockThreshold(item.skuId, value);
+      setNotice(`Đã cập nhật ngưỡng cảnh báo của ${item.skuCode} thành ${value}.`);
+      setReloadKey((key) => key + 1);
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Không thể cập nhật ngưỡng.");
+    }
+  }
+
+  async function exportInventory() {
+    const all: InventoryItem[] = [];
+    try {
+      for (let current = 1; ; current += 1) {
+        const result = await getInventory({
+          q: debouncedQuery || undefined,
+          status: statusFilter === "all" ? undefined : (statusFilter as "low"),
+          categoryId: categoryFilter === "all" ? undefined : categoryFilter,
+          page: current,
+          pageSize: 100,
+        });
+        all.push(...result.data);
+        if (all.length >= result.total || result.data.length === 0) break;
+      }
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Không thể xuất dữ liệu tồn kho.");
+      return;
+    }
+    const header = ["Sản phẩm", "SKU", "Danh mục", "Tổng tồn", "Đang giữ", "Tồn khả dụng", "Giá niêm yết"];
+    const csvRows = all.map((row) => [
+      itemName(row),
+      row.skuCode,
+      row.categoryName ?? "",
+      row.onHandQuantity,
+      row.heldQuantity,
+      row.availableQuantity,
       row.price,
     ]);
     const csv = [header, ...csvRows]
@@ -245,9 +185,7 @@ export function InventoryManagement() {
         values.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","),
       )
       .join("\r\n");
-    const file = new Blob(["\ufeff", csv], {
-      type: "text/csv;charset=utf-8",
-    });
+    const file = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(file);
     const link = document.createElement("a");
     link.href = url;
@@ -256,12 +194,13 @@ export function InventoryManagement() {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    setNotice(`Đã xuất ${filteredRows.length} SKU trong danh sách hiện tại.`);
+    setNotice(`Đã xuất ${all.length} SKU (tất cả các trang).`);
   }
+
+  const alertCount = (summary?.lowStockCount ?? 0) + (summary?.outOfStockCount ?? 0);
 
   return (
     <div className={styles.workspace}>
-
       <section className={styles.pageHeader} aria-labelledby="inventory-title">
         <div className={styles.headingCopy}>
           <div className={styles.titleLine}>
@@ -277,44 +216,26 @@ export function InventoryManagement() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <Link
-            className={styles.secondaryButton}
-            href="/shop/inventory/history"
-          >
+          <Link className={styles.secondaryButton} href="/shop/inventory/history">
             <History size={15} aria-hidden="true" />
             Nhật ký biến động
           </Link>
           <button
             className={styles.secondaryButton}
-            onClick={() => setNotice("Đã đồng bộ dữ liệu kho mẫu mới nhất.")}
+            onClick={() => setReloadKey((key) => key + 1)}
             type="button"
           >
             <RotateCcw size={15} aria-hidden="true" />
-            Đồng bộ WMS
+            Làm mới
           </button>
-          <button
-            className={styles.secondaryButton}
-            onClick={exportInventory}
-            type="button"
-          >
+          <button className={styles.secondaryButton} onClick={() => void exportInventory()} type="button">
             <Download size={15} aria-hidden="true" />
             Xuất file kiểm kê
           </button>
-          <Link
-            className={styles.adjustButton}
-            href="/shop/inventory/adjustment"
-          >
+          <Link className={styles.adjustButton} href="/shop/inventory/adjustment">
             <Settings2 size={15} aria-hidden="true" />
             Điều chỉnh tồn kho
           </Link>
-          <button
-            className={styles.primaryButton}
-            onClick={() => setNotice("Chế độ nhập kho mẫu.")}
-            type="button"
-          >
-            <CirclePlus size={15} aria-hidden="true" />
-            Nhập kho mới
-          </button>
         </div>
       </section>
 
@@ -322,13 +243,15 @@ export function InventoryManagement() {
         <p className={styles.notice} role="status">
           <Check size={15} aria-hidden="true" />
           {notice}
-          <button
-            aria-label="Đóng thông báo"
-            onClick={() => setNotice("")}
-            type="button"
-          >
+          <button aria-label="Đóng thông báo" onClick={() => setNotice("")} type="button">
             ×
           </button>
+        </p>
+      )}
+      {error && (
+        <p className={styles.notice} role="alert">
+          <AlertTriangle size={15} aria-hidden="true" />
+          {error}
         </p>
       )}
 
@@ -338,7 +261,7 @@ export function InventoryManagement() {
             <div>
               <span className={styles.kpiLabel}>Tổng tồn trong kho</span>
               <div className={styles.kpiValue}>
-                14,850 <small>sản phẩm</small>
+                {numberFormat.format(summary?.totalOnHand ?? 0)} <small>sản phẩm</small>
               </div>
             </div>
             <span className={`${styles.kpiIcon} ${styles.totalIcon}`}>
@@ -346,10 +269,7 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span className={styles.successText}>
-              <ArrowRight size={14} aria-hidden="true" /> +350 sản phẩm
-            </span>
-            <span>Nhập tuần này</span>
+            <span>{numberFormat.format(summary?.skuCount ?? 0)} SKU đang quản lý</span>
           </div>
         </article>
 
@@ -363,7 +283,7 @@ export function InventoryManagement() {
                 <span className={styles.miniTag}>RESERVED</span>
               </div>
               <div className={styles.kpiValue}>
-                342 <small>sản phẩm</small>
+                {numberFormat.format(summary?.totalHeld ?? 0)} <small>sản phẩm</small>
               </div>
             </div>
             <span className={`${styles.kpiIcon} ${styles.reservedIcon}`}>
@@ -371,12 +291,9 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span
-              className={styles.reservedText}
-              title="Tự động khóa bởi AI chốt đơn phiên #05"
-            >
+            <span className={styles.reservedText} title="Tự động khóa bởi AI chốt đơn">
               <Bolt size={14} aria-hidden="true" />
-              <span>Tự động khóa bởi AI chốt đơn phiên #05</span>
+              <span>Tự động khóa bởi AI chốt đơn</span>
             </span>
           </div>
         </article>
@@ -388,12 +305,10 @@ export function InventoryManagement() {
                 <span className={styles.kpiLabel} title="Tồn khả dụng">
                   Tồn khả dụng
                 </span>
-                <span className={`${styles.miniTag} ${styles.availableTag}`}>
-                  AVAILABLE
-                </span>
+                <span className={`${styles.miniTag} ${styles.availableTag}`}>AVAILABLE</span>
               </div>
               <div className={styles.kpiValue}>
-                14,508 <small>sản phẩm</small>
+                {numberFormat.format(summary?.totalAvailable ?? 0)} <small>sản phẩm</small>
               </div>
             </div>
             <span className={`${styles.kpiIcon} ${styles.availableIcon}`}>
@@ -401,10 +316,7 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span
-              className={styles.availableText}
-              title="Sẵn sàng bán trên Live & Web"
-            >
+            <span className={styles.availableText} title="Sẵn sàng bán trên Live & Web">
               <Store size={14} aria-hidden="true" />
               <span>Sẵn sàng bán trên Live &amp; Web</span>
             </span>
@@ -415,18 +327,13 @@ export function InventoryManagement() {
           <div className={styles.kpiTop}>
             <div>
               <div className={styles.labelWithTag}>
-                <span
-                  className={styles.kpiLabel}
-                  title="Cảnh báo sắp hết hàng"
-                >
+                <span className={styles.kpiLabel} title="Cảnh báo sắp hết hàng">
                   Cảnh báo sắp hết hàng
                 </span>
-                <span className={`${styles.miniTag} ${styles.alertTag}`}>
-                  ALERT
-                </span>
+                <span className={`${styles.miniTag} ${styles.alertTag}`}>ALERT</span>
               </div>
               <div className={styles.kpiValue}>
-                8 <small>SKU báo động</small>
+                {alertCount} <small>SKU báo động</small>
               </div>
             </div>
             <span className={`${styles.kpiIcon} ${styles.alertIcon}`}>
@@ -434,8 +341,8 @@ export function InventoryManagement() {
             </span>
           </div>
           <div className={styles.kpiFooter}>
-            <span title="Cần nhập bổ sung gấp < 10 cái">
-              Cần nhập bổ sung gấp &lt; 10 cái
+            <span title="Tồn khả dụng thấp hơn ngưỡng cảnh báo">
+              {summary?.outOfStockCount ?? 0} hết hàng · {summary?.lowStockCount ?? 0} sắp hết
             </span>
             <a href="#inventory-table">Xem ngay</a>
           </div>
@@ -456,31 +363,20 @@ export function InventoryManagement() {
             />
           </label>
           <label className={styles.selectBox}>
-            <span className="sr-only">Kho lưu trữ</span>
-            <select
-              aria-label="Kho lưu trữ"
-              onChange={(event) => setWarehouseFilter(event.target.value)}
-              value={warehouseFilter}
-            >
-              <option value="all">Tất cả kho (3 vị trí)</option>
-              <option value="tan-binh">Kho Tân Bình (TP.HCM)</option>
-              <option value="long-bien">Kho Long Biên (Hà Nội)</option>
-              <option value="thu-duc">Kho Thủ Đức (TP.HCM)</option>
-            </select>
-            <ChevronDown size={15} aria-hidden="true" />
-          </label>
-          <label className={styles.selectBox}>
             <span className="sr-only">Trạng thái tồn</span>
             <select
               aria-label="Trạng thái tồn"
-              onChange={(event) => setStatusFilter(event.target.value)}
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                setPage(1);
+              }}
               value={statusFilter}
             >
               <option value="all">Tất cả trạng thái</option>
-              <option value="in-stock">Còn hàng (&gt;20)</option>
-              <option value="low">Sắp hết hàng (&lt;10)</option>
+              <option value="in_stock">Còn hàng (trên ngưỡng)</option>
+              <option value="low">Sắp hết hàng</option>
               <option value="out">Hết hàng (0)</option>
-              <option value="high-hold">Đang giữ chỗ cao</option>
+              <option value="high_hold">Đang giữ chỗ cao</option>
             </select>
             <ChevronDown size={15} aria-hidden="true" />
           </label>
@@ -488,41 +384,30 @@ export function InventoryManagement() {
             <span className="sr-only">Danh mục</span>
             <select
               aria-label="Danh mục"
-              onChange={(event) => setCategoryFilter(event.target.value)}
+              onChange={(event) => {
+                setCategoryFilter(event.target.value);
+                setPage(1);
+              }}
               value={categoryFilter}
             >
               <option value="all">Tất cả danh mục</option>
-              <option value="Thời trang nữ">Thời trang nữ</option>
-              <option value="Thời trang nam">Thời trang nam</option>
-              <option value="Phụ kiện">Phụ kiện</option>
+              {categories.map((category) => (
+                <option key={category.id} value={String(category.id)}>
+                  {category.name}
+                </option>
+              ))}
             </select>
             <ChevronDown size={15} aria-hidden="true" />
           </label>
-          <button
-            className={styles.resetButton}
-            onClick={resetFilters}
-            type="button"
-          >
+          <button className={styles.resetButton} onClick={resetFilters} type="button">
             <RotateCcw size={14} aria-hidden="true" />
             Đặt lại bộ lọc
           </button>
         </div>
         <div className={styles.filterSummary}>
           <span>
-            Hiển thị <strong>{filteredRows.length}</strong> trên{" "}
-            <strong>148</strong> SKU
+            Hiển thị <strong>{rows.length}</strong> trên <strong>{total}</strong> SKU
           </span>
-          <button
-            aria-label="Tùy chỉnh cột hiển thị"
-            className={styles.columnButton}
-            onClick={() =>
-              setNotice("Bảng đang hiển thị đầy đủ thông tin tồn kho.")
-            }
-            title="Tùy chỉnh cột hiển thị"
-            type="button"
-          >
-            <Boxes size={16} aria-hidden="true" />
-          </button>
         </div>
       </section>
 
@@ -530,7 +415,7 @@ export function InventoryManagement() {
         <div className={styles.tableWrap}>
           <table className={styles.inventoryTable}>
             <caption className="sr-only">
-              Danh sách sản phẩm, vị trí lưu kho và số lượng tồn
+              Danh sách sản phẩm và số lượng tồn theo SKU
             </caption>
             <thead>
               <tr>
@@ -541,22 +426,14 @@ export function InventoryManagement() {
                     onChange={() =>
                       setSelectedIds(
                         allSelected
-                          ? selectedIds.filter(
-                              (id) => !filteredRows.some((row) => row.id === id),
-                            )
-                          : [
-                              ...new Set([
-                                ...selectedIds,
-                                ...filteredRows.map((row) => row.id),
-                              ]),
-                            ],
+                          ? selectedIds.filter((id) => !rows.some((row) => row.skuId === id))
+                          : [...new Set([...selectedIds, ...rows.map((row) => row.skuId)])],
                       )
                     }
                     type="checkbox"
                   />
                 </th>
                 <th className={styles.productColumn}>Sản phẩm &amp; SKU</th>
-                <th>Kho lưu trữ</th>
                 <th className={styles.numberHeading}>Tổng tồn</th>
                 <th className={styles.centerHeading}>Đang giữ chỗ Live</th>
                 <th className={styles.numberHeading}>Tồn khả dụng</th>
@@ -567,65 +444,63 @@ export function InventoryManagement() {
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => {
-                const isLow = row.available > 0 && row.available < 10;
-                const isOut = row.available === 0;
-                const isBelowThreshold = row.available <= row.threshold;
+              {rows.map((row) => {
+                const isOut = row.stockStatus === "out";
+                const isLow = row.stockStatus === "low";
                 return (
                   <tr
-                    className={`${isLow ? styles.lowRow : ""} ${
-                      isOut ? styles.outRow : ""
-                    }`}
-                    key={row.id}
+                    className={`${isLow ? styles.lowRow : ""} ${isOut ? styles.outRow : ""}`}
+                    key={row.skuId}
                   >
                     <td className={styles.checkboxCell}>
                       <input
-                        aria-label={`Chọn ${row.name}`}
-                        checked={selectedIds.includes(row.id)}
-                        onChange={() => toggleRow(row.id)}
+                        aria-label={`Chọn ${itemName(row)}`}
+                        checked={selectedIds.includes(row.skuId)}
+                        onChange={() => toggleRow(row.skuId)}
                         type="checkbox"
                       />
                     </td>
                     <td className={styles.productCell}>
                       <div className={styles.productInfo}>
-                        <Image
-                          alt={row.name}
-                          className={`${styles.productImage} ${
-                            isOut ? styles.grayscaleImage : ""
-                          }`}
-                          height={38}
-                          loading="lazy"
-                          src={getProductImage(row)}
-                          unoptimized
-                          width={38}
-                        />
+                        {row.imageUrl ? (
+                          <Image
+                            alt={itemName(row)}
+                            className={`${styles.productImage} ${isOut ? styles.grayscaleImage : ""}`}
+                            height={38}
+                            loading="lazy"
+                            src={row.imageUrl}
+                            unoptimized
+                            width={38}
+                          />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className={styles.productImage}
+                            style={{ background: "#e5e7eb", display: "inline-block" }}
+                          />
+                        )}
                         <div className={styles.productCopy}>
                           <strong className={isOut ? styles.struckName : ""}>
-                            {row.name}
+                            {itemName(row)}
                           </strong>
                           <span>
-                            <code>{row.sku}</code>
-                            <span aria-hidden="true">•</span>
-                            {row.category}
+                            <code>{row.skuCode}</code>
+                            {row.categoryName && (
+                              <>
+                                <span aria-hidden="true">•</span>
+                                {row.categoryName}
+                              </>
+                            )}
                           </span>
                         </div>
                       </div>
                     </td>
-                    <td>
-                      <span className={styles.warehouseName}>
-                        {row.warehouse}
-                      </span>
-                      <span className={styles.shelf}>
-                        <MapPin size={12} aria-hidden="true" />
-                        Kệ {row.shelf}
-                      </span>
-                    </td>
-                    <td className={styles.numberCell}>{row.total}</td>
+                    <td className={styles.numberCell}>{row.onHandQuantity}</td>
                     <td className={styles.centerCell}>
-                      {row.reserved > 0 ? (
+                      {row.heldQuantity > 0 ? (
                         <span className={styles.reservedBadge}>
                           <span aria-hidden="true" />
-                          {row.reserved} đang giữ
+                          {row.heldQuantity} đang giữ
                         </span>
                       ) : (
                         <span className={styles.zeroValue}>0</span>
@@ -634,26 +509,21 @@ export function InventoryManagement() {
                     <td className={styles.numberCell}>
                       <span
                         className={`${styles.availableBadge} ${
-                          isLow
-                            ? styles.lowBadge
-                            : isOut
-                              ? styles.outBadge
-                              : ""
+                          isLow ? styles.lowBadge : isOut ? styles.outBadge : ""
                         }`}
                       >
-                        {row.available} cái
+                        {row.availableQuantity} cái
                       </span>
                     </td>
                     <td className={styles.priceCell}>
-                      <strong>{formatMoney(row.price)}</strong>
-                      <span>Vốn: {formatMoney(row.cost)}</span>
+                      <strong>{formatMoney(Number(row.price))}</strong>
                     </td>
                     <td className={styles.centerCell}>
                       <span
                         className={`${styles.safetyBadge} ${
                           isOut
                             ? styles.outSafety
-                            : isBelowThreshold
+                            : isLow
                               ? styles.lowSafety
                               : styles.safeSafety
                         }`}
@@ -661,53 +531,52 @@ export function InventoryManagement() {
                         <span aria-hidden="true" />
                         {isOut
                           ? "Hết hàng (0)"
-                          : isBelowThreshold
-                            ? `Sắp hết (<${row.threshold})`
-                            : `An toàn (>${row.threshold})`}
+                          : isLow
+                            ? `Sắp hết (≤${row.lowStockThreshold})`
+                            : `An toàn (>${row.lowStockThreshold})`}
                       </span>
                     </td>
-                    <td className={styles.updatedCell}>{row.updated}</td>
+                    <td className={styles.updatedCell}>{formatRelativeTime(row.updatedAt)}</td>
                     <td className={styles.actionCell}>
                       <div>
-                        <button
-                          aria-label={`Điều chỉnh tồn kho ${row.name}`}
-                          onClick={() =>
-                            setNotice(`Chế độ điều chỉnh tồn kho: ${row.name}.`)
-                          }
+                        <Link
+                          aria-label={`Điều chỉnh tồn kho ${itemName(row)}`}
+                          href={`/shop/inventory/adjustment?skuId=${row.skuId}`}
                           title="Điều chỉnh tồn kho"
-                          type="button"
                         >
                           <Edit3 size={15} aria-hidden="true" />
-                        </button>
+                        </Link>
                         <button
-                          aria-label={`Xem thẻ kho ${row.name}`}
-                          onClick={() =>
-                            setNotice(`Thẻ kho mẫu: ${row.warehouse}, kệ ${row.shelf}.`)
-                          }
-                          title="Xem thẻ kho"
+                          aria-label={`Đặt ngưỡng cảnh báo ${itemName(row)}`}
+                          onClick={() => void editThreshold(row)}
+                          title="Đặt ngưỡng cảnh báo"
                           type="button"
                         >
-                          <Warehouse size={15} aria-hidden="true" />
+                          <Settings2 size={15} aria-hidden="true" />
                         </button>
-                        <button
-                          aria-label={`Lịch sử audit log ${row.name}`}
-                          onClick={() =>
-                            setNotice(`Chưa có lịch sử audit log cho ${row.name}.`)
-                          }
+                        <Link
+                          aria-label={`Lịch sử audit log ${itemName(row)}`}
+                          href={`/shop/inventory/history?skuId=${row.skuId}`}
                           title="Lịch sử audit log"
-                          type="button"
                         >
                           <History size={15} aria-hidden="true" />
-                        </button>
+                        </Link>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {filteredRows.length === 0 && (
+              {!loading && rows.length === 0 && (
                 <tr>
-                  <td className={styles.emptyState} colSpan={10}>
+                  <td className={styles.emptyState} colSpan={9}>
                     Không tìm thấy sản phẩm phù hợp với bộ lọc.
+                  </td>
+                </tr>
+              )}
+              {loading && rows.length === 0 && (
+                <tr>
+                  <td className={styles.emptyState} colSpan={9}>
+                    Đang tải dữ liệu tồn kho...
                   </td>
                 </tr>
               )}
@@ -717,36 +586,52 @@ export function InventoryManagement() {
         <footer className={styles.tableFooter}>
           <div>
             {selectedIds.length > 0 ? (
-              <span className={styles.selectedCount}>
-                Đã chọn {selectedIds.length} sản phẩm
-              </span>
+              <span className={styles.selectedCount}>Đã chọn {selectedIds.length} sản phẩm</span>
             ) : (
               <span>
-                Hiển thị <strong>{filteredRows.length ? 1 : 0} - {filteredRows.length}</strong>{" "}
-                trong tổng số <strong>148 SKU</strong>
+                Hiển thị{" "}
+                <strong>
+                  {firstShown} - {lastShown}
+                </strong>{" "}
+                trong tổng số <strong>{total} SKU</strong>
               </span>
             )}
             <label className={styles.pageSize}>
               Số dòng:
-              <select aria-label="Số dòng mỗi trang" defaultValue="10">
-                <option>10</option>
-                <option>20</option>
-                <option>50</option>
+              <select
+                aria-label="Số dòng mỗi trang"
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(1);
+                }}
+                value={pageSize}
+              >
+                {PAGE_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
           <nav className={styles.pagination} aria-label="Phân trang tồn kho">
-            <button aria-label="Trang trước" disabled type="button">
+            <button
+              aria-label="Trang trước"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => current - 1)}
+              type="button"
+            >
               <ChevronLeft size={15} aria-hidden="true" />
             </button>
             <button aria-current="page" className={styles.currentPage} type="button">
-              1
+              {page} / {totalPages}
             </button>
-            <button type="button">2</button>
-            <button type="button">3</button>
-            <span>…</span>
-            <button type="button">15</button>
-            <button aria-label="Trang sau" type="button">
+            <button
+              aria-label="Trang sau"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => current + 1)}
+              type="button"
+            >
               <ChevronRight size={15} aria-hidden="true" />
             </button>
           </nav>
@@ -762,48 +647,23 @@ export function InventoryManagement() {
             <div className={styles.aiHeading}>
               <h2>Cơ chế Gemini AI Giữ tồn kho (Hold Inventory &amp; Auto Rollback)</h2>
               <span>ACTIVE</span>
-              <strong>Timeout: 15:00</strong>
             </div>
             <p>
-              Hệ thống tự động giữ chỗ (Hold Inventory) trong vòng{" "}
-              <strong>15 phút</strong> kể từ khi Gemini AI bắt đơn thành công từ
-              comment live (ví dụ cú pháp: <code>M1 + SĐT</code>). Nếu khách hàng
-              không hoàn tất xác nhận đơn qua tin nhắn Messenger/Zalo, số lượng
-              giữ chỗ sẽ tự động hủy và hoàn lại ngay vào <strong>Tồn khả dụng</strong>.
+              Hệ thống giữ chỗ (Hold Inventory) khi Gemini AI bắt đơn thành công từ comment
+              live. Số lượng giữ chỗ được trừ khỏi <strong>Tồn khả dụng</strong> và hoàn lại
+              khi đơn bị hủy hoặc hết hạn, chống bán vượt kho.
             </p>
             <div className={styles.aiBenefits}>
               <span>
-                <Check size={14} aria-hidden="true" /> Chống bán vượt kho
-                (Overselling Zero-Risk)
+                <Check size={14} aria-hidden="true" /> Chống bán vượt kho (Overselling Zero-Risk)
               </span>
               <span>
-                <RotateCcw size={14} aria-hidden="true" /> Đồng bộ đa sàn TikTok
-                Shop, Shopee, Web
+                <ArrowRight size={14} aria-hidden="true" /> Mọi biến động được ghi vào nhật ký kho
               </span>
             </div>
-          </div>
-        </article>
-        <article className={styles.liveCard}>
-          <div className={styles.liveHeading}>
-            <span className={styles.liveDot} aria-hidden="true" />
-            <strong>Phiên Live #05 đang chạy</strong>
-            <span>LIVE ON AIR</span>
-          </div>
-          <p>
-            Kênh: <strong>Tiktok Official + Facebook Live</strong>
-          </p>
-          <div className={styles.liveFooter}>
-            <div>
-              <span>Tốc độ bắt đơn</span>
-              <strong>14 đơn / phút</strong>
-            </div>
-            <Link href="/shop/livestream">
-              Xem trực tiếp <ArrowRight size={14} aria-hidden="true" />
-            </Link>
           </div>
         </article>
       </section>
-
     </div>
   );
 }

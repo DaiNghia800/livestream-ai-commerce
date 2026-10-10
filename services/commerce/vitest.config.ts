@@ -12,7 +12,11 @@ export default defineConfig({
         "src/modules/livestream/types/**",
         "dist/**",
         "tests/**",
+        "src/**/index.ts",
+        "src/**/types/**",
       ],
+      thresholds: { lines: 90, statements: 90, functions: 90, branches: 90 },
     },
   },
 });
+

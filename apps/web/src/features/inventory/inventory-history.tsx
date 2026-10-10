@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   Bot,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -17,275 +16,198 @@ import {
   FileSpreadsheet,
   Filter,
   History,
-  LockKeyhole,
   PackageCheck,
   RefreshCw,
   RotateCcw,
   Search,
-  ShieldCheck,
+  TrendingDown,
+  TrendingUp,
   Truck,
   UserRound,
-  Wifi,
   X,
 } from "lucide-react";
+import {
+  getInventoryAdjustments,
+  type InventoryAdjustment,
+  type InventoryAdjustmentPage,
+  type InventoryMovementType,
+} from "./api/inventory";
 import styles from "./inventory.module.css";
 
-type InventoryEvent = {
-  id: string;
-  time: string;
-  milliseconds: string;
-  transaction: string;
-  channel: string;
-  product: string;
-  sku: string;
-  changes: { text: string; tone: "negative" | "positive" | "reserved" | "released" | "deducted" }[];
-  totalBefore: number;
-  totalAfter: number;
-  reservedBefore: number;
-  reservedAfter: number;
-  availableBefore: number;
-  availableAfter: number;
-  action: "reserve" | "adjust" | "release" | "deduct";
-  actionLabel: string;
-  source: string;
-  sourceDetail: string;
-  actor: string;
+type Action = "reserve" | "adjust" | "release" | "deduct";
+
+const ACTION_BY_MOVEMENT: Record<InventoryMovementType, Action> = {
+  reserve: "reserve",
+  adjustment: "adjust",
+  release: "release",
+  consume: "deduct",
+};
+const MOVEMENT_BY_ACTION: Record<Action, InventoryMovementType> = {
+  reserve: "reserve",
+  adjust: "adjustment",
+  release: "release",
+  deduct: "consume",
+};
+const ACTION_LABEL: Record<Action, string> = {
+  reserve: "AI Giữ chỗ (Reserve)",
+  adjust: "Điều chỉnh thủ công",
+  release: "Hoàn tồn (Release)",
+  deduct: "Xuất kho (Deduct)",
+};
+const ACTION_SOURCE: Record<Action, string> = {
+  reserve: "Giữ chỗ cho đơn hàng",
+  adjust: "Điều chỉnh tồn kho",
+  release: "Hoàn giữ chỗ",
+  deduct: "Xuất kho giao vận",
 };
 
-const auditEvents: InventoryEvent[] = [
-  {
-    id: "evt-9942",
-    time: "14:32:18",
-    milliseconds: ".410",
-    transaction: "#ORD-9942",
-    channel: "TikTok Live Stream",
-    product: "Áo Sơ Mi Linen Cổ Tàu - Trắng M",
-    sku: "AO01-WHT-M",
-    changes: [
-      { text: "-2 Khả dụng (Avail)", tone: "negative" },
-      { text: "+2 Giữ chỗ (Reserved)", tone: "reserved" },
-    ],
-    totalBefore: 50,
-    totalAfter: 50,
-    reservedBefore: 0,
-    reservedAfter: 2,
-    availableBefore: 50,
-    availableAfter: 48,
-    action: "reserve",
-    actionLabel: "AI GIỮ CHỖ LIVE",
-    source: 'Khách chốt "AO01 trắng M x2"',
-    sourceDetail: "Khách: @nguyenan_88 (SĐT OK)",
-    actor: "Google Gemini AI Bot",
-  },
-  {
-    id: "evt-adj-0842",
-    time: "14:30:05",
-    milliseconds: ".112",
-    transaction: "#ADJ-2025-0842",
-    channel: "Phiếu kho thủ công",
-    product: "Áo Sơ Mi Linen Cổ Tàu - Trắng M",
-    sku: "AO01-WHT-M",
-    changes: [
-      { text: "+2 Tổng kho (Total)", tone: "positive" },
-      { text: "+2 Khả dụng (Avail)", tone: "positive" },
-    ],
-    totalBefore: 48,
-    totalAfter: 50,
-    reservedBefore: 0,
-    reservedAfter: 0,
-    availableBefore: 48,
-    availableAfter: 50,
-    action: "adjust",
-    actionLabel: "ĐIỀU CHỈNH THỦ CÔNG",
-    source: "Kiểm đếm bù hàng mẫu",
-    sourceDetail: "Kho Tổng Tân Bình - Kệ A3",
-    actor: "Thủ kho Tuấn Trần",
-  },
-  {
-    id: "evt-9925",
-    time: "14:15:00",
-    milliseconds: ".004",
-    transaction: "#ORD-9925",
-    channel: "Facebook Live",
-    product: "Váy Đầm Linen Dáng Suông - Kem",
-    sku: "VA03-BEI-F",
-    changes: [
-      { text: "+1 Khả dụng (Avail)", tone: "positive" },
-      { text: "-1 Giữ chỗ (Released)", tone: "released" },
-    ],
-    totalBefore: 18,
-    totalAfter: 18,
-    reservedBefore: 1,
-    reservedAfter: 0,
-    availableBefore: 17,
-    availableAfter: 18,
-    action: "release",
-    actionLabel: "TỰ ĐỘNG HOÀN TỒN",
-    source: "Khách quá hạn 15p không xác nhận",
-    sourceDetail: "Hủy giữ chỗ tự động (Expired)",
-    actor: "System Auto-Release",
-  },
-  {
-    id: "evt-9910",
-    time: "13:58:40",
-    milliseconds: ".890",
-    transaction: "#ORD-9910",
-    channel: "Vận đơn: GHTK-8849102",
-    product: "Quần Ống Suông Linen - Đen 30",
-    sku: "QU02-BLK-30",
-    changes: [
-      { text: "-1 Tổng kho (Total)", tone: "negative" },
-      { text: "-1 Giữ chỗ (Reserved)", tone: "deducted" },
-    ],
-    totalBefore: 142,
-    totalAfter: 141,
-    reservedBefore: 3,
-    reservedAfter: 2,
-    availableBefore: 139,
-    availableAfter: 139,
-    action: "deduct",
-    actionLabel: "XUẤT KHO GIAO VẬN",
-    source: "Bàn giao bưu tá GHTK",
-    sourceDetail: "Đã in vận đơn & dán tem",
-    actor: "GHN/GHTK Sync Webhook",
-  },
-  {
-    id: "evt-9904",
-    time: "13:45:12",
-    milliseconds: ".248",
-    transaction: "#ORD-9904",
-    channel: "Phiên Live #LIVE-2025-08",
-    product: "Áo Blazer Linen 1 Lớp - Nâu L",
-    sku: "BZ05-BRN-L",
-    changes: [
-      { text: "-1 Khả dụng (Avail)", tone: "negative" },
-      { text: "+1 Giữ chỗ (Reserved)", tone: "reserved" },
-    ],
-    totalBefore: 120,
-    totalAfter: 120,
-    reservedBefore: 0,
-    reservedAfter: 1,
-    availableBefore: 120,
-    availableAfter: 119,
-    action: "reserve",
-    actionLabel: "AI GIỮ CHỖ LIVE",
-    source: "Bình luận từ phiên live #LIVE-2025-08",
-    sourceDetail: 'Cú pháp: "BZ05 Nâu L chốt 1 áo"',
-    actor: "Google Gemini AI Bot",
-  },
+const QUICK_FILTERS: { id: "all" | Action; label: string }[] = [
+  { id: "all", label: "Tất cả" },
+  { id: "reserve", label: "Giữ chỗ" },
+  { id: "release", label: "Hoàn tồn" },
+  { id: "deduct", label: "Xuất kho" },
+  { id: "adjust", label: "Điều chỉnh" },
 ];
 
-const quickFilters = [
-  { id: "all", label: "Tất cả sự kiện", count: "3.680" },
-  { id: "reserve", label: "Chỉ xem AI Live Reserve", count: "1.150" },
-  { id: "release", label: "Hoàn tồn tự động", count: "185" },
-  { id: "adjust", label: "Phiếu chỉnh thủ kho", count: "42" },
-] as const;
+const PAGE_SIZES = [20, 50, 100];
 
-const historyFilterLabels = {
-  action: {
-    all: "Tất cả hành động (Hold, Release, Deduct...)",
-    reserve: "AI Giữ chỗ (Hold / Reserve)",
-    release: "Hoàn tồn (Release)",
-    deduct: "Bán hoàn tất (Deduct / Shipped)",
-    adjust: "Điều chỉnh thủ công (Manual Adjustment)",
-  },
-  source: {
-    all: "Tất cả nguồn phát sinh",
-    live: "Livestream Chat Engine",
-    admin: "Web Admin thủ công",
-    cron: "Hệ thống tự động hết hạn (15p Cron)",
-    shipper: "Bưu cục GHN/GHTK Sync Webhook",
-  },
-  time: {
-    today: "Hôm nay (00:00 - 23:59)",
-    "7days": "7 ngày qua",
-    "30days": "30 ngày qua",
-    custom: "Khoảng tùy chỉnh...",
-  },
-};
+function timeRange(filter: string): { from?: string; to?: string } {
+  const now = new Date();
+  if (filter === "today") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return { from: start.toISOString() };
+  }
+  if (filter === "7d" || filter === "30d") {
+    const days = filter === "7d" ? 7 : 30;
+    return { from: new Date(now.getTime() - days * 86_400_000).toISOString() };
+  }
+  return {};
+}
 
-export function InventoryHistory() {
+function formatSigned(value: number) {
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function describe(event: InventoryAdjustment) {
+  const action = ACTION_BY_MOVEMENT[event.movementType];
+  const totalBefore = event.onHandAfter - event.delta;
+  const reservedBefore = event.heldAfter - event.heldDelta;
+  const changes: { text: string; tone: "negative" | "positive" | "reserved" | "released" | "deducted" }[] = [];
+  if (event.delta !== 0) {
+    changes.push({
+      text: `${formatSigned(event.delta)} Tồn`,
+      tone: event.delta > 0 ? "positive" : "negative",
+    });
+  }
+  if (event.heldDelta !== 0) {
+    changes.push({
+      text: `${formatSigned(event.heldDelta)} Giữ chỗ`,
+      tone: event.heldDelta > 0 ? "reserved" : "released",
+    });
+  }
+  return {
+    action,
+    changes,
+    totalBefore,
+    reservedBefore,
+    availableBefore: totalBefore - reservedBefore,
+    availableAfter: event.onHandAfter - event.heldAfter,
+  };
+}
+
+export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
   const [query, setQuery] = useState("");
-  const [actionFilter, setActionFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [timeFilter, setTimeFilter] = useState("today");
-  const [quickFilter, setQuickFilter] = useState("all");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [actionFilter, setActionFilter] = useState<"all" | Action>("all");
+  const [timeFilter, setTimeFilter] = useState("all");
+  const [skuId, setSkuId] = useState(initialSkuId ?? "");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [result, setResult] = useState<InventoryAdjustmentPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const filteredEvents = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase("vi");
-    return auditEvents.filter((event) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        [
-          event.transaction,
-          event.product,
-          event.sku,
-          event.channel,
-          event.source,
-          event.sourceDetail,
-          event.actor,
-        ].some((value) => value.toLocaleLowerCase("vi").includes(normalizedQuery));
-      const matchesAction =
-        actionFilter === "all" || event.action === actionFilter;
-      const matchesSource =
-        sourceFilter === "all" ||
-        (sourceFilter === "live" && event.action === "reserve") ||
-        (sourceFilter === "admin" && event.action === "adjust") ||
-        (sourceFilter === "cron" && event.action === "release") ||
-        (sourceFilter === "shipper" && event.action === "deduct");
-      const matchesQuick = quickFilter === "all" || event.action === quickFilter;
-      return matchesQuery && matchesAction && matchesSource && matchesQuick;
-    });
-  }, [actionFilter, query, quickFilter, sourceFilter]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getInventoryAdjustments(
+      {
+        q: debouncedQuery || undefined,
+        skuId: skuId || undefined,
+        movementType: actionFilter === "all" ? undefined : MOVEMENT_BY_ACTION[actionFilter],
+        ...timeRange(timeFilter),
+        page,
+        pageSize,
+      },
+      controller.signal,
+    )
+      .then((data) => {
+        setResult(data);
+        setError("");
+        setLoading(false);
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(reason instanceof Error ? reason.message : "Không thể tải nhật ký tồn kho.");
+        setLoading(false);
+      });
+    return () => controller.abort();
+  }, [debouncedQuery, skuId, actionFilter, timeFilter, page, pageSize]);
+
+  const events = result?.data ?? [];
+  const total = result?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const summary = result?.summary;
 
   function resetFilters() {
     setQuery("");
+    setDebouncedQuery("");
     setActionFilter("all");
-    setSourceFilter("all");
-    setTimeFilter("today");
-    setQuickFilter("all");
+    setTimeFilter("all");
+    setSkuId("");
+    setPage(1);
+    setNotice("Đã đặt lại bộ lọc nhật ký.");
   }
 
   function exportEvents() {
-    const header = [
-      "Thời gian",
-      "Mã giao dịch",
-      "Sản phẩm",
-      "SKU",
-      "Hành động",
-      "Nguồn",
-      "Tác nhân",
-      "Tồn trước",
-      "Tồn sau",
+    const rows = [
+      ["Thời gian", "Sản phẩm", "SKU", "Biến thể", "Loại", "Thay đổi tồn", "Thay đổi giữ chỗ", "Tồn sau", "Giữ chỗ sau", "Lý do", "Ghi chú", "Người xử lý"],
+      ...events.map((event) => [
+        new Date(event.createdAt).toLocaleString("vi-VN"),
+        event.productName,
+        event.skuCode,
+        event.variantName,
+        ACTION_LABEL[ACTION_BY_MOVEMENT[event.movementType]],
+        event.delta,
+        event.heldDelta,
+        event.onHandAfter,
+        event.heldAfter,
+        event.reason,
+        event.note ?? "",
+        event.createdBy ?? "Hệ thống",
+      ]),
     ];
-    const rows = filteredEvents.map((event) => [
-      `${event.time}${event.milliseconds}`,
-      event.transaction,
-      event.product,
-      event.sku,
-      event.actionLabel,
-      event.source,
-      event.actor,
-      event.totalBefore,
-      event.totalAfter,
-    ]);
-    const csv = [header, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","),
-      )
-      .join("\r\n");
-    const file = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(file);
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "nhat-ky-bien-dong-ton-kho.csv";
+    link.download = "inventory-history.csv";
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    setNotice(`Đã xuất ${filteredEvents.length} bản ghi nhật ký.`);
+    setNotice(`Đã xuất ${events.length} bản ghi nhật ký.`);
   }
 
   return (
@@ -298,14 +220,10 @@ export function InventoryHistory() {
           <div>
             <div className={styles.historyTitleLine}>
               <h1 id="history-title">Nhật ký Biến động Tồn kho &amp; Audit Log</h1>
-              <span className={styles.realtimeBadge}>
-                <span aria-hidden="true" />
-                Realtime Stream
-              </span>
             </div>
             <p>
-              Truy vết chi tiết từng biến động số lượng tồn kho theo thời gian
-              thực từ bình luận Livestream, thanh toán, đóng gói và kiểm kê kho
+              Truy vết chi tiết từng biến động số lượng tồn kho: giữ chỗ, hoàn tồn,
+              xuất kho và điều chỉnh thủ công.
             </p>
           </div>
         </div>
@@ -325,6 +243,7 @@ export function InventoryHistory() {
           </button>
           <button
             className={styles.historySecondaryButton}
+            disabled={events.length === 0}
             onClick={exportEvents}
             type="button"
           >
@@ -342,72 +261,47 @@ export function InventoryHistory() {
         <p className={styles.historyNotice} role="status">
           <CheckCircle2 size={14} aria-hidden="true" />
           {notice}
-          <button
-            aria-label="Đóng thông báo"
-            onClick={() => setNotice("")}
-            type="button"
-          >
+          <button aria-label="Đóng thông báo" onClick={() => setNotice("")} type="button">
             <X size={14} aria-hidden="true" />
           </button>
+        </p>
+      )}
+      {error && (
+        <p className={styles.historyNotice} role="alert">
+          {error}
         </p>
       )}
 
       <section className={styles.historyKpis} aria-label="Tổng quan biến động kho">
         <article className={styles.historyKpi}>
           <div className={styles.historyKpiTop}>
-            <span>Tổng giao dịch kho hôm nay</span>
+            <span>Tổng lượt biến động (theo bộ lọc)</span>
             <span className={styles.historyKpiIcon}><RefreshCw size={17} aria-hidden="true" /></span>
           </div>
-          <div className={styles.historyKpiValue}>1.840 <small>lượt biến động</small></div>
-          <div className={styles.historyKpiFooter}>
-            <strong>↗ +12.8%</strong>
-            <span title="so với cùng giờ phiên trước">
-              so với cùng giờ phiên trước
-            </span>
+          <div className={styles.historyKpiValue}>
+            {(summary?.movementCount ?? 0).toLocaleString("vi-VN")} <small>lượt biến động</small>
           </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentPrimary}`} />
         </article>
-        <article className={`${styles.historyKpi} ${styles.reserveKpi}`}>
+        <article className={`${styles.historyKpi} ${styles.deductKpi}`}>
           <div className={styles.historyKpiTop}>
-            <span>AI Giữ chỗ từ Chat Live</span>
-            <span className={styles.historyKpiIcon}><LockKeyhole size={17} aria-hidden="true" /></span>
+            <span>Tổng số lượng tăng tồn</span>
+            <span className={styles.historyKpiIcon}><TrendingUp size={17} aria-hidden="true" /></span>
           </div>
-          <div className={styles.historyKpiValue}>1.150 <small>lượt (Reserved)</small></div>
-          <div className={styles.historyKpiFooter}>
-            <strong>↗ +24%</strong>
-            <span title="tốc độ xử lý bot 0.18s/comment">
-              tốc độ xử lý bot 0.18s/comment
-            </span>
+          <div className={styles.historyKpiValue}>
+            {(summary?.totalIncrease ?? 0).toLocaleString("vi-VN")} <small>sản phẩm</small>
           </div>
-          <span className={`${styles.historyKpiAccent} ${styles.accentPurple}`} />
+          <span className={`${styles.historyKpiAccent} ${styles.accentBlue}`} />
         </article>
         <article className={`${styles.historyKpi} ${styles.releaseKpi}`}>
           <div className={styles.historyKpiTop}>
-            <span>Hoàn tồn hủy / Quá hạn 15p</span>
-            <span className={styles.historyKpiIcon}><RotateCcw size={17} aria-hidden="true" /></span>
+            <span>Tổng số lượng giảm tồn</span>
+            <span className={styles.historyKpiIcon}><TrendingDown size={17} aria-hidden="true" /></span>
           </div>
-          <div className={styles.historyKpiValue}>185 <small>lượt (Released)</small></div>
-          <div className={styles.historyKpiFooter}>
-            <strong>✓ An toàn</strong>
-            <span title="Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)">
-              Tồn ảo chỉ 2.8% (Dưới ngưỡng 3%)
-            </span>
+          <div className={styles.historyKpiValue}>
+            {(summary?.totalDecrease ?? 0).toLocaleString("vi-VN")} <small>sản phẩm</small>
           </div>
           <span className={`${styles.historyKpiAccent} ${styles.accentAmber}`} />
-        </article>
-        <article className={`${styles.historyKpi} ${styles.deductKpi}`}>
-          <div className={styles.historyKpiTop}>
-            <span>Xuất kho giao vận bưu tá</span>
-            <span className={styles.historyKpiIcon}><Truck size={17} aria-hidden="true" /></span>
-          </div>
-          <div className={styles.historyKpiValue}>505 <small>lượt (Deducted)</small></div>
-          <div className={styles.historyKpiFooter}>
-            <strong>▣ Đã đồng bộ</strong>
-            <span title="Tự động trừ Total tồn kho">
-              Tự động trừ Total tồn kho
-            </span>
-          </div>
-          <span className={`${styles.historyKpiAccent} ${styles.accentBlue}`} />
         </article>
       </section>
 
@@ -423,8 +317,7 @@ export function InventoryHistory() {
               <Search size={15} aria-hidden="true" />
               <input
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Mã SKU, Tên SP, #ORD-xxxx, #ADJ-xxxx..."
-                title={query || "Mã SKU, Tên SP, #ORD-xxxx, #ADJ-xxxx..."}
+                placeholder="Mã SKU, tên sản phẩm, lý do..."
                 type="search"
                 value={query}
               />
@@ -435,33 +328,17 @@ export function InventoryHistory() {
             <div>
               <select
                 aria-label="Loại hành động biến động"
-                onChange={(event) => setActionFilter(event.target.value)}
-                title={historyFilterLabels.action[actionFilter as keyof typeof historyFilterLabels.action]}
+                onChange={(event) => {
+                  setActionFilter(event.target.value as "all" | Action);
+                  setPage(1);
+                }}
                 value={actionFilter}
               >
-                <option value="all">Tất cả hành động (Hold, Release, Deduct...)</option>
+                <option value="all">Tất cả hành động</option>
                 <option value="reserve">AI Giữ chỗ (Hold / Reserve)</option>
                 <option value="release">Hoàn tồn (Release)</option>
-                <option value="deduct">Bán hoàn tất (Deduct / Shipped)</option>
+                <option value="deduct">Xuất kho (Deduct)</option>
                 <option value="adjust">Điều chỉnh thủ công (Manual Adjustment)</option>
-              </select>
-              <ChevronDown size={14} aria-hidden="true" />
-            </div>
-          </label>
-          <label className={styles.historyField}>
-            <span>KHO / NGUỒN PHÁT SINH</span>
-            <div>
-              <select
-                aria-label="Kho hoặc nguồn phát sinh"
-                onChange={(event) => setSourceFilter(event.target.value)}
-                title={historyFilterLabels.source[sourceFilter as keyof typeof historyFilterLabels.source]}
-                value={sourceFilter}
-              >
-                <option value="all">Tất cả nguồn phát sinh</option>
-                <option value="live">Livestream Chat Engine</option>
-                <option value="admin">Web Admin thủ công</option>
-                <option value="cron">Hệ thống tự động hết hạn (15p Cron)</option>
-                <option value="shipper">Bưu cục GHN/GHTK Sync Webhook</option>
               </select>
               <ChevronDown size={14} aria-hidden="true" />
             </div>
@@ -471,35 +348,43 @@ export function InventoryHistory() {
             <div>
               <select
                 aria-label="Khoảng thời gian"
-                onChange={(event) => setTimeFilter(event.target.value)}
-                title={historyFilterLabels.time[timeFilter as keyof typeof historyFilterLabels.time]}
+                onChange={(event) => {
+                  setTimeFilter(event.target.value);
+                  setPage(1);
+                }}
                 value={timeFilter}
               >
-                <option value="today">Hôm nay (00:00 - 23:59)</option>
-                <option value="7days">7 ngày qua</option>
-                <option value="30days">30 ngày qua</option>
-                <option value="custom">Khoảng tùy chỉnh...</option>
+                <option value="all">Toàn bộ thời gian</option>
+                <option value="today">Hôm nay</option>
+                <option value="7d">7 ngày qua</option>
+                <option value="30d">30 ngày qua</option>
               </select>
-              <CalendarDays size={14} aria-hidden="true" />
+              <ChevronDown size={14} aria-hidden="true" />
             </div>
           </label>
         </div>
-        <div className={styles.quickFilters} aria-label="Phím lọc nhanh">
-          <span className={styles.quickFilterLabel}>Phím lọc nhanh:</span>
-          {quickFilters.map((filter) => (
+        <div className={styles.quickFilters}>
+          {QUICK_FILTERS.map((filter) => (
             <button
-              aria-pressed={quickFilter === filter.id}
-              className={`${styles.quickFilter} ${styles[`quick-${filter.id}`]} ${quickFilter === filter.id ? styles.quickActive : ""}`}
+              aria-pressed={actionFilter === filter.id}
+              className={`${styles.quickFilter} ${styles[`quick-${filter.id}`]} ${actionFilter === filter.id ? styles.quickActive : ""}`}
               key={filter.id}
-              onClick={() => setQuickFilter(filter.id)}
-              title={filter.label}
+              onClick={() => {
+                setActionFilter(filter.id);
+                setPage(1);
+              }}
               type="button"
             >
               {filter.id !== "all" && <span aria-hidden="true" />}
               <span>{filter.label}</span>
-              <small>{filter.count}</small>
             </button>
           ))}
+          {skuId && (
+            <button className={styles.resetHistoryButton} onClick={() => setSkuId("")} type="button">
+              <X size={13} aria-hidden="true" />
+              Bỏ lọc theo SKU
+            </button>
+          )}
           <button className={styles.resetHistoryButton} onClick={resetFilters} type="button">
             <RotateCcw size={13} aria-hidden="true" />
             Đặt lại mặc định
@@ -508,17 +393,6 @@ export function InventoryHistory() {
       </section>
 
       <section className={styles.auditCard} aria-label="Danh sách nhật ký kiểm kê">
-        <div className={styles.auditStreamBar}>
-          <div className={styles.auditStreamStatus}>
-            <span aria-hidden="true" />
-            Audit Stream: Đang nhận tín hiệu trực tiếp từ Livestream #LIVE-2025-08
-          </div>
-          <div className={styles.auditStreamDetails}>
-            <span>Tốc độ ghi nhận: <strong>12 sự kiện/giây</strong></span>
-            <i aria-hidden="true">|</i>
-            <span>Tự động làm mới: <b>Bật (Mỗi 2s)</b></span>
-          </div>
-        </div>
         <div className={styles.auditTableWrap}>
           <table className={styles.auditTable}>
             <caption className="sr-only">
@@ -527,7 +401,6 @@ export function InventoryHistory() {
             <thead>
               <tr>
                 <th>THỜI GIAN</th>
-                <th>MÃ GD / ĐƠN HÀNG</th>
                 <th>SẢN PHẨM &amp; MÃ SKU</th>
                 <th>BIẾN ĐỘNG SỐ LƯỢNG</th>
                 <th>TỒN TRƯỚC → SAU (TOT / RES / AVAIL)</th>
@@ -537,70 +410,75 @@ export function InventoryHistory() {
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.map((event) => (
-                <tr className={styles[`event-${event.action}`]} key={event.id}>
-                  <td className={styles.eventTime}>
-                    <span aria-hidden="true" />
-                    <strong>{event.time}</strong>
-                    <small>{event.milliseconds}</small>
-                  </td>
-                  <td className={styles.eventTransaction}>
-                    <a href="#inventory-history-filters">{event.transaction}</a>
-                    <small>{event.channel}</small>
-                  </td>
-                  <td className={styles.eventProduct}>
-                    <strong>{event.product}</strong>
-                    <small>SKU: {event.sku}</small>
-                  </td>
-                  <td className={styles.eventChanges}>
-                    {event.changes.map((change) => (
-                      <span
-                        className={styles[`change-${change.tone}`]}
-                        key={change.text}
-                      >
-                        {change.text}
-                      </span>
-                    ))}
-                  </td>
-                  <td className={styles.eventStock}>
-                    <span>Tồn: {event.totalBefore} → <strong>{event.totalAfter}</strong></span>
-                    <small>
-                      Res: {event.reservedBefore} → <b>{event.reservedAfter}</b>
-                      {" | "}
-                      Avail: {event.availableBefore} → <b>{event.availableAfter}</b>
-                    </small>
-                  </td>
-                  <td>
-                    <span className={`${styles.actionBadge} ${styles[`action-${event.action}`]}`}>
+              {events.map((event) => {
+                const info = describe(event);
+                const date = new Date(event.createdAt);
+                return (
+                  <tr className={styles[`event-${info.action}`]} key={event.id}>
+                    <td className={styles.eventTime}>
                       <span aria-hidden="true" />
-                      {event.actionLabel}
-                    </span>
-                  </td>
-                  <td className={styles.eventSource}>
-                    <strong>{event.source}</strong>
-                    <small>
-                      {event.action === "reserve" ? <Bot size={12} aria-hidden="true" /> : null}
-                      {event.action === "adjust" ? <PackageCheck size={12} aria-hidden="true" /> : null}
-                      {event.action === "release" ? <Clock3 size={12} aria-hidden="true" /> : null}
-                      {event.action === "deduct" ? <Truck size={12} aria-hidden="true" /> : null}
-                      {event.sourceDetail}
-                    </small>
-                  </td>
-                  <td className={styles.eventActor}>
-                    <span className={styles[`actor-${event.action}`]}>
-                      {event.action === "reserve" ? <Bot size={13} aria-hidden="true" /> : null}
-                      {event.action === "adjust" ? <UserRound size={13} aria-hidden="true" /> : null}
-                      {event.action === "release" ? <Clock3 size={13} aria-hidden="true" /> : null}
-                      {event.action === "deduct" ? <Wifi size={13} aria-hidden="true" /> : null}
-                      {event.actor}
-                    </span>
+                      <strong>{date.toLocaleTimeString("vi-VN")}</strong>
+                      <small>{date.toLocaleDateString("vi-VN")}</small>
+                    </td>
+                    <td className={styles.eventProduct}>
+                      <strong>{event.productName}</strong>
+                      <small>
+                        SKU: {event.skuCode} · {event.variantName}
+                      </small>
+                    </td>
+                    <td className={styles.eventChanges}>
+                      {info.changes.map((change) => (
+                        <span className={styles[`change-${change.tone}`]} key={change.text}>
+                          {change.text}
+                        </span>
+                      ))}
+                    </td>
+                    <td className={styles.eventStock}>
+                      <span>
+                        Tồn: {info.totalBefore} → <strong>{event.onHandAfter}</strong>
+                      </span>
+                      <small>
+                        Res: {info.reservedBefore} → <b>{event.heldAfter}</b>
+                        {" | "}
+                        Avail: {info.availableBefore} → <b>{info.availableAfter}</b>
+                      </small>
+                    </td>
+                    <td>
+                      <span className={`${styles.actionBadge} ${styles[`action-${info.action}`]}`}>
+                        <span aria-hidden="true" />
+                        {ACTION_LABEL[info.action]}
+                      </span>
+                    </td>
+                    <td className={styles.eventSource}>
+                      <strong>{event.reason || ACTION_SOURCE[info.action]}</strong>
+                      <small>
+                        {info.action === "reserve" ? <Bot size={12} aria-hidden="true" /> : null}
+                        {info.action === "adjust" ? <PackageCheck size={12} aria-hidden="true" /> : null}
+                        {info.action === "release" ? <Clock3 size={12} aria-hidden="true" /> : null}
+                        {info.action === "deduct" ? <Truck size={12} aria-hidden="true" /> : null}
+                        {event.note ?? ACTION_SOURCE[info.action]}
+                      </small>
+                    </td>
+                    <td className={styles.eventActor}>
+                      <span className={styles[`actor-${info.action}`]}>
+                        <UserRound size={13} aria-hidden="true" />
+                        {event.createdBy ?? "Hệ thống"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!loading && events.length === 0 && (
+                <tr>
+                  <td className={styles.auditEmpty} colSpan={7}>
+                    Không tìm thấy bản ghi phù hợp với bộ lọc.
                   </td>
                 </tr>
-              ))}
-              {filteredEvents.length === 0 && (
+              )}
+              {loading && events.length === 0 && (
                 <tr>
-                  <td className={styles.auditEmpty} colSpan={8}>
-                    Không tìm thấy bản ghi phù hợp với bộ lọc.
+                  <td className={styles.auditEmpty} colSpan={7}>
+                    Đang tải nhật ký...
                   </td>
                 </tr>
               )}
@@ -610,38 +488,45 @@ export function InventoryHistory() {
         <footer className={styles.auditFooter}>
           <div className={styles.auditPaginationInfo}>
             <span>Hiển thị</span>
-            <select aria-label="Số bản ghi mỗi trang" defaultValue="20">
-              <option value="20">20</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
+            <select
+              aria-label="Số bản ghi mỗi trang"
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+              value={pageSize}
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
             </select>
-            <span>trên tổng số <strong>3.680</strong> bản ghi biến động</span>
+            <span>
+              trên tổng số <strong>{total.toLocaleString("vi-VN")}</strong> bản ghi biến động
+            </span>
             <i aria-hidden="true">|</i>
-            <span>Trang <strong>1</strong> trên <strong>184</strong> trang</span>
+            <span>
+              Trang <strong>{page}</strong> trên <strong>{totalPages}</strong> trang
+            </span>
           </div>
           <nav className={styles.auditPagination} aria-label="Phân trang nhật ký">
-            <button aria-label="Trang đầu" disabled type="button"><ChevronsLeft size={14} /></button>
-            <button aria-label="Trang trước" disabled type="button"><ChevronLeft size={14} /></button>
-            <button aria-current="page" type="button">1</button>
-            <button type="button">2</button>
-            <button type="button">3</button>
-            <span>…</span>
-            <button type="button">184</button>
-            <button aria-label="Trang sau" type="button"><ChevronRight size={14} /></button>
-            <button aria-label="Trang cuối" type="button"><ChevronsRight size={14} /></button>
+            <button aria-label="Trang đầu" disabled={page <= 1} onClick={() => setPage(1)} type="button">
+              <ChevronsLeft size={14} />
+            </button>
+            <button aria-label="Trang trước" disabled={page <= 1} onClick={() => setPage(page - 1)} type="button">
+              <ChevronLeft size={14} />
+            </button>
+            <button aria-current="page" type="button">{page}</button>
+            <button aria-label="Trang sau" disabled={page >= totalPages} onClick={() => setPage(page + 1)} type="button">
+              <ChevronRight size={14} />
+            </button>
+            <button aria-label="Trang cuối" disabled={page >= totalPages} onClick={() => setPage(totalPages)} type="button">
+              <ChevronsRight size={14} />
+            </button>
           </nav>
         </footer>
       </section>
-
-      <footer className={styles.auditLegend}>
-        <div>
-          <strong>Quy ước công thức kiểm toán:</strong>
-          <span><i className={styles.legendTotal} /> <b>Total</b> (Tổng tồn thực tế) = Hàng vật lý còn trong kho</span>
-          <span><i className={styles.legendReserved} /> <b>Reserved</b> (Đang giữ chỗ) = AI tạm giữ 15 phút cho khách Live</span>
-          <span><i className={styles.legendAvailable} /> <b>Available</b> = Total - Reserved (Sẵn sàng bán tiếp)</span>
-        </div>
-        <p><ShieldCheck size={13} aria-hidden="true" /> Toàn bộ nhật ký được ký số bằng mã băm SHA-256 chống chỉnh sửa dữ liệu kho.</p>
-      </footer>
 
       <div className={styles.historyBackLink}>
         <Link href="/shop/inventory"><ArrowLeft size={14} aria-hidden="true" /> Quay lại quản lý tồn kho</Link>
