@@ -25,6 +25,30 @@ export interface ProductKpiSummary {
   inactiveNote: string;
 }
 
+export interface CatalogProductSummary {
+  totalProducts: number;
+  activeProducts: number;
+  skuCount: number;
+  inactiveProducts: number;
+}
+
+export interface ProductListItem {
+  id: string;
+  code: string;
+  sku: string;
+  name: string;
+  category: string;
+  variantDetails: string;
+  livePrice: number;
+  originalPrice?: number;
+  availableStock: number | null;
+  reservedStock: number | null;
+  status: "active" | "inactive";
+  imageUrl?: string;
+  isBestSeller?: boolean;
+  isPinned?: boolean;
+}
+
 // Backward compatibility aliases
 export type Product = ProductItem;
 export type ProductMetric = {

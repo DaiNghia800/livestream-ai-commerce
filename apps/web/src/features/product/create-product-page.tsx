@@ -1,9 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./product.module.css";
+import {
+  createProduct,
+  getProducts,
+  getProductCategories,
+  ProductApiError,
+  uploadProductImage,
+  type ProductCategory,
+  type ProductSkuInput,
+} from "./api/products";
 
 // ===== Types =====
 interface VariantRow {
@@ -106,7 +115,8 @@ export function CreateProductPage() {
 
   // Form state
   const [productName, setProductName] = useState("Áo Sơ Mi Linen Cổ Tàu Cao Cấp");
-  const [category, setCategory] = useState("thoi-trang-nam");
+  const [productCode, setProductCode] = useState("");
+  const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("Linen Heritage Vietnam");
   const [description, setDescription] = useState(
     "- Chất liệu: 100% Linen bột cao cấp, thoáng mát, thấm hút mồ hôi tối đa.\n- Phom dáng: Regular-fit tôn dáng, cổ áo tàu 3cm sang trọng hiện đại.\n- Hướng dẫn giặt: Giặt tay hoặc giặt máy chế độ nhẹ, ủi ở nhiệt độ trung bình."
@@ -116,8 +126,14 @@ export function CreateProductPage() {
   const [totalStock, setTotalStock] = useState(350);
   const [stockWarning, setStockWarning] = useState(15);
   const [triggerCode, setTriggerCode] = useState("AO01");
+  const [codeCheck, setCodeCheck] = useState<"idle" | "checking" | "available" | "duplicate" | "unknown">("idle");
   const [productStatus, setProductStatus] = useState<"active" | "draft" | "inactive">("active");
   const [variants, setVariants] = useState<VariantRow[]>(INITIAL_VARIANTS);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [images, setImages] = useState<{ file: File; previewUrl: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Shipping
   const [weight, setWeight] = useState(280);
@@ -128,6 +144,46 @@ export function CreateProductPage() {
   const totalVariantStock = variants.reduce((sum, v) => sum + v.stock, 0);
   const nameLength = productName.length;
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void getProductCategories(controller.signal)
+      .then((loadedCategories) => {
+        setCategories(loadedCategories);
+        if (loadedCategories.length > 0) setCategory(String(loadedCategories[0].id));
+      })
+      .catch((loadError: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : "Không thể tải danh mục sản phẩm.");
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const normalizedCode = triggerCode.trim();
+    if (!normalizedCode) {
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setCodeCheck("checking");
+      void getProducts({ q: normalizedCode, page: 1, pageSize: 20 }, controller.signal)
+        .then((result) => {
+          const duplicate = result.data.some(
+            (product) => product.code.trim().toUpperCase() === normalizedCode.toUpperCase()
+          );
+          setCodeCheck(duplicate ? "duplicate" : "available");
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setCodeCheck("unknown");
+        });
+    }, 300);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [triggerCode]);
+
   const handleDeleteVariant = (id: string) => {
     setVariants((prev) => prev.filter((v) => v.id !== id));
   };
@@ -136,12 +192,159 @@ export function CreateProductPage() {
     setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, stock: val } : v)));
   };
 
-  const handleSave = () => {
-    router.push("/shop/products");
+  const updateVariant = (id: string, patch: Partial<VariantRow>) => {
+    setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+  };
+
+  const handleAddVariant = () => {
+    const base = triggerCode.trim() || "SKU";
+    const price = parseInt(livePrice.replace(/\D/g, ""), 10) || 0;
+    setVariants((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${prev.length}`,
+        color: "",
+        colorHex: "#ffffff",
+        size: "",
+        sku: `${base}-${prev.length + 1}`,
+        aiCode: "",
+        stock: 0,
+        livePrice: price,
+      },
+    ]);
+  };
+
+  const handleApplyPrice = () => {
+    const price = parseInt(livePrice.replace(/\D/g, ""), 10) || 0;
+    setVariants((prev) => prev.map((v) => ({ ...v, livePrice: price })));
+  };
+
+  const handleApplyStock = () => {
+    const per = variants.length ? Math.floor(totalStock / variants.length) : 0;
+    setVariants((prev) => prev.map((v) => ({ ...v, stock: per })));
+  };
+
+  const handleImageSelection = (fileList: FileList | null) => {
+    if (!fileList) return;
+    const selected = Array.from(fileList);
+    if (images.length + selected.length > 8) {
+      setError("Mỗi sản phẩm có thể có tối đa 8 ảnh.");
+      return;
+    }
+    const invalid = selected.find(
+      (file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024
+    );
+    if (invalid) {
+      setError("Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP có dung lượng tối đa 5MB.");
+      return;
+    }
+    setError("");
+    setImages((current) => [
+      ...current,
+      ...selected.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
+    ]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSave = async () => {
+    setError("");
+    if (!productName.trim()) {
+      setError("Tên sản phẩm là bắt buộc.");
+      return;
+    }
+    if (!triggerCode.trim()) {
+      setError("Mã chốt đơn chính là bắt buộc.");
+      return;
+    }
+    if (codeCheck === "duplicate") {
+      setError("Mã chốt đơn đã tồn tại trong database. Vui lòng chọn mã khác.");
+      return;
+    }
+    const codeValue = productCode.trim() || triggerCode.trim();
+    if (!variants.length) {
+      setError("Cần có ít nhất một biến thể sản phẩm.");
+      return;
+    }
+    const incompleteVariant = variants.findIndex(
+      (variant) =>
+        !variant.color.trim() ||
+        !variant.size.trim() ||
+        !variant.sku.trim() ||
+        !variant.aiCode.trim()
+    );
+    if (incompleteVariant >= 0) {
+      setError(
+        `Biến thể ${incompleteVariant + 1}: màu sắc, size, mã SKU và mã phụ AI không được để trống.`
+      );
+      return;
+    }
+    const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    const skuCodes = variants.map((variant) => normalize(variant.sku));
+    if (new Set(skuCodes).size !== skuCodes.length) {
+      setError("Mã SKU không được để trống hoặc trùng nhau.");
+      return;
+    }
+    const aiCodes = variants.map((variant) => normalize(variant.aiCode));
+    if (new Set(aiCodes).size !== aiCodes.length) {
+      setError("Mã phụ AI không được để trống hoặc trùng nhau.");
+      return;
+    }
+    const variantNames = variants.map((variant) =>
+      [variant.color, variant.size].map(normalize).join("|")
+    );
+    if (new Set(variantNames).size !== variantNames.length) {
+      setError("Không thể có hai biến thể cùng màu sắc và size.");
+      return;
+    }
+    const categoryId = categories.find((item) => String(item.id) === category)?.id ??
+      (Number.isSafeInteger(Number(category)) && Number(category) > 0 ? Number(category) : null);
+
+    const skus: ProductSkuInput[] = variants.map((variant) => ({
+      skuCode: variant.sku.trim(),
+      variantName: [variant.color, variant.size].filter(Boolean).join(" / ") || "Mặc định",
+      price: variant.livePrice,
+      aiCode: variant.aiCode.trim() || null,
+      stock: Math.max(0, Math.floor(variant.stock) || 0),
+      status: "active",
+    }));
+
+    setSaving(true);
+    try {
+      const uploadedImages = await Promise.all(
+        images.map(async ({ file }, index) => ({
+          url: await uploadProductImage(file),
+          isPrimary: index === 0,
+          sortOrder: index,
+        }))
+      );
+      await createProduct({
+        code: codeValue,
+        name: productName.trim(),
+        categoryId,
+        description: description.trim() || null,
+        status: productStatus === "active" ? "active" : productStatus === "draft" ? "archived" : "discontinued",
+        skus,
+        images: uploadedImages,
+      });
+      router.push("/shop/products");
+    } catch (saveError) {
+      if (saveError instanceof ProductApiError && saveError.status === 409) {
+        setError("Mã sản phẩm hoặc SKU đã tồn tại. Vui lòng kiểm tra lại.");
+      } else {
+        setError(saveError instanceof Error ? saveError.message : "Không thể lưu sản phẩm.");
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <>
+      {error && (
+        <div className="mb-5 rounded-lg border border-error/30 bg-error/5 px-4 py-3 text-body-sm text-error" role="alert">
+          {error}
+        </div>
+      )}
       {/* ===== Breadcrumb & Top Action Bar ===== */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-6 border-b border-outline-variant mb-8">
         <div>
@@ -181,11 +384,12 @@ export function CreateProductPage() {
             className="h-10 px-6 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md font-semibold shadow hover:bg-primary transition-all duration-150 flex items-center gap-2 cursor-pointer"
             type="button"
             onClick={handleSave}
+            disabled={saving}
           >
             <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
               save
             </span>
-            <span>Lưu sản phẩm</span>
+            <span>{saving ? "Đang lưu..." : "Lưu sản phẩm"}</span>
           </button>
         </div>
       </div>
@@ -213,35 +417,53 @@ export function CreateProductPage() {
                 }
               />
 
-              {/* Danh mục & Thương hiệu */}
+              {/* Mã sản phẩm & Danh mục & Thương hiệu */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
-                    Danh mục hàng hóa <span className="text-error">*</span>
+                    Mã sản phẩm <span className="text-error">*</span>
+                  </label>
+                  <input
+                    className="w-full h-10 px-3.5 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface"
+                    placeholder="Ví dụ: LINEN-01, AO001..."
+                    type="text"
+                    maxLength={50}
+                    value={productCode}
+                    onChange={(e) => setProductCode(e.target.value)}
+                  />
+                  <p className="mt-1 font-body-sm text-body-sm text-outline">
+                    Nếu để trống, mã chốt đơn sẽ được dùng làm mã sản phẩm
+                  </p>
+                </div>
+                <div>
+                  <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
+                    Danh mục hàng hóa
                   </label>
                   <select
                     className="w-full h-10 px-3 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface cursor-pointer"
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
                   >
-                    <option value="thoi-trang-nam">Thời trang Nam / Sơ mi cao cấp</option>
-                    <option value="thoi-trang-nu">Thời trang Nữ</option>
-                    <option value="phu-kien">Phụ kiện &amp; Đồ lót</option>
-                    <option value="giay-dep">Giày dép &amp; Túi ví</option>
+                    <option value="">Chưa phân loại</option>
+                    {categories.map((item) => (
+                      <option key={item.id} value={String(item.id)}>{item.name}</option>
+                    ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
-                    Thương hiệu / Nhãn hiệu
-                  </label>
-                  <input
-                    className="w-full h-10 px-3.5 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface"
-                    placeholder="Nhập thương hiệu hoặc OEM..."
-                    type="text"
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
-                  />
-                </div>
+              </div>
+
+              {/* Thương hiệu */}
+              <div>
+                <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
+                  Thương hiệu / Nhãn hiệu
+                </label>
+                <input
+                  className="w-full h-10 px-3.5 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface"
+                  placeholder="Nhập thương hiệu hoặc OEM..."
+                  type="text"
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value)}
+                />
               </div>
 
               {/* Mô tả chi tiết */}
@@ -456,17 +678,23 @@ export function CreateProductPage() {
                 </div>
                 {/* Validation badge */}
                 <div className="flex md:flex-col justify-end items-start md:items-end gap-1.5 pt-2 md:pt-0">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-label-md text-label-md font-semibold">
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-label-md text-label-md font-semibold ${
+                    codeCheck === "duplicate"
+                      ? "bg-rose-50 text-rose-700 border border-rose-200"
+                      : codeCheck === "available"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                  }`}>
                     <span
-                      className="material-symbols-outlined text-emerald-600"
+                      className={`material-symbols-outlined ${codeCheck === "duplicate" ? "text-rose-600" : codeCheck === "available" ? "text-emerald-600" : "text-amber-600"}`}
                       style={{
                         fontSize: "16px",
                         fontVariationSettings: "'FILL' 1",
                       }}
                     >
-                      check_circle
+                      {codeCheck === "duplicate" ? "error" : codeCheck === "checking" ? "hourglass_top" : codeCheck === "available" ? "check_circle" : "help"}
                     </span>
-                    <span>Mã hợp lệ, chưa trùng</span>
+                    <span>{codeCheck === "duplicate" ? "Mã đã tồn tại" : codeCheck === "checking" ? "Đang kiểm tra..." : codeCheck === "available" ? "Mã hợp lệ, chưa trùng" : "Chưa kiểm tra mã"}</span>
                   </div>
                   <span className="font-body-sm text-body-sm text-outline">
                     Độ dài lý tưởng: 3-5 ký tự dễ gõ
@@ -544,14 +772,12 @@ export function CreateProductPage() {
                 <button
                   className="inline-flex items-center gap-1.5 text-primary text-label-md font-label-md font-semibold hover:underline cursor-pointer bg-transparent border-none"
                   type="button"
-                  onClick={() =>
-                    alert("Thêm thuộc tính biến thể")
-                  }
+                  onClick={handleAddVariant}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
                     add_circle
                   </span>
-                  <span>Thêm thuộc tính</span>
+                  <span>Thêm biến thể</span>
                 </button>
               </div>
 
@@ -582,30 +808,65 @@ export function CreateProductPage() {
                                 className="w-3.5 h-3.5 rounded-full border border-outline-variant shadow-sm inline-block shrink-0"
                                 style={{ backgroundColor: v.colorHex }}
                               />
-                              <span>{v.color}</span>
+                              <input
+                                className="w-24 h-8 px-2 rounded border border-outline-variant bg-surface-container-lowest"
+                                aria-label="Màu sắc"
+                                required
+                                value={v.color}
+                                onChange={(e) => updateVariant(v.id, { color: e.target.value })}
+                              />
                             </div>
                           </td>
-                          <td className="py-2.5 px-4 font-semibold text-primary">{v.size}</td>
-                          <td className="py-2.5 px-4 font-mono text-body-sm text-outline">
-                            {v.sku}
+                          <td className="py-2.5 px-4">
+                            <input
+                              className="w-16 h-8 px-2 rounded border border-outline-variant bg-surface-container-lowest font-semibold text-primary"
+                              aria-label="Size"
+                              required
+                              value={v.size}
+                              onChange={(e) => updateVariant(v.id, { size: e.target.value })}
+                            />
                           </td>
                           <td className="py-2.5 px-4">
-                            <span className="inline-block px-2 py-0.5 rounded bg-surface-container text-on-surface-variant text-xs font-mono">
-                              {v.aiCode}
-                            </span>
+                            <input
+                              className="w-36 h-8 px-2 rounded border border-outline-variant bg-surface-container-lowest font-mono text-body-sm"
+                              aria-label="Mã SKU"
+                              required
+                              maxLength={50}
+                              value={v.sku}
+                              onChange={(e) => updateVariant(v.id, { sku: e.target.value })}
+                            />
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <input
+                              className="w-24 h-8 px-2 rounded border border-outline-variant bg-surface-container-lowest font-mono text-xs"
+                              aria-label="Mã phụ AI"
+                              required
+                              maxLength={50}
+                              value={v.aiCode}
+                              onChange={(e) => updateVariant(v.id, { aiCode: e.target.value })}
+                            />
                           </td>
                           <td className="py-2.5 px-4 text-right">
                             <input
                               className="w-20 h-8 text-right font-medium text-on-surface px-2 rounded border border-outline-variant bg-surface-container-lowest focus:ring-1 focus:ring-primary focus:outline-none"
                               type="number"
+                              min={0}
                               value={v.stock}
                               onChange={(e) =>
                                 handleVariantStockChange(v.id, Number(e.target.value))
                               }
                             />
                           </td>
-                          <td className="py-2.5 px-4 text-right font-semibold text-on-surface">
-                            {formatVnd(v.livePrice)}
+                          <td className="py-2.5 px-4 text-right">
+                            <input
+                              className="w-28 h-8 text-right font-semibold px-2 rounded border border-outline-variant bg-surface-container-lowest"
+                              aria-label="Giá Live"
+                              inputMode="numeric"
+                              value={formatVnd(v.livePrice)}
+                              onChange={(e) =>
+                                updateVariant(v.id, { livePrice: parseInt(e.target.value.replace(/\D/g, ""), 10) || 0 })
+                              }
+                            />
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <button
@@ -635,7 +896,7 @@ export function CreateProductPage() {
                   <button
                     className="text-primary hover:underline font-medium cursor-pointer bg-transparent border-none"
                     type="button"
-                    onClick={() => alert("Áp dụng giá chung cho tất cả biến thể")}
+                    onClick={handleApplyPrice}
                   >
                     Áp dụng giá chung
                   </button>
@@ -643,7 +904,7 @@ export function CreateProductPage() {
                   <button
                     className="text-primary hover:underline font-medium cursor-pointer bg-transparent border-none"
                     type="button"
-                    onClick={() => alert("Đặt tồn kho đồng loạt")}
+                    onClick={handleApplyStock}
                   >
                     Đặt tồn đồng loạt
                   </button>
@@ -765,7 +1026,14 @@ export function CreateProductPage() {
             </div>
 
             {/* Drag & Drop Zone */}
-            <div className="border-2 border-dashed border-outline-variant hover:border-primary-container bg-surface-container-low/50 hover:bg-surface-container-high/30 rounded-xl p-5 text-center cursor-pointer transition-all duration-150 mb-4 group">
+            <input ref={fileInputRef} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => handleImageSelection(event.target.files)} />
+            <button
+              className="w-full border-2 border-dashed border-outline-variant hover:border-primary-container bg-surface-container-low/50 hover:bg-surface-container-high/30 rounded-xl p-5 text-center cursor-pointer transition-all duration-150 mb-4 group"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { event.preventDefault(); handleImageSelection(event.dataTransfer.files); }}
+            >
               <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-surface-container-highest/60 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
                 <span className="material-symbols-outlined" style={{ fontSize: "24px" }}>
                   cloud_upload
@@ -778,7 +1046,7 @@ export function CreateProductPage() {
               <p className="font-body-sm text-body-sm text-outline">
                 Hỗ trợ PNG, JPG, WebP chất lượng cao
               </p>
-            </div>
+            </button>
 
             {/* Thumbnails */}
             <div>
@@ -786,6 +1054,16 @@ export function CreateProductPage() {
                 Ảnh đã tải lên (3 ảnh)
               </label>
               <div className="grid grid-cols-3 gap-2.5">
+                {images.map(({ file, previewUrl }, index) => (
+                  <div key={`${file.name}-${file.lastModified}`} className="relative rounded-lg overflow-hidden border-2 border-primary-container aspect-square shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="w-full h-full object-cover" src={previewUrl} alt={`Product image ${index + 1}`} />
+                    <button aria-label={`Remove image ${index + 1}`} className="absolute top-1 right-1 w-7 h-7 rounded bg-surface-container-lowest text-error flex items-center justify-center shadow cursor-pointer border-none" type="button" onClick={() => setImages((current) => current.filter((_, imageIndex) => imageIndex !== index))}>
+                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete</span>
+                    </button>
+                  </div>
+                ))}
+                {images.length === 0 && <>
                 {/* Thumbnail 1 - Cover */}
                 <div className="relative group rounded-lg overflow-hidden border-2 border-primary-container aspect-square shadow-sm">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -848,6 +1126,7 @@ export function CreateProductPage() {
                     </button>
                   </div>
                 </div>
+                </>}
               </div>
             </div>
           </SectionCard>

@@ -20,12 +20,44 @@ export const CreateLivestreamRequestSchema = z
       .max(1024, { message: "coverImageKey cannot exceed 1024 characters" })
       .nullable()
       .optional(),
+    status: z.enum(["draft", "scheduled"]).optional(),
   })
   .strict({
     message:
-      "Forbidden fields provided. Only title, description, scheduledAt, and coverImageKey are allowed.",
+      "Forbidden fields provided. Only title, description, scheduledAt, coverImageKey, and status are allowed.",
   });
 
 export type CreateLivestreamInput = z.infer<typeof CreateLivestreamRequestSchema>;
+
+export const ListLivestreamsQuerySchema = z.object({
+  status: z
+    .enum(["all", "draft", "scheduled", "live", "ended", "cancelled"])
+    .optional()
+    .default("all"),
+  search: z.string().trim().optional(),
+  fromDate: z.string().trim().optional(),
+  toDate: z.string().trim().optional(),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1, { message: "page must be greater than or equal to 1" })
+    .default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, { message: "limit must be at least 1" })
+    .max(100, { message: "limit cannot exceed 100" })
+    .default(10),
+});
+
+export type ListLivestreamsQueryInput = z.infer<typeof ListLivestreamsQuerySchema>;
+
+export const GetLivestreamParamSchema = z.object({
+  id: z.string().refine(isValidUuid, {
+    message: "Invalid livestream ID: must be a valid UUID v4",
+  }),
+});
+
+export type GetLivestreamParamInput = z.infer<typeof GetLivestreamParamSchema>;
 
 export { isValidUuid };

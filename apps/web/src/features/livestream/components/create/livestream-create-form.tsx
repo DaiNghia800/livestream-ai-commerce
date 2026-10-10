@@ -216,6 +216,7 @@ export function LivestreamCreateForm() {
         description: description.trim() || undefined,
         scheduledAt: scheduledAtIso || undefined,
         coverImageKey: finalCoverImageKey,
+        status: "scheduled",
       });
 
       // Tự động gắn các sản phẩm đã chọn vào phiên livestream trong cơ sở dữ liệu

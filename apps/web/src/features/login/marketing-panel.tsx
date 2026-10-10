@@ -45,7 +45,7 @@ export function MarketingPanel() {
         <span className="auth-hero-eyebrow">SỨC MẠNH KIẾN TRÚC PHÂN TÁN</span>
         <h2>
           Hạ tầng livestream bán hàng thế hệ mới
-          <span>Chốt đơn tự động bằng AI</span>
+          <span> Chốt đơn tự động bằng AI</span>
         </h2>
         <p>
           Giải pháp công nghệ chuyên biệt cho phiên live quy mô lớn. Xử lý đồng

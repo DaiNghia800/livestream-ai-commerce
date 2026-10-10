@@ -5,6 +5,11 @@ export const metadata = {
   description: "Theo dõi lịch sử biến động tồn kho và audit log.",
 };
 
-export default function InventoryHistoryPage() {
-  return <InventoryHistory />;
+export default async function InventoryHistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ skuId?: string }>;
+}) {
+  const { skuId } = await searchParams;
+  return <InventoryHistory initialSkuId={skuId} />;
 }

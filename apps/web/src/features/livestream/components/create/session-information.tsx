@@ -60,7 +60,6 @@ export function SessionInformation({
   onEndTimeChange,
   errors = {},
   disabled = false,
-  hideIvsNotice = false,
 }: SessionInformationProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
