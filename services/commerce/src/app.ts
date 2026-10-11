@@ -7,10 +7,15 @@ import { ILivestreamRepository } from "./modules/livestream/repositories/livestr
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
 import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js";
+import { createOrderRouter } from "./modules/order/routes/order.routes.js";
+import { createPurchaseRequestRouter } from "./modules/order/routes/purchase-request.routes.js";
+import { createPaymentRouter } from "./modules/payment/routes/payment.routes.js";
 import {
   IProductRepository,
 } from "./modules/product/repositories/product.repository.js";
 import { createProductRouter } from "./modules/product/routes/product.routes.js";
+import { IInventoryRepository } from "./modules/inventory/repositories/inventory.repository.js";
+import { createInventoryRouter } from "./modules/inventory/routes/inventory.routes.js";
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 import { IIvsService } from "./shared/ivs/ivs.service.js";
@@ -22,7 +27,8 @@ export function createApp(
   customProductRepository?: IProductRepository,
   customAuthRepository?: IAuthRepository,
   customLocalProductImageStorage?: LocalProductImageStorageService,
-  customIvsService?: IIvsService
+  customIvsService?: IIvsService,
+  customInventoryRepository?: IInventoryRepository
 ): Express {
 
   const app = express();
@@ -85,11 +91,15 @@ export function createApp(
       customIvsService
     )
   );
+  apiRouter.use("/orders", createOrderRouter());
+  apiRouter.use("/purchase-requests", createPurchaseRequestRouter());
+  apiRouter.use("/payments", createPaymentRouter());
   apiRouter.use(
     "/uploads",
     createUploadRouter(customS3Service, localProductImageStorage)
   );
   apiRouter.use("/products", createProductRouter(customProductRepository));
+  apiRouter.use("/inventory", createInventoryRouter(customInventoryRepository));
 
 
   app.use(config.apiPrefix, apiRouter);

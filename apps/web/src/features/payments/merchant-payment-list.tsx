@@ -1,125 +1,128 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Eye, RefreshCw } from "lucide-react";
+import { Download, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { EmptyState } from "@/components/feedback/states";
-import { formatClock, formatCountdown, formatMoney } from "@/lib/format";
+import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
+import { formatMoney } from "@/lib/format";
+import { paymentsApi, type Payment } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
+import zebra from "@/styles/zebra-table.module.css";
 import {
-  paymentGateways,
+  gatewayLabels,
+  paymentMethods,
   paymentStatuses,
-  payments,
-} from "@/mocks/payments";
+  reconcileLabels,
+} from "@/features/orders/labels";
 
-const statusKeys = Object.keys(
-  paymentStatuses,
-) as (keyof typeof paymentStatuses)[];
+const statusKeys = Object.keys(paymentStatuses) as (keyof typeof paymentStatuses)[];
 
 export function MerchantPaymentList() {
   const [query, setQuery] = useState("");
-  const [gateway, setGateway] = useState("all");
   const [status, setStatus] = useState("all");
-  const [elapsed, setElapsed] = useState(0);
 
-  useEffect(() => {
-    const id = setInterval(() => setElapsed((value) => value + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const filtered = useMemo(
-    () =>
-      payments.filter(
-        (payment) =>
-          `${payment.txnRef} ${payment.orderCode} ${payment.customer}`
-            .toLocaleLowerCase("vi")
-            .includes(query.toLocaleLowerCase("vi")) &&
-          (gateway === "all" || payment.gateway === gateway) &&
-          (status === "all" || payment.status === status),
-      ),
-    [query, gateway, status],
+  const { data, loading, error, reload } = useApi(
+    () => paymentsApi.list({ status: status === "all" ? undefined : status, limit: 200 }),
+    [status],
   );
+  const payments = useMemo(() => data ?? [], [data]);
 
-  const paid = payments.filter((payment) => payment.status === "PAID");
-  const pending = payments.filter((payment) => payment.status === "PENDING");
-  const failed = payments.filter((payment) => payment.status === "FAILED");
+  const filtered = useMemo(() => {
+    const key = query.toLocaleLowerCase("vi").trim();
+    if (!key) return payments;
+    return payments.filter((p) =>
+      `${p.txnRef ?? ""} ${p.orderCode ?? ""}`.toLocaleLowerCase("vi").includes(key),
+    );
+  }, [payments, query]);
+
+  // Hai con số shop thật sự cần nhìn mỗi sáng: tiền đã về, và những
+  // khoản đang lệch cần người xử lý.
+  //
+  // Cộng TẤT CẢ tiền thực nhận, không chỉ các khoản đã đủ. Lọc theo
+  // status === "PAID" sẽ bỏ sót khoản khách mới chuyển một nửa — tiền
+  // đó đã nằm trong tài khoản shop rồi.
+  //
+  // Trừ khoản đã hoàn: tiền vào rồi ra, không còn trong két.
+  const daThu = payments
+    .filter((p) => p.status !== "REFUNDED")
+    .reduce((sum, p) => sum + Number(p.paidAmount), 0);
+  const canXuLy = payments.filter(
+    (p) => p.reconcile === "UNDERPAID" || p.reconcile === "OVERPAID",
+  );
+  const choThu = payments.filter((p) => p.status === "PENDING");
 
   return (
     <>
       <div className="page-head">
         <div>
-          <p className="eyebrow">DÒNG TIỀN</p>
-          <h1>Thanh toán trong phiên</h1>
+          <p className="eyebrow">THANH TOÁN</p>
+          <h1>Đối soát thu tiền</h1>
           <p className="muted">
-            Giao dịch phát sinh từ link xác nhận đơn và thu hộ khi giao.
+            Khoản thu của từng đơn, kèm số tiền thực nhận từ ngân hàng và ví
+            điện tử.
           </p>
         </div>
         <div className="head-actions">
-          <Button variant="secondary" disabled title="Làm mới chưa khả dụng">
-            <RefreshCw size={17} aria-hidden="true" /> Làm mới · Sắp có
-          </Button>
           <Button variant="secondary" disabled title="Xuất đối soát chưa khả dụng">
             <Download size={17} aria-hidden="true" /> Xuất đối soát · Sắp có
+          </Button>
+          <Button variant="secondary" onClick={reload}>
+            Làm mới
           </Button>
         </div>
       </div>
 
       <div className="metric-grid">
         <Card>
-          <h2 className="muted">Tổng giao dịch</h2>
+          <h2 className="muted">Đã thu</h2>
+          <strong className="metric-value">{formatMoney(daThu)}</strong>
+          <p className="metric-note">Tổng tiền thực nhận, trừ khoản đã hoàn</p>
+        </Card>
+        <Card>
+          <h2 className="muted">Chờ thu</h2>
+          <strong className="metric-value">{choThu.length}</strong>
+          <p className="metric-note">Khoản chưa nhận đủ tiền</p>
+        </Card>
+        <Card>
+          <h2 className="muted">Lệch cần xử lý</h2>
+          <strong className="metric-value">{canXuLy.length}</strong>
+          <p className="metric-note">Khách chuyển thiếu hoặc thừa</p>
+        </Card>
+        <Card>
+          <h2 className="muted">Tổng khoản thu</h2>
           <strong className="metric-value">{payments.length}</strong>
-          <p className="metric-note">Dữ liệu minh họa</p>
-        </Card>
-        <Card>
-          <h2 className="muted">Đã thanh toán</h2>
-          <strong className="metric-value">
-            {formatMoney(paid.reduce((sum, item) => sum + item.amount, 0))}
-          </strong>
-          <p className="metric-note">{paid.length} giao dịch thành công</p>
-        </Card>
-        <Card>
-          <h2 className="muted">Đang chờ khách trả</h2>
-          <strong className="metric-value">{pending.length}</strong>
-          <p className="metric-note">Một số đơn vẫn đang giữ tồn</p>
-        </Card>
-        <Card>
-          <h2 className="muted">Thất bại hoặc hết hạn</h2>
-          <strong className="metric-value">{failed.length}</strong>
-          <p className="metric-note">Tồn đã được trả về kho</p>
+          <p className="metric-note">Theo bộ lọc hiện tại</p>
         </Card>
       </div>
+
+      {canXuLy.length > 0 && (
+        <div className="notice notice-warning">
+          <h3>{canXuLy.length} khoản thu đang lệch số tiền</h3>
+          <p>
+            Khách chuyển thiếu thì cần gọi nhắc trước khi giao; chuyển thừa thì
+            phải hoàn lại phần dư.
+          </p>
+        </div>
+      )}
 
       <Card>
         <div className="section-heading">
           <div>
-            <h2>Danh sách giao dịch</h2>
-            <p className="muted">Chưa nối cổng thanh toán nào trong bản mẫu.</p>
+            <h2>Danh sách khoản thu</h2>
+            <p className="muted">Dữ liệu trực tiếp từ dịch vụ thanh toán.</p>
           </div>
-          <Badge>Dữ liệu minh họa</Badge>
         </div>
 
         <div className="filters">
           <Input
             label="Tìm giao dịch"
-            placeholder="Mã giao dịch, mã đơn hoặc tên khách…"
+            placeholder="Nội dung chuyển khoản hoặc mã đơn…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <Select
-            label="Cổng thanh toán"
-            value={gateway}
-            onChange={(event) => setGateway(event.target.value)}
-          >
-            <option value="all">Tất cả cổng</option>
-            {Object.entries(paymentGateways).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
         </div>
 
         <div className="chip-row" role="group" aria-label="Lọc theo trạng thái">
@@ -129,7 +132,7 @@ export function MerchantPaymentList() {
             aria-pressed={status === "all"}
             onClick={() => setStatus("all")}
           >
-            Tất cả <span>{payments.length}</span>
+            Tất cả
           </button>
           {statusKeys.map((key) => (
             <button
@@ -139,112 +142,112 @@ export function MerchantPaymentList() {
               aria-pressed={status === key}
               onClick={() => setStatus(key)}
             >
-              {paymentStatuses[key].label}{" "}
-              <span>
-                {payments.filter((payment) => payment.status === key).length}
-              </span>
+              {paymentStatuses[key].label}
             </button>
           ))}
         </div>
 
-        {filtered.length ? (
+        {loading ? (
+          <LoadingState />
+        ) : error ? (
+          <ErrorState
+            action={
+              <Button variant="secondary" onClick={reload}>
+                Thử lại
+              </Button>
+            }
+          />
+        ) : filtered.length ? (
           <div className="table-wrap">
-            <table className="data-table">
-              <caption className="sr-only">
-                Giao dịch thanh toán mẫu của phiên livestream
-              </caption>
+            <table className={`data-table ${zebra.zebra}`}>
+              <caption className="sr-only">Khoản thu của các đơn hàng</caption>
               <thead>
                 <tr>
-                  <th scope="col">Mã giao dịch</th>
+                  <th scope="col">Nội dung chuyển khoản</th>
                   <th scope="col">Đơn hàng</th>
-                  <th scope="col">Khách hàng</th>
-                  <th scope="col" className="col-secondary">Cổng</th>
-                  <th scope="col" className="num">Số tiền</th>
+                  <th scope="col">Hình thức</th>
+                  <th scope="col" className="num">Phải thu</th>
+                  <th scope="col" className="num">Đã nhận</th>
+                  <th scope="col">Đối chiếu</th>
                   <th scope="col">Trạng thái</th>
-                  <th scope="col" className="num">Giữ hàng</th>
-                  <th scope="col" className="num">Thời gian</th>
                   <th scope="col" className="num">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((payment) => {
-                  const remaining =
-                    payment.holdSecondsLeft === null
-                      ? null
-                      : payment.holdSecondsLeft - elapsed;
-                  return (
-                    <tr key={payment.txnRef}>
-                      <td>
-                        <strong>{payment.txnRef}</strong>
-                      </td>
-                      <td>
-                        <Link
-                          href={`/shop/orders/${payment.orderCode.toLowerCase()}`}
-                        >
-                          {payment.orderCode}
-                        </Link>
-                      </td>
-                      <td>{payment.customer}</td>
-                      <td className="col-secondary">
-                        {paymentGateways[payment.gateway]}
-                      </td>
-                      <td className="num">
-                        <strong
-                          style={
-                            payment.amount < 0
-                              ? { color: "var(--color-error)" }
-                              : undefined
-                          }
-                        >
-                          {formatMoney(payment.amount)}
-                        </strong>
-                      </td>
-                      <td>
-                        <Badge tone={paymentStatuses[payment.status].tone}>
-                          {paymentStatuses[payment.status].label}
-                        </Badge>
-                      </td>
-                      <td className="num">
-                        {remaining === null ? (
-                          <span className="muted">—</span>
-                        ) : (
-                          <span
-                            className={
-                              remaining > 0 ? "countdown" : "countdown-over"
-                            }
-                          >
-                            {remaining > 0
-                              ? formatCountdown(remaining)
-                              : "Đã hết hạn"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="num col-secondary">
-                        {formatClock(payment.createdAt)}
-                      </td>
-                      <td>
-                        <div className="row-actions">
-                          <Link
-                            className="row-action"
-                            href={`/shop/payments/${payment.txnRef.toLowerCase()}`}
-                            aria-label={`Xem chi tiết giao dịch ${payment.txnRef}`}
-                            title="Xem chi tiết"
-                          >
-                            <Eye size={17} aria-hidden="true" />
-                          </Link>
-                        </div>
-                        
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filtered.map((payment) => (
+                  <PaymentRow key={payment.id} payment={payment} />
+                ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <EmptyState title="Không tìm thấy giao dịch" />
+          <EmptyState
+            title="Chưa có khoản thu nào"
+            description="Khoản thu được tạo sau khi khách xác nhận đơn."
+          />
         )}
       </Card>
     </>
+  );
+}
+
+function PaymentRow({ payment }: { payment: Payment }) {
+  const status = paymentStatuses[payment.status] ?? {
+    label: payment.status,
+    tone: "neutral",
+  };
+  const reconcile = reconcileLabels[payment.reconcile] ?? {
+    label: payment.reconcile,
+    tone: "neutral",
+  };
+
+  return (
+    <tr>
+      <td>
+        <strong>{payment.txnRef ?? "—"}</strong>
+        <p className="muted">
+          {payment.provider
+            ? (gatewayLabels[payment.provider] ?? payment.provider)
+            : "Chưa chọn cổng"}
+        </p>
+      </td>
+      <td>
+        {payment.orderCode ? (
+          <Link className="link-inline" href={`/shop/orders/${payment.orderCode}`}>
+            {payment.orderCode}
+          </Link>
+        ) : (
+          "—"
+        )}
+      </td>
+      <td>{paymentMethods[payment.method] ?? payment.method}</td>
+      <td className="num">{formatMoney(Number(payment.amount))}</td>
+      <td className="num">
+        <strong>{formatMoney(Number(payment.paidAmount))}</strong>
+      </td>
+      <td>
+        <Badge tone={reconcile.tone}>{reconcile.label}</Badge>
+      </td>
+      <td>
+        <Badge tone={status.tone}>{status.label}</Badge>
+      </td>
+      <td className="num">
+        <div className="row-actions">
+          <Link
+            className="row-action"
+            href={`/shop/payments/${payment.txnRef ?? payment.id}`}
+            title={`Xem chi tiết giao dịch ${payment.txnRef ?? ""}`}
+          >
+            <Eye size={16} aria-hidden="true" />
+            {/* Kèm mã giao dịch vào tên khả truy cập: mọi dòng cùng
+                đọc là "Xem chi tiết" thì người dùng trình đọc màn
+                hình không biết mình đang ở dòng nào. */}
+            <span className="sr-only">
+              Xem chi tiết giao dịch {payment.txnRef ?? payment.id}
+            </span>
+          </Link>
+        </div>
+      </td>
+    </tr>
   );
 }

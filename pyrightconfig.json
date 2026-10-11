@@ -1,5 +1,8 @@
 {
-  "extraPaths": ["services/ai-worker"],
+"extraPaths": [
+    "services/ai-worker",
+    "./services/commerce"
+],
   "pythonVersion": "3.13",
   "reportMissingImports": true,
   "reportMissingModuleSource": false

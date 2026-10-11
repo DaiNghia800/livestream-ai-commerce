@@ -159,6 +159,25 @@ function asProduct(row: Record<string, any>): Product {
   };
 }
 
+async function seedInitialStock(
+  db: { query: (sql: string, values: unknown[]) => Promise<unknown> },
+  skuId: string | number,
+  stock: number | undefined
+): Promise<void> {
+  if (!stock || stock <= 0) return;
+  await db.query(
+    `INSERT INTO inventory (sku_id, on_hand_quantity) VALUES ($1, $2)
+     ON CONFLICT (sku_id) DO UPDATE SET on_hand_quantity = EXCLUDED.on_hand_quantity`,
+    [skuId, stock]
+  );
+  await db.query(
+    `INSERT INTO inventory_adjustments
+       (sku_id, movement_type, delta, held_delta, on_hand_after, held_after, reason, note)
+     VALUES ($1, 'adjustment', $2, 0, $2, 0, 'initial_stock', 'Initial stock on SKU creation')`,
+    [skuId, stock]
+  );
+}
+
 function mapDatabaseError(error: unknown): never {
   if (typeof error === "object" && error !== null && "code" in error) {
     const databaseError = error as { code: string; constraint?: string };
@@ -298,11 +317,12 @@ export class PostgresProductRepository implements IProductRepository {
       const productId = result.rows[0].id as string;
 
       for (const sku of input.skus) {
-        await client.query(
+        const inserted = await client.query(
           `INSERT INTO product_skus (product_id, sku_code, variant_name, price, status)
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
           [productId, sku.skuCode, sku.variantName, sku.price, sku.status]
         );
+        await seedInitialStock(client, inserted.rows[0].id, sku.stock);
       }
       for (const image of input.images) {
         await client.query(
@@ -339,11 +359,12 @@ export class PostgresProductRepository implements IProductRepository {
         productIds.push(productId);
 
         for (const sku of input.skus) {
-          await client.query(
+          const inserted = await client.query(
             `INSERT INTO product_skus (product_id, sku_code, variant_name, price, status)
-             VALUES ($1, $2, $3, $4, $5)`,
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
             [productId, sku.skuCode, sku.variantName, sku.price, sku.status]
           );
+          await seedInitialStock(client, inserted.rows[0].id, sku.stock);
         }
         for (const image of input.images) {
           await client.query(
@@ -424,7 +445,9 @@ export class PostgresProductRepository implements IProductRepository {
            status, created_at AS "createdAt", updated_at AS "updatedAt"`,
         [productId, shopId, input.skuCode, input.variantName, input.price, input.status]
       );
-      return result.rows[0] ? this.asSku(result.rows[0]) : null;
+      const sku = result.rows[0] ? this.asSku(result.rows[0]) : null;
+      if (sku) await seedInitialStock(pool, sku.id, input.stock);
+      return sku;
     } catch (error) {
       mapDatabaseError(error);
     }
