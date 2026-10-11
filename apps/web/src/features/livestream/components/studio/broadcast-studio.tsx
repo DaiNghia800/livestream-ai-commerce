@@ -28,6 +28,7 @@ import {
 } from "../../api/get-livestreams";
 import type { StudioProductItem } from "../../types/studio";
 import type { Livestream, LivestreamStatus } from "../../types/livestream";
+import { updateLivestreamProduct } from "../../api/livestream-products";
 import { useIvsBroadcast } from "../../hooks/use-ivs-broadcast";
 
 export interface BroadcastStudioProps {
@@ -55,7 +56,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   // 2.2 AWS IVS Web Broadcast (Cách 1: Phát trực tiếp ngay trên trình duyệt web)
   const {
     broadcastState,
-    broadcastError,
     startBroadcast,
     stopBroadcast,
   } = useIvsBroadcast();
@@ -120,8 +120,10 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }));
   });
 
-  useEffect(() => {
-    if (session?.products && session.products.length > 0) {
+  const [prevProductsRef, setPrevProductsRef] = useState(session?.products);
+  if (session?.products && session.products !== prevProductsRef) {
+    setPrevProductsRef(session.products);
+    if (session.products.length > 0) {
       setAllProducts(
         session.products.map((p, index) => ({
           id: p.id || `P-${index + 1}`,
@@ -137,7 +139,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         }))
       );
     }
-  }, [session]);
+  }
 
   // Sản phẩm đang ghim
   const [pinnedProduct, setPinnedProduct] = useState<StudioProductItem | null>(() => {
@@ -304,11 +306,24 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   // Thao tác Ghim sản phẩm
   const handlePinProduct = (product: StudioProductItem) => {
     setPinnedProduct(product);
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (UUID_REGEX.test(livestreamId)) {
+      updateLivestreamProduct(livestreamId, product.id, { isFeatured: true }).catch((err) => {
+        console.warn("[Studio] Error syncing pin status to backend:", err);
+      });
+    }
   };
 
   // Thao tác Gỡ ghim
   const handleUnpinProduct = () => {
+    const prevPinned = pinnedProduct;
     setPinnedProduct(null);
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (prevPinned && UUID_REGEX.test(livestreamId)) {
+      updateLivestreamProduct(livestreamId, prevPinned.id, { isFeatured: false }).catch((err) => {
+        console.warn("[Studio] Error syncing unpin status to backend:", err);
+      });
+    }
   };
 
   // Banner thông báo kết nối phát sóng

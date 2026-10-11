@@ -3,6 +3,7 @@ import {
   LivestreamDetailResult,
   LivestreamListQuery,
   LivestreamListResult,
+  LivestreamStatus,
 } from "../types/livestream.types.js";
 import { ILivestreamRepository } from "../repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "../repositories/livestream-product.repository.js";
@@ -80,7 +81,24 @@ export class LivestreamService {
     if (existing.status === "ended" && status === "live") {
       throw new Error("Cannot restart an ended livestream");
     }
-    return this.repository.updateStatus(id, status);
+
+    const updated = await this.repository.updateStatus(id, status);
+
+    // Khi phiên kết thúc (ended) hoặc bị hủy (cancelled), tự động dọn dẹp xóa kênh trên AWS IVS ngầm
+    if (
+      (status === "ended" || status === "cancelled") &&
+      existing.channelArn &&
+      this.ivsService
+    ) {
+      this.ivsService.deleteChannel(existing.channelArn).catch((err) => {
+        console.warn(
+          `[LivestreamService] Error deleting IVS channel for ended livestream ${id}:`,
+          err
+        );
+      });
+    }
+
+    return updated;
   }
 
   async getOrCreateIvsStreamConfig(id: string): Promise<{

@@ -4,6 +4,8 @@ import {
   GetChannelCommand,
   GetStreamKeyCommand,
   ListStreamKeysCommand,
+  DeleteChannelCommand,
+  StopStreamCommand,
 } from "@aws-sdk/client-ivs";
 
 export interface IvsConfig {
@@ -22,6 +24,7 @@ export interface IIvsService {
   isConfigured(): boolean;
   createChannel(channelName: string): Promise<IvsChannelDetails>;
   getStreamConfig(channelArn: string): Promise<IvsChannelDetails | null>;
+  deleteChannel(channelArn: string, retryDelayMs?: number): Promise<boolean>;
 }
 
 export class IvsService implements IIvsService {
@@ -171,6 +174,57 @@ export class IvsService implements IIvsService {
       throw err;
     }
   }
+
+  /**
+   * Xóa một Channel trên AWS IVS để giải phóng quota khi phiên live kết thúc.
+   * Nếu kênh đang có luồng phát sóng (live), ngắt stream bằng StopStreamCommand
+   * trước khi xóa, và retry nếu AWS cần thêm vài giây để chuyển trạng thái từ live sang offline.
+   */
+  async deleteChannel(channelArn: string, retryDelayMs = 2000): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
+
+    const MAX_RETRIES = 5;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await this.client.send(new DeleteChannelCommand({ arn: channelArn }));
+        return true;
+      } catch (err: unknown) {
+        if (
+          err instanceof Error &&
+          (err.name === "ResourceNotFoundException" ||
+            err.message.includes("ResourceNotFound"))
+        ) {
+          return true;
+        }
+
+        // Nếu AWS báo kênh đang live, ngắt stream và đợi để retry
+        if (
+          err instanceof Error &&
+          err.message.includes("is live") &&
+          attempt < MAX_RETRIES
+        ) {
+          try {
+            await this.client.send(new StopStreamCommand({ channelArn }));
+          } catch {
+            // Bỏ qua lỗi ngắt stream nếu kênh đã kịp dừng phát sóng hoặc không tìm thấy
+          }
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          continue;
+        }
+
+        console.warn(
+          `[IvsService] Error deleting channel ${channelArn}:`,
+          err instanceof Error ? err.message : String(err)
+        );
+        return false;
+      }
+    }
+
+    return false;
+  }
 }
 
 /**
@@ -198,5 +252,9 @@ export class InMemoryIvsService implements IIvsService {
 
   async getStreamConfig(channelArn: string): Promise<IvsChannelDetails | null> {
     return this.channels.get(channelArn) || null;
+  }
+
+  async deleteChannel(channelArn: string, _retryDelayMs?: number): Promise<boolean> {
+    return this.channels.delete(channelArn);
   }
 }

@@ -27,8 +27,8 @@ export function createApp(
   customProductRepository?: IProductRepository,
   customAuthRepository?: IAuthRepository,
   customLocalProductImageStorage?: LocalProductImageStorageService,
-  customIvsService?: IIvsService,
-  customInventoryRepository?: IInventoryRepository
+  customInventoryRepository?: IInventoryRepository,
+  customIvsService?: IIvsService
 ): Express {
 
   const app = express();

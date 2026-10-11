@@ -10,10 +10,18 @@ export interface StartBroadcastOptions {
   localStream: MediaStream;
 }
 
+interface BroadcastClientInstance {
+  stopBroadcast: () => void;
+  startBroadcast: (key: string) => Promise<void>;
+  addVideoInputDevice: (stream: MediaStream, name: string, options?: { index: number }) => void;
+  addAudioInputDevice: (stream: MediaStream, name: string) => void;
+  on: (event: string, callback: (...args: unknown[]) => void) => void;
+}
+
 export function useIvsBroadcast() {
   const [broadcastState, setBroadcastState] = useState<BroadcastState>("IDLE");
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
-  const clientRef = useRef<any>(null);
+  const clientRef = useRef<BroadcastClientInstance | null>(null);
 
   /**
    * Khởi tạo và bắt đầu phát sóng trực tiếp từ trình duyệt lên AWS IVS
@@ -45,26 +53,32 @@ export function useIvsBroadcast() {
         const client = IVS.create({
           streamConfig: IVS.BASIC_LANDSCAPE,
           ingestEndpoint: cleanEndpoint,
-        });
+        }) as unknown as BroadcastClientInstance;
 
         clientRef.current = client;
 
         // Lắng nghe sự kiện trạng thái
         client.on(
           IVS.BroadcastClientEvents.ACTIVE_STATE_CHANGE,
-          ((active: boolean) => {
+          (active: unknown) => {
             if (active) {
               setBroadcastState("LIVE");
             }
-          }) as any
+          }
         );
 
         client.on(
           IVS.BroadcastClientEvents.ERROR,
-          ((err: any) => {
+          (err: unknown) => {
             console.warn("[IVS Broadcast Client Error]:", err);
-            setBroadcastError(err?.message || "Lỗi đường truyền phát sóng IVS");
-          }) as any
+            const message =
+              err instanceof Error
+                ? err.message
+                : typeof err === "object" && err !== null && "message" in err
+                ? String((err as { message: unknown }).message)
+                : "Lỗi đường truyền phát sóng IVS";
+            setBroadcastError(message);
+          }
         );
 
         // Đưa Video Track từ Camera máy tính vào IVS

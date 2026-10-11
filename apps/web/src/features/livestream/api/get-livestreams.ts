@@ -26,6 +26,21 @@ export interface BackendLivestreamItem {
   createdAt: string;
   updatedAt: string;
   productCount: number;
+  products?: Array<{
+    id: string;
+    livestreamId: string;
+    productId: string;
+    variantId: string | null;
+    displayOrder: number;
+    isFeatured: boolean;
+    createdAt: string;
+    productName?: string | null;
+    productCode?: string | null;
+    skuCode?: string | null;
+    variantName?: string | null;
+    price?: number | null;
+    imageUrl?: string | null;
+  }>;
 }
 
 export interface BackendLivestreamListResponse {
@@ -45,6 +60,12 @@ export interface BackendLivestreamDetailResponse extends BackendLivestreamItem {
     displayOrder: number;
     isFeatured: boolean;
     createdAt: string;
+    productName?: string | null;
+    productCode?: string | null;
+    skuCode?: string | null;
+    variantName?: string | null;
+    price?: number | null;
+    imageUrl?: string | null;
   }>;
 }
 
@@ -160,8 +181,20 @@ export function mapBackendLivestreamToFrontend(
     channelName: item.channelArn ? "AWS IVS Channel" : "LiveOrder RTMP",
     ivsChannel: item.channelArn || "Chưa cấu hình",
     resolution: "1080p60",
-    hostName: "Merchant Store",
-    productCount: item.productCount || 0,
+    productCount:
+      item.productCount || (Array.isArray(item.products) ? item.products.length : 0),
+    products: Array.isArray(item.products)
+      ? item.products.map((p) => ({
+          id: p.productId || p.id,
+          sku: p.skuCode || p.productCode || p.productId,
+          name: p.productName || `Sản phẩm #${p.productId}`,
+          price: typeof p.price === "number" ? p.price : 0,
+          originalPrice: undefined,
+          stock: 100,
+          image: p.imageUrl || undefined,
+          isPinned: Boolean(p.isFeatured),
+        }))
+      : undefined,
     scheduledAt: item.scheduledAt || undefined,
     startedAt: item.startedAt || undefined,
     endedAt: item.endedAt || undefined,

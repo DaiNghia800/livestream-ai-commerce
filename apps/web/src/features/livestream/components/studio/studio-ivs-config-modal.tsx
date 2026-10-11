@@ -5,13 +5,10 @@ import {
   Copy,
   Check,
   Radio,
-  Key,
-  Globe,
   Eye,
   EyeOff,
   HelpCircle,
   X,
-  ExternalLink,
 } from "lucide-react";
 import type { IvsStreamConfig } from "../../api/get-livestreams";
 
