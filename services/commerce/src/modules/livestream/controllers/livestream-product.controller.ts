@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { ZodError } from "zod";
-import { isValidUuid } from "../../../shared/utils/uuid.util.js";
+import { isValidProductId, isValidUuid } from "../../../shared/utils/uuid.util.js";
 import {
   AddLivestreamProductSchema,
   UpdateLivestreamProductSchema,
@@ -69,10 +69,10 @@ export class LivestreamProductController {
         });
         return;
       }
-      if (!isValidUuid(productId)) {
+      if (!isValidProductId(productId)) {
         res.status(400).json({
           error: "ValidationError",
-          message: "Invalid product ID format (must be UUID)",
+          message: "Invalid product ID format (must be UUID or catalog ID)",
         });
         return;
       }
@@ -102,10 +102,10 @@ export class LivestreamProductController {
         });
         return;
       }
-      if (!isValidUuid(productId)) {
+      if (!isValidProductId(productId)) {
         res.status(400).json({
           error: "ValidationError",
-          message: "Invalid product ID format (must be UUID)",
+          message: "Invalid product ID format (must be UUID or catalog ID)",
         });
         return;
       }

@@ -1,14 +1,23 @@
 import { z } from "zod";
-import { isValidUuid } from "../../../shared/utils/uuid.util.js";
+import {
+  isValidProductId,
+  isValidVariantId,
+} from "../../../shared/utils/uuid.util.js";
 
 export const AddLivestreamProductSchema = z
   .object({
     productId: z
       .string({ required_error: "productId is required" })
-      .refine(isValidUuid, { message: "productId must be a valid UUID" }),
+      .trim()
+      .refine(isValidProductId, {
+        message: "productId must be a valid UUID or catalog ID",
+      }),
     variantId: z
       .string()
-      .refine(isValidUuid, { message: "variantId must be a valid UUID" })
+      .trim()
+      .refine((val) => !val || isValidVariantId(val), {
+        message: "variantId must be a valid UUID or catalog SKU ID",
+      })
       .nullable()
       .optional(),
     displayOrder: z

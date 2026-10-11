@@ -276,6 +276,113 @@ describe("LivestreamRepository - Unit Tests", () => {
       expect(countValues).toContain("2026-10-01T00:00:00.000Z");
       expect(countValues).toContain("2026-10-09T23:59:59.999Z");
     });
+
+    it("REPO-PG-009 - updateIvsChannel executes update query with channelArn and playbackUrl", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Spring Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/test-ch",
+        playbackUrl: "https://playback.live-video.net/test-ch.m3u8",
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateIvsChannel(
+        mockRow.id,
+        mockRow.channelArn,
+        mockRow.playbackUrl
+      );
+
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      const call = poolQuerySpy.mock.calls[0];
+      expect(call[0]).toContain("UPDATE livestreams");
+      expect(call[0]).toContain("channel_arn = $2");
+      expect(call[0]).toContain("playback_url = $3");
+      expect(call[1]).toEqual([
+        mockRow.id,
+        mockRow.channelArn,
+        mockRow.playbackUrl,
+      ]);
+      expect(result?.channelArn).toBe(mockRow.channelArn);
+      expect(result?.playbackUrl).toBe(mockRow.playbackUrl);
+    });
+
+    it("REPO-PG-010 - updateStatus updates status to live with started_at", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Spring Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: now,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateStatus(mockRow.id, "live");
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.status).toBe("live");
+      expect(result?.startedAt).toBe(now.toISOString());
+    });
+
+    it("REPO-PG-011 - updateStatus updates status to ended with ended_at", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Spring Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "ended",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: now,
+        endedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateStatus(mockRow.id, "ended");
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.status).toBe("ended");
+      expect(result?.endedAt).toBe(now.toISOString());
+    });
+
+    it("REPO-PG-012 - updateStatus returns null if livestream does not exist", async () => {
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [],
+      } as any);
+
+      const result = await repo.updateStatus("missing-id", "live");
+      expect(result).toBeNull();
+    });
   });
 
   describe("InMemoryLivestreamRepository", () => {
@@ -460,6 +567,38 @@ describe("LivestreamRepository - Unit Tests", () => {
 
       expect(res.total).toBe(1);
       expect(res.items[0].id).toBe(s2.id);
+    });
+
+    it("REPO-MEM-006 - updateIvsChannel updates channelArn and playbackUrl in memory", async () => {
+      const created = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Session for IVS",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      expect(created.channelArn).toBeNull();
+      expect(created.playbackUrl).toBeNull();
+
+      await repo.updateIvsChannel(
+        created.id,
+        "arn:aws:ivs:ap-northeast-1:123456789012:channel/mem-ch",
+        "https://playback.live-video.net/mem-ch.m3u8"
+      );
+
+      const found = await repo.findById(created.id);
+      expect(found?.channelArn).toBe(
+        "arn:aws:ivs:ap-northeast-1:123456789012:channel/mem-ch"
+      );
+      expect(found?.playbackUrl).toBe(
+        "https://playback.live-video.net/mem-ch.m3u8"
+      );
     });
   });
 });

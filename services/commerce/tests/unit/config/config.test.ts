@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import dotenv from "dotenv";
 import { config } from "../../../src/config.js";
 
 describe("config - Unit Tests", () => {
@@ -83,10 +84,12 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
         delete process.env[k];
       }
     }
+    const dotenvSpy = vi.spyOn(dotenv, "config").mockReturnValue({ parsed: {} });
     vi.resetModules();
     try {
       return (await import("../../../src/config.js")).config;
     } finally {
+      dotenvSpy.mockRestore();
       process.env = cu;
       vi.resetModules();
     }

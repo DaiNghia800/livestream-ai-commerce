@@ -14,6 +14,7 @@ export interface AppConfig {
   accessTokenMinutes: number;
   refreshTokenDays: number;
   awsRegion?: string;
+  awsIvsRegion?: string;
   s3BucketName?: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
@@ -88,6 +89,12 @@ export const config: AppConfig = {
   accessTokenMinutes: parseInt(process.env.ACCESS_TOKEN_MINUTES || "30", 10),
   refreshTokenDays: parseInt(process.env.REFRESH_TOKEN_DAYS || "30", 10),
   awsRegion: process.env.AWS_REGION || undefined,
+  // AWS IVS is not supported in ap-southeast-1 (Singapore); default to ap-northeast-1 (Tokyo)
+  awsIvsRegion:
+    process.env.AWS_IVS_REGION ||
+    (process.env.AWS_REGION && process.env.AWS_REGION !== "ap-southeast-1"
+      ? process.env.AWS_REGION
+      : "ap-northeast-1"),
   s3BucketName: process.env.S3_BUCKET_NAME || undefined,
   // 5 phút khi vừa chốt, 15 phút sau khi khách mở link xác nhận,
   // trần cứng 30 phút để không gia hạn vô hạn.

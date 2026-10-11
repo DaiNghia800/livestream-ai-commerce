@@ -294,5 +294,25 @@ describe("LivestreamProductRepository - Unit Tests", () => {
       const removedAgain = await repo.removeProduct("ls-1", "prod-1");
       expect(removedAgain).toBe(false);
     });
+
+    it("REPO-LP-MEM-005 - findByLivestreamId sorts by displayOrder and createdAt when featured status is same", async () => {
+      await repo.addProduct({
+        livestreamId: "ls-sort",
+        productId: "p-2",
+        displayOrder: 2,
+        isFeatured: false,
+      });
+      await repo.addProduct({
+        livestreamId: "ls-sort",
+        productId: "p-1",
+        displayOrder: 1,
+        isFeatured: false,
+      });
+
+      const list = await repo.findByLivestreamId("ls-sort");
+      expect(list[0].productId).toBe("p-1");
+      expect(list[1].productId).toBe("p-2");
+    });
   });
 });
+

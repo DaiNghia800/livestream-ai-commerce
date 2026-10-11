@@ -85,15 +85,24 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
 
       {/* Action Toolbar by Status */}
       <div className="flex items-center gap-2.5 flex-wrap">
-        {/* DRAFT: Chỉnh sửa phiên */}
+        {/* DRAFT: Chỉnh sửa phiên & Vào Studio */}
         {session.status === "DRAFT" && (
-          <Link
-            href={`/shop/livestream/${session.id}/edit`}
-            className="inline-flex items-center gap-2 h-9 px-3.5 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container-low transition-all active:scale-[0.98] shadow-xs"
-          >
-            <Pencil className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span>Chỉnh sửa phiên</span>
-          </Link>
+          <>
+            <Link
+              href={`/shop/livestream/${session.id}/edit`}
+              className="inline-flex items-center gap-2 h-9 px-3.5 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container-low transition-all active:scale-[0.98] shadow-xs"
+            >
+              <Pencil className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span>Chỉnh sửa phiên</span>
+            </Link>
+            <Link
+              href={`/shop/livestream/${session.id}/studio`}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 text-xs font-semibold rounded-lg transition-all active:scale-[0.98]"
+            >
+              <Radio className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span>Vào Studio</span>
+            </Link>
+          </>
         )}
 
         {/* SCHEDULED: Chỉnh sửa phiên & Vào Studio */}
