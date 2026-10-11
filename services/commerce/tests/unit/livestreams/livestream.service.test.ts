@@ -465,4 +465,96 @@ describe("LivestreamService - Unit Tests", () => {
       "https://playback.live-video.net/new.m3u8"
     );
   });
+
+  it("UT-LS-025 - updateLivestreamStatus triggers ivsService.deleteChannel when status changes to ended", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/live-to-end",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "ended" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
+
+  it("UT-LS-026 - updateLivestreamStatus triggers ivsService.deleteChannel when status changes to cancelled", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/live-to-cancel",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "cancelled" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "cancelled");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
+
+  it("UT-LS-027 - updateLivestreamStatus does not trigger deleteChannel when status is live", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/stay-live",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "live" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "live");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("UT-LS-028 - updateLivestreamStatus succeeds gracefully even if ivsService.deleteChannel fails", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/error-channel",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "ended" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockRejectedValue(new Error("IVS AWS API down")),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
 });

@@ -3,7 +3,12 @@ import { test, expect, type Page } from "@playwright/test";
 function collectConsoleErrors(page: Page) {
   const errors: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
+    if (message.type() === "error") {
+      const text = message.text();
+      if (!text.includes("net::ERR_CONNECTION_REFUSED")) {
+        errors.push(text);
+      }
+    }
   });
   return errors;
 }

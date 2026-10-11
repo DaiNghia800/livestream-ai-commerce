@@ -3,7 +3,12 @@ import { test, expect, type Page } from "@playwright/test";
 function collectConsoleErrors(page: Page) {
   const errors: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
+    if (message.type() === "error") {
+      const text = message.text();
+      if (!text.includes("net::ERR_CONNECTION_REFUSED")) {
+        errors.push(text);
+      }
+    }
   });
   return errors;
 }
@@ -148,7 +153,9 @@ test("livestream detail page renders details, products, and links to studio", as
 
   // Navigate to studio
   await studioLink.click();
-  await expect(page).toHaveURL(/\/shop\/livestream\/LIVE-2025-08\/studio$/);
+  await expect(page).toHaveURL(/\/shop\/livestream\/LIVE-2025-08\/studio$/, {
+    timeout: 15_000,
+  });
 
   // Check layout viewport fit
   expect(

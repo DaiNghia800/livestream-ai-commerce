@@ -454,4 +454,53 @@ describe("Livestream Products API Tests", () => {
       expect(res.body.error).toBe("InternalServerError");
     });
   });
+
+  describe("Catalog Product Integration", () => {
+    it("TC-LP-024 - Successfully add catalog product with numeric BIGINT ID -> HTTP 201", async () => {
+      const res = await request(app)
+        .post(`/api/livestreams/${activeLivestreamId}/products`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({
+          productId: "105",
+          variantId: "302",
+          displayOrder: 2,
+          isFeatured: true,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.productId).toBe("105");
+      expect(res.body.variantId).toBe("302");
+      expect(res.body.isFeatured).toBe(true);
+    });
+
+    it("TC-LP-025 - Successfully update and remove catalog product with numeric ID", async () => {
+      // 1. Add numeric product
+      await request(app)
+        .post(`/api/livestreams/${activeLivestreamId}/products`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({
+          productId: "201",
+          displayOrder: 1,
+        });
+
+      // 2. Update display order and pin status
+      const updateRes = await request(app)
+        .patch(`/api/livestreams/${activeLivestreamId}/products/201`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({
+          isFeatured: true,
+          displayOrder: 0,
+        });
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.isFeatured).toBe(true);
+      expect(updateRes.body.displayOrder).toBe(0);
+
+      // 3. Remove numeric product
+      const delRes = await request(app)
+        .delete(`/api/livestreams/${activeLivestreamId}/products/201`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+      expect(delRes.status).toBe(200);
+      expect(delRes.body.message).toContain("successfully");
+    });
+  });
 });

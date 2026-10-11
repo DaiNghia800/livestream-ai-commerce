@@ -25,6 +25,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       mockIvsService
     );
   });
@@ -699,6 +700,33 @@ describe("Livestream API - List and Get Detail Tests", () => {
       expect(secondRes.body.channelArn).toBe(firstRes.body.channelArn);
       expect(secondRes.body.streamKey).toBe(firstRes.body.streamKey);
     });
+
+    it("TC-SC-006 - Handle AWS IVS not configured error -> HTTP 500 ConfigurationError", async () => {
+      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+        new Error("AWS IVS service is not configured")
+      );
+
+      const res = await request(app)
+        .get("/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe("ConfigurationError");
+    });
+
+    it("TC-SC-007 - Handle unexpected internal error -> HTTP 500 InternalServerError", async () => {
+      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+        new Error("Fatal AWS outage")
+      );
+
+      const res = await request(app)
+        .get("/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe("InternalServerError");
+    });
   });
 });
+
 

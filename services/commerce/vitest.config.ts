@@ -1,5 +1,10 @@
 import { defineConfig } from "vitest/config";
 
+const isCI = !!process.env.CI;
+const defaultTestDb = isCI
+  ? (process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/commerce_db")
+  : (process.env.COMMERCE_TEST_DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/commerce_test_db");
+
 export default defineConfig({
   test: {
     globalSetup: ["./tests/global-setup.ts"],
@@ -8,6 +13,8 @@ export default defineConfig({
     // phải khoá sandbox thật của nhà cung cấp nào — endpoint vẫn trỏ
     // về sandbox và assertSandbox() chặn mọi host khác.
     env: {
+      DATABASE_URL: defaultTestDb,
+      COMMERCE_DATABASE_URL: defaultTestDb,
       PUBLIC_BASE_URL: "http://localhost:8000",
       VNPAY_TMN_CODE: "TESTTMN1",
       VNPAY_HASH_SECRET: "khoa-gia-chi-dung-cho-test-khong-phai-khoa-that",

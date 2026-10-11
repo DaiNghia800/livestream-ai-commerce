@@ -318,6 +318,71 @@ describe("LivestreamRepository - Unit Tests", () => {
       expect(result?.channelArn).toBe(mockRow.channelArn);
       expect(result?.playbackUrl).toBe(mockRow.playbackUrl);
     });
+
+    it("REPO-PG-010 - updateStatus updates status to live with started_at", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Spring Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: now,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateStatus(mockRow.id, "live");
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.status).toBe("live");
+      expect(result?.startedAt).toBe(now.toISOString());
+    });
+
+    it("REPO-PG-011 - updateStatus updates status to ended with ended_at", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Spring Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "ended",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: now,
+        endedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateStatus(mockRow.id, "ended");
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.status).toBe("ended");
+      expect(result?.endedAt).toBe(now.toISOString());
+    });
+
+    it("REPO-PG-012 - updateStatus returns null if livestream does not exist", async () => {
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [],
+      } as any);
+
+      const result = await repo.updateStatus("missing-id", "live");
+      expect(result).toBeNull();
+    });
   });
 
   describe("InMemoryLivestreamRepository", () => {
