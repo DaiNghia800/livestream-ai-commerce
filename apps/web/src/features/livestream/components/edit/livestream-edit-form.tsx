@@ -15,15 +15,55 @@ import { mockCatalogProducts } from "../../mocks/products.mock";
 import type { LiveProductItem, Livestream } from "../../types/livestream";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ShieldAlert } from "lucide-react";
 
+import { useEffect } from "react";
+import {
+  getLivestreamDetail,
+  mapBackendLivestreamToFrontend,
+} from "../../api/get-livestreams";
+import {
+  addLivestreamProduct,
+  removeLivestreamProduct,
+} from "../../api/livestream-products";
+
 interface LivestreamEditFormProps {
   livestreamId: string;
 }
 
 export function LivestreamEditForm({ livestreamId }: LivestreamEditFormProps) {
-  // Find session from mock data
-  const session = useMemo(() => {
-    return mockLivestreams.find((item) => item.id === livestreamId);
+  const [session, setSession] = useState<Livestream | null>(() => {
+    return mockLivestreams.find((item) => item.id === livestreamId) || null;
+  });
+  const [isLoading, setIsLoading] = useState(!session);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchSession() {
+      try {
+        const detail = await getLivestreamDetail(livestreamId);
+        if (!isMounted) return;
+        const mapped = mapBackendLivestreamToFrontend(detail);
+        setSession(mapped);
+      } catch (err) {
+        console.warn("[LivestreamEditForm] Could not load session from API:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    fetchSession();
+    return () => {
+      isMounted = false;
+    };
   }, [livestreamId]);
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col items-center justify-center py-24 text-center">
+        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="mt-3 text-xs text-on-surface-variant">Đang tải thông tin phiên Livestream...</p>
+      </div>
+    );
+  }
 
   // If session is not found, render Not Found state
   if (!session) {
@@ -35,7 +75,7 @@ export function LivestreamEditForm({ livestreamId }: LivestreamEditFormProps) {
         <h1 className="mt-4 text-lg font-bold text-on-surface">Không tìm thấy phiên Livestream</h1>
         <p className="mt-1 text-xs text-on-surface-variant leading-relaxed">
           Mã phiên <strong className="font-mono text-on-surface">#{livestreamId}</strong> không tồn tại
-          hoặc đã bị xóa khỏi hệ thống mẫu.
+          hoặc đã bị xóa khỏi hệ thống.
         </p>
         <Link
           href="/shop/livestream"
@@ -214,7 +254,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
   };
 
   // Save changes action
-  const handleSave = () => {
+  const handleSave = async () => {
     if (isSubmitting || !canEdit) return;
 
     if (!validateForm()) {
@@ -222,6 +262,46 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     }
 
     setIsSubmitting(true);
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isBackendSession = UUID_REGEX.test(session.id);
+
+    if (isBackendSession) {
+      try {
+        const existingProducts = session.products || [];
+        const existingIds = new Set(existingProducts.map((p) => p.id));
+        const currentIds = new Set(products.map((p) => p.id));
+
+        // 1. Remove deleted products
+        for (const oldP of existingProducts) {
+          if (!currentIds.has(oldP.id)) {
+            try {
+              await removeLivestreamProduct(session.id, oldP.id);
+            } catch (err) {
+              console.warn(`[LivestreamEditForm] Lỗi xóa sản phẩm ${oldP.id}:`, err);
+            }
+          }
+        }
+
+        // 2. Add newly added products
+        for (let i = 0; i < products.length; i++) {
+          const p = products[i];
+          if (!existingIds.has(p.id)) {
+            try {
+              await addLivestreamProduct(session.id, {
+                productId: p.id,
+                displayOrder: i,
+                isFeatured: i === 0,
+              });
+            } catch (err) {
+              console.warn(`[LivestreamEditForm] Lỗi thêm sản phẩm ${p.id}:`, err);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[LivestreamEditForm] Lỗi đồng bộ sản phẩm với backend:", err);
+      }
+    }
 
     // Update in mockLivestreams array
     const targetIndex = mockLivestreams.findIndex((item) => item.id === session.id);
@@ -244,7 +324,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     }
 
     setSuccessMessage(
-      `Đã cập nhật thông tin phiên "${title.trim()}" thành công! (Dữ liệu mẫu frontend)`
+      `Đã cập nhật thông tin phiên "${title.trim()}" thành công!`
     );
 
     setTimeout(() => {

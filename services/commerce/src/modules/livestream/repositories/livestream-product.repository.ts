@@ -99,15 +99,37 @@ export class PostgresLivestreamProductRepository
   ): Promise<LivestreamProduct | null> {
     const query = `
       SELECT
-        id,
-        livestream_id AS "livestreamId",
-        product_id AS "productId",
-        variant_id AS "variantId",
-        display_order AS "displayOrder",
-        is_featured AS "isFeatured",
-        created_at AS "createdAt"
-      FROM livestream_products
-      WHERE livestream_id = $1 AND product_id = $2;
+        lp.id,
+        lp.livestream_id AS "livestreamId",
+        lp.product_id AS "productId",
+        lp.variant_id AS "variantId",
+        lp.display_order AS "displayOrder",
+        lp.is_featured AS "isFeatured",
+        lp.created_at AS "createdAt",
+        p.name AS "productName",
+        p.code AS "productCode",
+        p.description AS "productDescription",
+        ps.sku_code AS "skuCode",
+        ps.variant_name AS "variantName",
+        ps.price::float AS "price",
+        pimg.url AS "imageUrl"
+      FROM livestream_products lp
+      LEFT JOIN products p ON (p.id::text = lp.product_id OR p.code = lp.product_id)
+      LEFT JOIN LATERAL (
+        SELECT ps.sku_code, ps.variant_name, ps.price
+        FROM product_skus ps
+        WHERE (lp.variant_id IS NOT NULL AND (ps.id::text = lp.variant_id OR ps.sku_code = lp.variant_id))
+           OR (lp.variant_id IS NULL AND ps.product_id = p.id AND ps.status = 'active')
+        ORDER BY ps.id ASC
+        LIMIT 1
+      ) ps ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT url FROM product_images pi
+        WHERE pi.product_id = p.id
+        ORDER BY pi.is_primary DESC, pi.sort_order ASC
+        LIMIT 1
+      ) pimg ON TRUE
+      WHERE lp.livestream_id = $1 AND lp.product_id = $2;
     `;
     const result = await pool.query(query, [livestreamId, productId]);
     if (result.rows.length === 0) return null;
@@ -121,22 +143,51 @@ export class PostgresLivestreamProductRepository
       displayOrder: row.displayOrder,
       isFeatured: row.isFeatured,
       createdAt: new Date(row.createdAt).toISOString(),
+      productName: row.productName || null,
+      productCode: row.productCode || null,
+      productDescription: row.productDescription || null,
+      skuCode: row.skuCode || null,
+      variantName: row.variantName || null,
+      price: row.price !== null && row.price !== undefined ? Number(row.price) : null,
+      imageUrl: row.imageUrl || null,
     };
   }
 
   async findByLivestreamId(livestreamId: string): Promise<LivestreamProduct[]> {
     const query = `
       SELECT
-        id,
-        livestream_id AS "livestreamId",
-        product_id AS "productId",
-        variant_id AS "variantId",
-        display_order AS "displayOrder",
-        is_featured AS "isFeatured",
-        created_at AS "createdAt"
-      FROM livestream_products
-      WHERE livestream_id = $1
-      ORDER BY is_featured DESC, display_order ASC, created_at ASC;
+        lp.id,
+        lp.livestream_id AS "livestreamId",
+        lp.product_id AS "productId",
+        lp.variant_id AS "variantId",
+        lp.display_order AS "displayOrder",
+        lp.is_featured AS "isFeatured",
+        lp.created_at AS "createdAt",
+        p.name AS "productName",
+        p.code AS "productCode",
+        p.description AS "productDescription",
+        ps.sku_code AS "skuCode",
+        ps.variant_name AS "variantName",
+        ps.price::float AS "price",
+        pimg.url AS "imageUrl"
+      FROM livestream_products lp
+      LEFT JOIN products p ON (p.id::text = lp.product_id OR p.code = lp.product_id)
+      LEFT JOIN LATERAL (
+        SELECT ps.sku_code, ps.variant_name, ps.price
+        FROM product_skus ps
+        WHERE (lp.variant_id IS NOT NULL AND (ps.id::text = lp.variant_id OR ps.sku_code = lp.variant_id))
+           OR (lp.variant_id IS NULL AND ps.product_id = p.id AND ps.status = 'active')
+        ORDER BY ps.id ASC
+        LIMIT 1
+      ) ps ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT url FROM product_images pi
+        WHERE pi.product_id = p.id
+        ORDER BY pi.is_primary DESC, pi.sort_order ASC
+        LIMIT 1
+      ) pimg ON TRUE
+      WHERE lp.livestream_id = $1
+      ORDER BY lp.is_featured DESC, lp.display_order ASC, lp.created_at ASC;
     `;
     const result = await pool.query(query, [livestreamId]);
     return result.rows.map((row) => ({
@@ -147,6 +198,13 @@ export class PostgresLivestreamProductRepository
       displayOrder: row.displayOrder,
       isFeatured: row.isFeatured,
       createdAt: new Date(row.createdAt).toISOString(),
+      productName: row.productName || null,
+      productCode: row.productCode || null,
+      productDescription: row.productDescription || null,
+      skuCode: row.skuCode || null,
+      variantName: row.variantName || null,
+      price: row.price !== null && row.price !== undefined ? Number(row.price) : null,
+      imageUrl: row.imageUrl || null,
     }));
   }
 
