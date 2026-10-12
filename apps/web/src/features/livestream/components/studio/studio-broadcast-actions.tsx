@@ -71,15 +71,15 @@ export function StudioBroadcastActions({
             onClick={onToggleMic}
             className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
               micEnabled
-                ? "bg-[#1F2A3F] hover:bg-[#283652] text-slate-200 border-slate-700"
-                : "bg-red-950/60 hover:bg-red-900/60 text-red-300 border-red-800/70"
+                ? "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
+                : "bg-rose-950/70 hover:bg-rose-900/70 text-rose-300 border-rose-800/80"
             }`}
             title={micEnabled ? "Tắt Microphone" : "Bật Microphone"}
           >
             {micEnabled ? (
               <Mic className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
             ) : (
-              <MicOff className="h-3.5 w-3.5 text-red-400 shrink-0" aria-hidden="true" />
+              <MicOff className="h-3.5 w-3.5 text-rose-400 shrink-0" aria-hidden="true" />
             )}
             <span>{micEnabled ? "Tắt Mic" : "Bật Mic"}</span>
           </button>
@@ -91,15 +91,15 @@ export function StudioBroadcastActions({
             onClick={onToggleCamera}
             className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
               cameraEnabled
-                ? "bg-[#1F2A3F] hover:bg-[#283652] text-slate-200 border-slate-700"
-                : "bg-red-950/60 hover:bg-red-900/60 text-red-300 border-red-800/70"
+                ? "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
+                : "bg-rose-950/70 hover:bg-rose-900/70 text-rose-300 border-rose-800/80"
             }`}
             title={cameraEnabled ? "Tắt Camera" : "Bật Camera"}
           >
             {cameraEnabled ? (
               <Video className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
             ) : (
-              <VideoOff className="h-3.5 w-3.5 text-red-400 shrink-0" aria-hidden="true" />
+              <VideoOff className="h-3.5 w-3.5 text-rose-400 shrink-0" aria-hidden="true" />
             )}
             <span>{cameraEnabled ? "Tắt Cam" : "Bật Cam"}</span>
           </button>
@@ -111,8 +111,8 @@ export function StudioBroadcastActions({
             onClick={onToggleScreenShare}
             className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
               isScreenSharing
-                ? "bg-indigo-950 text-indigo-300 border-indigo-700 ring-1 ring-indigo-500"
-                : "bg-[#1F2A3F] hover:bg-[#283652] text-slate-200 border-slate-700"
+                ? "bg-indigo-950 text-indigo-300 border-indigo-600 ring-1 ring-indigo-500"
+                : "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
             }`}
             title="Chia sẻ màn hình làm nguồn phát video"
           >
@@ -123,43 +123,49 @@ export function StudioBroadcastActions({
           </button>
         </div>
 
-        {/* Broadcast Session Status / Lifecycle Actions Group (Right-aligned, separated from device toggles) */}
+        {/* Broadcast Session Status / Lifecycle Actions Group */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* Visual Separator */}
-          <div className="h-5 w-px bg-slate-700/80 hidden sm:block shrink-0" aria-hidden="true" />
+          <div className="h-5 w-px bg-slate-800 hidden sm:block shrink-0" aria-hidden="true" />
 
-          {/* Start Livestream button (Pre-live) */}
+          {/* Start Livestream button (Pre-live) - TikTok Gradient */}
           {!isLive && !isEnded && (
             <button
               type="button"
               disabled={!canStartLive || isStarting}
               onClick={onStartLive}
-              className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 font-bold text-xs shadow-md transition active:scale-95 whitespace-nowrap shrink-0 ${
+              className={`h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-lg flex items-center gap-1.5 font-bold text-xs shadow-md transition active:scale-95 whitespace-nowrap shrink-0 ${
                 canStartLive && !isStarting
-                  ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-red-950/50"
+                  ? "bg-gradient-to-r from-[#FE2C55] to-[#FF0050] hover:brightness-110 text-white cursor-pointer shadow-lg shadow-[#FE2C55]/30 ring-1 ring-white/20"
                   : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
               }`}
             >
               <Radio className={`h-3.5 w-3.5 shrink-0 ${isStarting ? "animate-spin" : ""}`} aria-hidden="true" />
-              <span>{isStarting ? "Khởi tạo..." : <span>Bắt đầu<span className="hidden md:inline"> Livestream</span></span>}</span>
+              <span>
+                {isStarting ? (
+                  "Đang kết nối..."
+                ) : (
+                  <span>PHÁT TRỰC TIẾP<span className="hidden md:inline"> (GO LIVE)</span></span>
+                )}
+              </span>
             </button>
           )}
 
-          {/* End Livestream button (During Live - Replaced duplicate status badge to save space) */}
+          {/* End Livestream button (During Live) */}
           {isLive && (
             <button
               type="button"
               onClick={handleEndStreamClick}
-              className="h-8 sm:h-8.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs px-2.5 sm:px-3.5 rounded-lg flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
+              className="h-8.5 sm:h-9 bg-rose-700 hover:bg-rose-600 text-white font-bold text-xs px-3 sm:px-4 rounded-lg flex items-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap border border-rose-500/40"
             >
               <PhoneOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>Kết thúc<span className="hidden sm:inline"> Livestream</span></span>
+              <span>KẾT THÚC PHIÊN</span>
             </button>
           )}
 
           {/* Ended State */}
           {isEnded && (
-            <div className="h-8 sm:h-8.5 bg-purple-950/60 text-purple-300 border border-purple-800/80 px-3 rounded-lg flex items-center gap-1.5 font-semibold text-xs select-none whitespace-nowrap shrink-0">
+            <div className="h-8.5 sm:h-9 bg-purple-950/60 text-purple-300 border border-purple-800/80 px-3.5 rounded-lg flex items-center gap-1.5 font-semibold text-xs select-none whitespace-nowrap shrink-0">
               <span>Phiên đã kết thúc (Xem lại)</span>
             </div>
           )}
@@ -172,9 +178,9 @@ export function StudioBroadcastActions({
           role="dialog"
           aria-modal="true"
           aria-labelledby="end-stream-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
         >
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
+          <div className="bg-[#121622] border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-rose-950/80 border border-rose-800 flex items-center justify-center text-rose-500 shrink-0">
@@ -185,7 +191,7 @@ export function StudioBroadcastActions({
                     Kết thúc phiên Livestream?
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Hành động này sẽ dừng buổi phát sóng thử nghiệm.
+                    Hành động này sẽ dừng buổi phát sóng và đóng kênh Amazon IVS.
                   </p>
                 </div>
               </div>

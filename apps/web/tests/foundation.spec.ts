@@ -101,6 +101,19 @@ test("merchant layout marks the livestream route active and exposes mobile navig
     const menuButton = page.getByRole("button", { name: "Đóng menu quản lý" }).first();
     await expect(menuButton).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("navigation", { name: "Điều hướng chủ shop" })).toBeVisible();
+  } else {
+    // Desktop: Test collapse and expand sidebar
+    const collapseBtn = page.getByRole("button", { name: "Thu gọn menu điều hướng" });
+    await expect(collapseBtn).toBeVisible();
+    await collapseBtn.click();
+
+    const expandBtn = page.getByRole("button", { name: "Mở menu quản lý" }).first();
+    await expect(expandBtn).toBeVisible();
+    await expandBtn.click();
+
+    await expect(
+      page.getByRole("navigation", { name: "Điều hướng chủ shop" }),
+    ).toBeVisible();
   }
 
   expect(

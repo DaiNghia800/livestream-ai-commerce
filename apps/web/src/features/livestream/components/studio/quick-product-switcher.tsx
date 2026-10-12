@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Search, X, Check, AlertOctagon, Package, ArrowUpToLine } from "lucide-react";
+import { Search, X, Check, Package, ArrowUpToLine } from "lucide-react";
 import type { StudioProductItem } from "../../types/studio";
 
 export interface QuickProductSwitcherProps {
@@ -64,28 +64,28 @@ export function QuickProductSwitcher({
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-switcher-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-2xl flex flex-col max-h-[85vh] overflow-hidden text-on-surface select-none"
+        className="w-full max-w-xl bg-[#121622] rounded-2xl border border-slate-700/80 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden text-slate-100 select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 py-3.5 border-b border-outline-variant/70 flex items-center justify-between shrink-0 bg-surface-container-low/50">
+        <div className="px-4 py-3.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-[#161C2C]">
           <div>
-            <h3 id="quick-switcher-title" className="text-sm sm:text-base font-bold text-on-surface flex items-center gap-2">
-              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-primary" aria-hidden="true" />
+            <h3 id="quick-switcher-title" className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" aria-hidden="true" />
               <span>Đổi sản phẩm đang ghim</span>
             </h3>
-            <p className="text-xs text-on-surface-variant mt-0.5">
+            <p className="text-xs text-slate-400 mt-0.5">
               Chọn sản phẩm trong phiên để làm nổi bật trên màn hình phát sóng
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
             aria-label="Đóng bảng chọn"
           >
             <X className="h-4 w-4" aria-hidden="true" />
@@ -93,22 +93,22 @@ export function QuickProductSwitcher({
         </div>
 
         {/* Search Bar */}
-        <div className="p-3 sm:p-3.5 border-b border-outline-variant/50 shrink-0 bg-surface-container-lowest">
+        <div className="p-3 sm:p-3.5 border-b border-slate-800 shrink-0 bg-[#101420]">
           <div className="relative">
-            <Search className="h-4 w-4 text-outline absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+            <Search className="h-4 w-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
             <input
               ref={inputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm theo tên sản phẩm hoặc mã cú pháp (AO01, V01...)"
-              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-surface-container rounded-xl border border-outline-variant/70 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface placeholder:text-outline"
+              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-950 rounded-xl border border-slate-800 focus:outline-hidden focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white placeholder:text-slate-500"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface p-0.5"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
                 aria-label="Xóa tìm kiếm"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -118,99 +118,77 @@ export function QuickProductSwitcher({
         </div>
 
         {/* Product List */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-3.5 space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
           {filteredProducts.length === 0 ? (
-            <div className="py-8 text-center text-on-surface-variant">
-              <Package className="h-8 w-8 mx-auto mb-1.5 text-outline/50" aria-hidden="true" />
-              <p className="text-xs font-semibold">Không tìm thấy sản phẩm nào</p>
-              <p className="text-[11px] text-outline mt-0.5">
-                Thử nhập tên khác hoặc mã cú pháp của sản phẩm trong phiên.
-              </p>
+            <div className="py-12 text-center text-slate-400">
+              <Package className="h-8 w-8 mx-auto mb-2 opacity-40 text-slate-500" aria-hidden="true" />
+              <p className="text-xs font-semibold">Không tìm thấy sản phẩm nào phù hợp</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Thử tìm kiếm với từ khóa hoặc mã SKU khác</p>
             </div>
           ) : (
-            filteredProducts.map((product) => {
-              const isPinned = product.id === pinnedProductId;
-              const isOutOfStock = product.stock <= 0;
-              const isSelectable = !isPinned && !isOutOfStock && !disabled;
+            filteredProducts.map((item) => {
+              const isPinned = item.id === pinnedProductId;
+              const isOutOfStock = item.stock <= 0;
 
               return (
                 <div
-                  key={product.id}
-                  className={`p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+                  key={item.id}
+                  className={`p-2.5 sm:p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
                     isPinned
-                      ? "border-primary bg-indigo-50/50 shadow-xs"
-                      : isOutOfStock
-                        ? "border-outline-variant/60 bg-surface-container-low/50 opacity-60"
-                        : "border-outline-variant hover:border-primary/60 hover:bg-surface-container-low/80 cursor-pointer"
+                      ? "border-cyan-500/80 bg-cyan-950/20"
+                      : "border-slate-800/90 bg-[#161C2C] hover:border-slate-700"
                   }`}
-                  onClick={() => {
-                    if (isSelectable) {
-                      onSelectProduct(product);
-                      onClose();
-                    }
-                  }}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-13 h-13 rounded-lg bg-surface-container-highest overflow-hidden shrink-0 border border-outline-variant/50">
+                    <div className="w-12 h-12 rounded-lg bg-slate-950 overflow-hidden shrink-0 border border-slate-800">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={product.image}
-                        alt={product.name}
                         className="w-full h-full object-cover"
+                        src={item.image}
+                        alt={item.name}
                       />
                     </div>
+
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="font-mono text-[11px] font-bold text-primary bg-indigo-100/90 px-1.5 py-0.5 rounded">
-                          {product.orderCode || product.id}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-cyan-300 font-bold text-[10px] bg-cyan-950 px-1.5 py-0.2 rounded border border-cyan-800/50">
+                          {item.orderCode || item.sku}
                         </span>
-                        {isOutOfStock ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-1.5 py-0.2 rounded-full">
-                            <AlertOctagon className="h-2.5 w-2.5" aria-hidden="true" />
-                            Hết hàng
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">
-                            Còn {product.stock}
-                          </span>
-                        )}
+                        <h4 className="text-xs sm:text-[13px] font-bold text-white truncate" title={item.name}>
+                          {item.name}
+                        </h4>
                       </div>
-                      <h4 className="text-xs sm:text-[13px] font-bold text-on-surface line-clamp-2 leading-snug" title={product.name}>
-                        {product.name}
-                      </h4>
-                      <div className="flex items-baseline gap-2 text-xs mt-0.5">
-                        <span className="font-bold text-primary tabular-nums">
-                          {product.price.toLocaleString("vi-VN")} ₫
+
+                      <div className="flex items-center gap-2.5 mt-1 text-xs">
+                        <span className="font-bold text-amber-300 tabular-nums">
+                          {item.price.toLocaleString("vi-VN")} ₫
                         </span>
-                        {product.originalPrice && (
-                          <span className="text-[10px] text-outline line-through tabular-nums">
-                            {product.originalPrice.toLocaleString("vi-VN")} ₫
-                          </span>
-                        )}
+                        <span className="text-[11px] text-slate-400">
+                          Kho:{" "}
+                          <strong className={isOutOfStock ? "text-rose-400" : "text-slate-300"}>
+                            {item.stock}
+                          </strong>
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="shrink-0 flex items-center">
+                  <div className="shrink-0">
                     {isPinned ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary bg-primary/10 border border-primary/30 px-2.5 py-1 rounded-lg">
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold">
                         <Check className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>Đang ghim</span>
-                      </span>
-                    ) : isOutOfStock ? (
-                      <span className="text-[11px] font-medium text-outline px-2 py-1">
-                        Không thể ghim
                       </span>
                     ) : (
                       <button
                         type="button"
-                        disabled={disabled}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectProduct(product);
-                          onClose();
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-container transition shadow-xs cursor-pointer"
+                        disabled={disabled || isOutOfStock}
+                        onClick={() => onSelectProduct(item)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs ${
+                          isOutOfStock
+                            ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+                            : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                        }`}
                       >
                         <ArrowUpToLine className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>Ghim ngay</span>
@@ -224,12 +202,12 @@ export function QuickProductSwitcher({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2.5 border-t border-outline-variant/60 flex items-center justify-between shrink-0 bg-surface-container-low/40 text-[11px] text-on-surface-variant">
-          <span>Nhấn <strong>Esc</strong> hoặc click ra ngoài để đóng</span>
+        <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0 bg-[#141A28]">
+          <span>Tổng số: {products.length} sản phẩm</span>
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface rounded-lg font-medium transition cursor-pointer"
+            className="px-3.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer transition active:scale-95"
           >
             Đóng
           </button>
