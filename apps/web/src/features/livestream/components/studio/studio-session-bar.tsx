@@ -102,7 +102,7 @@ export function StudioSessionBar({
       aria-label="Thanh điều hướng và chỉ số phiên Live Studio"
     >
       {/* 1. Left: Back button, Session info & Live Badge */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
         <Link
           href={`/shop/livestream/${sessionId}`}
           className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors shrink-0"
@@ -143,9 +143,9 @@ export function StudioSessionBar({
           <span className="font-mono text-xs text-cyan-400 font-bold hidden lg:inline shrink-0">
             #{sessionId}
           </span>
-          <span className="text-slate-700 hidden lg:inline" aria-hidden="true">/</span>
+          <span className="text-slate-700 hidden lg:inline shrink-0" aria-hidden="true">/</span>
           <h1
-            className="text-xs sm:text-sm font-bold text-white truncate max-w-[100px] sm:max-w-[160px] md:max-w-xs lg:max-w-sm"
+            className="text-xs sm:text-sm font-bold text-white truncate min-w-[100px] max-w-[160px] md:max-w-xs lg:max-w-sm shrink-0 sm:shrink"
             title={sessionTitle}
           >
             {sessionTitle}
@@ -174,18 +174,18 @@ export function StudioSessionBar({
         </div>
 
         {/* Likes (Lượt thích) */}
-        <div className="hidden sm:flex items-center gap-1 bg-[#141A28] border border-slate-800 px-2 py-0.5 rounded-md">
+        <div className="hidden xl:flex items-center gap-1 bg-[#141A28] border border-slate-800 px-2 py-0.5 rounded-md">
           <Heart className="h-3 w-3 text-rose-400 shrink-0 fill-rose-500/30" aria-hidden="true" />
-          <span className="text-slate-400 hidden xl:inline text-[10px]">Thích:</span>
+          <span className="text-slate-400 hidden 2xl:inline text-[10px]">Thích:</span>
           <span className="font-mono font-bold text-rose-300 text-[11px] tabular-nums">
             {likesCount}
           </span>
         </div>
 
         {/* Chat Messages */}
-        <div className="hidden md:flex items-center gap-1 bg-[#141A28] border border-slate-800 px-2 py-0.5 rounded-md">
+        <div className="hidden xl:flex items-center gap-1 bg-[#141A28] border border-slate-800 px-2 py-0.5 rounded-md">
           <MessageSquare className="h-3 w-3 text-indigo-400 shrink-0" aria-hidden="true" />
-          <span className="text-slate-400 hidden xl:inline text-[10px]">Chat:</span>
+          <span className="text-slate-400 hidden 2xl:inline text-[10px]">Chat:</span>
           <span className="font-mono font-bold text-slate-100 text-[11px] tabular-nums">
             {typeof chatCount === "number" ? chatCount.toLocaleString("vi-VN") : chatCount}
           </span>
