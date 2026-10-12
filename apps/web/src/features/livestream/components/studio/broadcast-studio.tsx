@@ -9,11 +9,13 @@ import {
   Radio,
   ShoppingBag,
   MessageSquare,
+  Layers,
 } from "lucide-react";
 import { mockLivestreams } from "../../mocks/livestream.mock";
 import { StudioSessionBar } from "./studio-session-bar";
 import { StudioStreamStatus } from "./studio-stream-status";
 import { StudioStreamPreview, type CameraStatus } from "./stream-preview";
+import { StudioLeftSidebar } from "./studio-left-sidebar";
 import { StudioDeviceControls } from "./studio-device-controls";
 import { StudioBroadcastActions } from "./studio-broadcast-actions";
 import { StudioPreliveChecklist } from "./studio-prelive-checklist";
@@ -53,12 +55,80 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   const [ivsConfig, setIvsConfig] = useState<IvsStreamConfig | null>(null);
   const [isLoadingIvsConfig, setIsLoadingIvsConfig] = useState(false);
 
-  // 2.2 AWS IVS Web Broadcast (Cách 1: Phát trực tiếp ngay trên trình duyệt web)
+  // 2.2 AWS IVS Web Broadcast (Phát trực tiếp ngay trên trình duyệt web)
   const {
     broadcastState,
     startBroadcast,
     stopBroadcast,
   } = useIvsBroadcast();
+
+  // 2.3 Điều khiển Bố cục Studio phong cách TikTok Live Studio (Đóng/Mở Sidebars)
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [isTheaterMode, setIsTheaterMode] = useState(false);
+
+  // 2.4 Cài đặt Khung hình & Hiển thị (Aspect Ratio: 16:9 PC vs 9:16 TikTok Mobile)
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
+  const [showSafezone, setShowSafezone] = useState(true);
+  const [isMirrorVideo, setIsMirrorVideo] = useState(false);
+
+  // Phím tắt điều khiển Studio: [ (toggle trái), ] (toggle phải), F (theater), Esc (thoát theater)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Bỏ qua nếu đang gõ văn bản trong input / textarea
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === "[") {
+        e.preventDefault();
+        setIsLeftSidebarOpen((prev) => !prev);
+      } else if (e.key === "]") {
+        e.preventDefault();
+        setIsRightSidebarOpen((prev) => !prev);
+      } else if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        setIsTheaterMode((prev) => {
+          const next = !prev;
+          if (next) {
+            setIsLeftSidebarOpen(false);
+            setIsRightSidebarOpen(false);
+          } else {
+            setIsLeftSidebarOpen(true);
+            setIsRightSidebarOpen(true);
+          }
+          return next;
+        });
+      } else if (e.key === "Escape") {
+        if (isTheaterMode) {
+          setIsTheaterMode(false);
+          setIsLeftSidebarOpen(true);
+          setIsRightSidebarOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isTheaterMode]);
+
+  const handleToggleTheaterMode = () => {
+    setIsTheaterMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsLeftSidebarOpen(false);
+        setIsRightSidebarOpen(false);
+      } else {
+        setIsLeftSidebarOpen(true);
+        setIsRightSidebarOpen(true);
+      }
+      return next;
+    });
+  };
 
   const handleOpenIvsModal = async () => {
     setIsIvsModalOpen(true);
@@ -100,8 +170,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     };
   }, [livestreamId]);
 
-  // 3. Tab di động (Stage vs Products/Chat)
-  const [mobileTab, setMobileTab] = useState<"stage" | "products" | "chat">("stage");
+  // 3. Tab di động (Stage vs Chat vs Products vs Tools)
+  const [mobileTab, setMobileTab] = useState<"stage" | "products" | "chat" | "tools">("stage");
 
   // 4. Danh sách sản phẩm từ session
   const [allProducts, setAllProducts] = useState<StudioProductItem[]>(() => {
@@ -162,29 +232,12 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   const [selectedCameraId, setSelectedCameraId] = useState<string>("");
   const [selectedMicId, setSelectedMicId] = useState<string>("");
 
-  // 6. Chế độ mở rộng vùng điều hành bán hàng (Focus / Expanded Operations Mode)
-  const [isExpandedWorkspace, setIsExpandedWorkspace] = useState(false);
-
-  // Phím Escape để nhanh chóng thu gọn về bố cục bình thường
-  useEffect(() => {
-    if (!isExpandedWorkspace) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsExpandedWorkspace(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isExpandedWorkspace]);
-
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Cập nhật ref trong effect
   useEffect(() => {
     streamRef.current = localStream;
   }, [localStream]);
 
-  // Dọn dẹp media tracks khi component unmount
   useEffect(() => {
     return () => {
       if (streamRef.current) {
@@ -203,7 +256,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     setCameraStatus("requesting");
 
     try {
-      // Dừng luồng cũ nếu có
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -258,7 +310,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   // Chia sẻ màn hình
   const handleToggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
-      // Dừng chia sẻ màn hình và quay về camera
       handleRequestCamera(selectedCameraId, selectedMicId);
       setIsScreenSharing(false);
       return;
@@ -287,7 +338,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   }, [isScreenSharing, selectedCameraId, selectedMicId, handleRequestCamera]);
 
-  // Đổi thiết bị Camera
   const handleCameraDeviceChange = (deviceId: string) => {
     setSelectedCameraId(deviceId);
     if (cameraStatus === "active") {
@@ -295,7 +345,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  // Đổi thiết bị Micro
   const handleMicDeviceChange = (deviceId: string) => {
     setSelectedMicId(deviceId);
     if (cameraStatus === "active") {
@@ -303,7 +352,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  // Thao tác Ghim sản phẩm
   const handlePinProduct = (product: StudioProductItem) => {
     setPinnedProduct(product);
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -314,7 +362,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  // Thao tác Gỡ ghim
   const handleUnpinProduct = () => {
     const prevPinned = pinnedProduct;
     setPinnedProduct(null);
@@ -326,7 +373,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  // Banner thông báo kết nối phát sóng
   const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
 
   // Bắt đầu Livestream
@@ -334,10 +380,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     setIsStarting(true);
     setCurrentStatus("STARTING");
     try {
-      // 1. Cập nhật trạng thái backend
       await updateLivestreamStatus(livestreamId, "live");
 
-      // 2. Lấy cấu hình AWS IVS (tự động tạo kênh trên AWS nếu chưa có)
       let conf = ivsConfig;
       try {
         if (!conf) {
@@ -348,7 +392,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         console.warn("[Studio] Error fetching IVS stream config:", confErr);
       }
 
-      // 3. Tự động kích hoạt Camera & Micro nếu người bán chưa bật trước đó
       let stream = localStream;
       if (!stream && typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
         try {
@@ -367,7 +410,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         }
       }
 
-      // 4. Cách 1: Đẩy luồng video & audio từ trình duyệt lên AWS IVS Web Broadcast
       if (stream && conf?.ingestEndpoint && conf?.streamKey) {
         try {
           await startBroadcast({
@@ -384,7 +426,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       setLiveToastMessage(
         conf?.channelArn
           ? `Đã phát sóng trực tiếp thành công lên AWS IVS!`
-          : "Đã bắt đầu phát sóng phòng Studio!"
+          : "Đã bắt đầu phát sóng phòng TikTok Live Studio!"
       );
       setTimeout(() => setLiveToastMessage(null), 6000);
     } catch (err) {
@@ -397,10 +439,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
 
   // Kết thúc Livestream
   const handleEndLive = async () => {
-    // 1. Dừng phát sóng AWS IVS Web Broadcast
     stopBroadcast();
-
-    // 2. Cập nhật trạng thái backend sang ended
     try {
       await updateLivestreamStatus(livestreamId, "ended");
     } catch (err) {
@@ -413,33 +452,31 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  // Trạng thái đang tải dữ liệu phiên
   if (isLoadingSession) {
     return (
-      <div className="max-w-2xl mx-auto my-16 p-12 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs flex flex-col items-center justify-center gap-3">
-        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm font-medium text-on-surface-variant">Đang tải phòng Livestream Studio...</p>
+      <div className="max-w-2xl mx-auto my-16 p-12 bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-3 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-medium text-slate-300">Đang tải phòng TikTok Live Studio...</p>
       </div>
     );
   }
 
-  // 6. Xử lý phiên không tồn tại
   if (!session) {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs">
-        <div className="h-12 w-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border border-red-100">
+      <div className="max-w-2xl mx-auto my-12 p-8 bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg text-slate-100">
+        <div className="h-12 w-12 rounded-full bg-rose-950 text-rose-400 flex items-center justify-center mx-auto mb-4 border border-rose-800">
           <AlertCircle className="h-6 w-6" aria-hidden="true" />
         </div>
-        <h2 className="text-lg font-bold text-on-surface font-headline-md">
+        <h2 className="text-lg font-bold text-white">
           Không tìm thấy phiên Livestream
         </h2>
-        <p className="text-xs sm:text-sm text-on-surface-variant mt-1.5 max-w-md mx-auto">
-          Mã phiên <strong className="font-mono text-on-surface">#{livestreamId}</strong> không tồn tại trong danh sách hoặc đã bị xóa.
+        <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md mx-auto">
+          Mã phiên <strong className="font-mono text-cyan-300">#{livestreamId}</strong> không tồn tại trong danh sách hoặc đã bị xóa.
         </p>
         <div className="mt-6">
           <Link
             href="/shop/livestream"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-container transition shadow-xs"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Quay về danh sách Livestream</span>
@@ -449,32 +486,31 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     );
   }
 
-  // 7. Xử lý phiên DRAFT: Cần hoàn thiện thông tin trước khi vào studio
   if (currentStatus === "DRAFT") {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs">
-        <div className="h-12 w-12 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 border border-slate-200">
+      <div className="max-w-2xl mx-auto my-12 p-8 bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg text-slate-100">
+        <div className="h-12 w-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-4 border border-slate-700">
           <FileEdit className="h-6 w-6" aria-hidden="true" />
         </div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-xs font-semibold mb-3">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-semibold mb-3">
           <span>PHIÊN BẢN NHÁP (DRAFT)</span>
         </div>
-        <h2 className="text-lg font-bold text-on-surface">
+        <h2 className="text-lg font-bold text-white">
           Phiên chưa sẵn sàng lên sóng
         </h2>
-        <p className="text-xs sm:text-sm text-on-surface-variant mt-1.5 max-w-md mx-auto leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md mx-auto leading-relaxed">
           Phiên <strong>{session.title}</strong> hiện đang là bản nháp và chưa được cấu hình lịch phát sóng hoặc danh mục sản phẩm. Kênh phát Amazon IVS chỉ được cấp phát khi phiên được lên lịch chính thức.
         </p>
         <div className="mt-6 flex items-center justify-center gap-3">
           <Link
             href="/shop/livestream"
-            className="px-4 py-2 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container transition"
+            className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg hover:bg-slate-700 transition"
           >
             Quay về danh sách
           </Link>
           <Link
             href={`/shop/livestream/${session.id}/edit`}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-container transition shadow-xs"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
           >
             <FileEdit className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Chỉnh sửa &amp; Lên lịch phiên</span>
@@ -497,10 +533,10 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   const canStartLive = Boolean(session.title && hasProducts && !isEnded);
 
   return (
-    <div className="relative flex flex-col h-[calc(100dvh-132px)] min-h-[540px] lg:h-[calc(100dvh-132px)] lg:min-h-[580px] lg:max-h-[calc(100dvh-132px)] w-full rounded-xl sm:rounded-2xl border border-slate-800 shadow-md bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="relative flex flex-col h-[calc(100dvh-104px)] min-h-[580px] lg:h-[calc(100dvh-104px)] lg:min-h-[600px] lg:max-h-[calc(100dvh-104px)] w-full rounded-xl sm:rounded-2xl border border-slate-800/90 shadow-2xl bg-[#0B0E14] text-slate-100 overflow-hidden font-sans">
       {/* Toast Notification khi Bắt đầu phát sóng */}
       {liveToastMessage && (
-        <div className="absolute top-3 right-3 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-emerald-600 text-white rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute top-3 right-3 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
           <span className="w-2 h-2 rounded-full bg-white animate-ping" />
           <span>{liveToastMessage}</span>
           <button
@@ -513,7 +549,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         </div>
       )}
 
-      {/* 1. Top Session Bar */}
+      {/* 1. Top Session Bar (Session Info, Metrics, Layout Toggles) */}
       <StudioSessionBar
         sessionId={session.id}
         sessionTitle={session.title}
@@ -526,13 +562,20 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
               : "00:00:00"
         }
         viewers={isLive ? session.currentViewers || 1940 : isEnded ? 0 : "—"}
+        likesCount="18.5K"
         chatCount={isLive || isEnded ? session.chatCount || 3420 : "—"}
         aiOrdersCount={isLive || isEnded ? session.aiOrderCount || 284 : "—"}
+        isLeftSidebarOpen={isLeftSidebarOpen}
+        onToggleLeftSidebar={() => setIsLeftSidebarOpen((prev) => !prev)}
+        isRightSidebarOpen={isRightSidebarOpen}
+        onToggleRightSidebar={() => setIsRightSidebarOpen((prev) => !prev)}
+        isTheaterMode={isTheaterMode}
+        onToggleTheaterMode={handleToggleTheaterMode}
         className="shrink-0"
       />
 
       {/* 2. Amazon IVS Stream Telemetry Header with OBS Config button */}
-      <div className="flex items-center justify-between bg-[#141C2E] border-b border-slate-800 pr-3">
+      <div className="flex items-center justify-between bg-[#111726] border-b border-slate-800/90 pr-3">
         <div className="flex-1 min-w-0">
           <StudioStreamStatus
             isLive={isLive}
@@ -543,21 +586,21 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         </div>
         <button
           onClick={handleOpenIvsModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md bg-primary/20 text-blue-200 border border-primary/40 hover:bg-primary/30 transition-all shrink-0 active:scale-95 shadow-xs"
+          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md bg-cyan-950 text-cyan-300 border border-cyan-800/60 hover:bg-cyan-900 transition-all shrink-0 active:scale-95 shadow-xs"
         >
-          <Radio className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+          <Radio className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
           <span>Cấu hình OBS / IVS</span>
         </button>
       </div>
 
       {/* Mobile Tab Switcher (Visible on < 1024px) */}
-      <div className="lg:hidden flex items-center bg-[#141C2E] border-b border-slate-800 text-xs shrink-0">
+      <div className="lg:hidden flex items-center bg-[#111726] border-b border-slate-800 text-xs shrink-0">
         <button
           type="button"
           onClick={() => setMobileTab("stage")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
             mobileTab === "stage"
-              ? "text-primary border-b-2 border-primary bg-slate-900"
+              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
@@ -569,7 +612,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           onClick={() => setMobileTab("chat")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
             mobileTab === "chat"
-              ? "text-primary border-b-2 border-primary bg-slate-900"
+              ? "text-[#FE2C55] border-b-2 border-[#FE2C55] bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
@@ -581,42 +624,76 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           onClick={() => setMobileTab("products")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
             mobileTab === "products"
-              ? "text-primary border-b-2 border-primary bg-slate-900"
+              ? "text-amber-400 border-b-2 border-amber-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
           <ShoppingBag className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Sản phẩm ({unpinnedProducts.length})</span>
         </button>
-      </div>
-
-      {/* 3. Main Workspace Area */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* Left / Center: Broadcast Stage & Controls (60% on default desktop, 28% in expanded workspace) */}
-        <div
-          className={`${
-            isExpandedWorkspace
-              ? "w-full lg:w-[28%] lg:flex-[28_1_0%] border-r border-slate-800"
-              : "w-full lg:w-[60%] lg:flex-[60_1_0%]"
-          } flex flex-col min-w-0 bg-slate-950 overflow-hidden transition-all duration-200 ${
-            mobileTab !== "stage" ? "hidden lg:flex" : "flex"
+        <button
+          type="button"
+          onClick={() => setMobileTab("tools")}
+          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
+            mobileTab === "tools"
+              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
+              : "text-slate-400 hover:text-slate-200"
           }`}
         >
-          {/* Header hiển thị chế độ quan sát phụ khi mở rộng không gian bán hàng */}
-          {isExpandedWorkspace && (
-            <div className="hidden lg:flex items-center justify-between px-3 py-1.5 bg-[#141C2E] border-b border-slate-800 text-[11px] text-slate-300 font-semibold shrink-0">
-              <span className="flex items-center gap-1.5 text-indigo-400">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                VÙNG QUAN SÁT CAMERA
-              </span>
-              <span className="text-[10px] text-slate-400">16:9 Live Monitor</span>
-            </div>
-          )}
+          <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>Nguồn phát</span>
+        </button>
+      </div>
 
-          {/* Non-scrolling Stage Viewport: Eliminates scrollbar next to video */}
-          <div className="flex-1 min-h-0 p-2 sm:p-2.5 overflow-hidden flex flex-col gap-2">
-            {/* Pre-live Checklist (Chỉ xuất hiện trước khi phát LIVE và khi chưa mở rộng workspace) */}
-            {!isLive && !isEnded && !isExpandedWorkspace && (
+      {/* 3. Main Studio Workspace Area (3-Column Layout with Collapsible Sidebars) */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {/* ========================================================
+            3.1 LEFT SIDEBAR: Nguồn phát & Cảnh (Sources & Scenes)
+            ======================================================== */}
+        <div
+          className={`${
+            isLeftSidebarOpen ? "w-64 xl:w-72 2xl:w-80" : "w-0 overflow-hidden border-none"
+          } transition-all duration-300 ease-in-out shrink-0 ${
+            mobileTab === "tools" ? "flex w-full" : "hidden lg:flex"
+          }`}
+        >
+          <StudioLeftSidebar
+            isOpen={isLeftSidebarOpen || mobileTab === "tools"}
+            onToggle={() => setIsLeftSidebarOpen((prev) => !prev)}
+            aspectRatio={aspectRatio}
+            onChangeAspectRatio={setAspectRatio}
+            showSafezone={showSafezone}
+            onToggleSafezone={() => setShowSafezone((prev) => !prev)}
+            selectedCameraId={selectedCameraId}
+            selectedMicId={selectedMicId}
+            onCameraChange={handleCameraDeviceChange}
+            onMicChange={handleMicDeviceChange}
+            cameraStatus={cameraStatus}
+            onRequestCamera={() => handleRequestCamera(selectedCameraId, selectedMicId)}
+            isScreenSharing={isScreenSharing}
+            onToggleScreenShare={handleToggleScreenShare}
+            isMirrorVideo={isMirrorVideo}
+            onToggleMirrorVideo={() => setIsMirrorVideo((prev) => !prev)}
+            isLive={isLive}
+            isEnded={isEnded}
+            className="w-full h-full"
+          />
+        </div>
+
+        {/* ========================================================
+            3.2 CENTER STAGE: Khung Livestream chính
+            Tự động mở rộng 100% khi đóng 1 hoặc cả 2 sidebar!
+            ======================================================== */}
+        <main
+          className={`flex-1 min-w-0 flex flex-col bg-[#0B0E14] overflow-hidden transition-all duration-300 ease-in-out ${
+            mobileTab !== "stage" ? "hidden lg:flex" : "flex"
+          }`}
+          aria-label="Khu vực màn hình Livestream chính"
+        >
+          {/* Non-scrolling Stage Viewport */}
+          <div className="flex-1 min-h-0 p-1.5 sm:p-2.5 overflow-hidden flex flex-col gap-2">
+            {/* Pre-live Checklist (Chỉ xuất hiện trước khi phát LIVE) */}
+            {!isLive && !isEnded && (
               <div className="shrink-0">
                 <StudioPreliveChecklist
                   hasValidInfo={Boolean(session.title)}
@@ -642,12 +719,23 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
                 pinnedProduct={pinnedProduct}
                 isMicActive={isMicActive}
                 isEnded={isEnded}
+                aspectRatio={aspectRatio}
+                onChangeAspectRatio={setAspectRatio}
+                showSafezone={showSafezone}
+                onToggleSafezone={() => setShowSafezone((prev) => !prev)}
+                isMirrorVideo={isMirrorVideo}
+                isLeftSidebarOpen={isLeftSidebarOpen}
+                isRightSidebarOpen={isRightSidebarOpen}
+                onToggleLeftSidebar={() => setIsLeftSidebarOpen((prev) => !prev)}
+                onToggleRightSidebar={() => setIsRightSidebarOpen((prev) => !prev)}
+                onToggleTheaterMode={handleToggleTheaterMode}
+                isTheaterMode={isTheaterMode}
               />
             </div>
           </div>
 
           {/* Bottom Device Controls & Broadcast Action Bar */}
-          <div className="shrink-0 bg-[#141C2E] border-t border-slate-800 px-3 py-2 sm:px-4 sm:py-2.5 flex flex-wrap items-center justify-between gap-y-2 gap-x-3">
+          <div className="shrink-0 bg-[#101522] border-t border-slate-800/80 px-3 py-1.5 sm:px-4 sm:py-2 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-3">
             <StudioDeviceControls
               selectedCameraId={selectedCameraId}
               selectedMicId={selectedMicId}
@@ -672,16 +760,19 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
               className="basis-full 2xl:basis-auto 2xl:flex-1"
             />
           </div>
-        </div>
+        </main>
 
-        {/* Right Sidebar: Sales Control Panel (Điều Hành Bán Hàng) (40% on default desktop, 72% in expanded workspace) */}
+        {/* ========================================================
+            3.3 RIGHT SIDEBAR: Bán hàng & Tương tác (Sales & Chat Ops)
+            Tự động gập mở mượt mà khi bấm nút
+            ======================================================== */}
         <div
           className={`${
-            isExpandedWorkspace
-              ? "w-full lg:w-[72%] lg:flex-[72_1_0%]"
-              : "w-full lg:w-[40%] lg:flex-[40_1_0%] xl:max-w-[600px] 2xl:max-w-[620px]"
-          } shrink-0 bg-surface-container-lowest border-l border-outline-variant flex flex-col overflow-hidden text-on-surface transition-all duration-200 ${
-            mobileTab === "stage" ? "hidden lg:flex" : "flex"
+            isRightSidebarOpen
+              ? "w-full lg:w-[380px] xl:w-[420px] 2xl:w-[460px]"
+              : "w-0 overflow-hidden border-none"
+          } transition-all duration-300 ease-in-out shrink-0 ${
+            mobileTab === "stage" || mobileTab === "tools" ? "hidden lg:flex" : "flex"
           }`}
         >
           <StudioProductsPanel
@@ -692,15 +783,15 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             totalProductsCount={allProducts.length}
             onPinProduct={handlePinProduct}
             onUnpinProduct={handleUnpinProduct}
-            activeTab={mobileTab === "stage" ? undefined : mobileTab}
+            activeTab={mobileTab === "stage" || mobileTab === "tools" ? undefined : mobileTab}
             onTabChange={(tab: "products" | "chat") => {
-              if (mobileTab !== "stage") {
+              if (mobileTab !== "stage" && mobileTab !== "tools") {
                 setMobileTab(tab);
               }
             }}
             isEnded={isEnded}
-            isExpandedMode={isExpandedWorkspace}
-            onToggleExpandMode={() => setIsExpandedWorkspace((prev) => !prev)}
+            isExpandedMode={false}
+            onCloseSidebar={() => setIsRightSidebarOpen(false)}
           />
         </div>
       </div>

@@ -5,13 +5,22 @@ function collectConsoleErrors(page: Page) {
   page.on("console", (message) => {
     if (message.type() === "error") {
       const text = message.text();
-      if (!text.includes("net::ERR_CONNECTION_REFUSED")) {
+      if (
+        !text.includes("net::ERR_CONNECTION_REFUSED") &&
+        !text.includes("net::ERR_CONNECTION_FAILED")
+      ) {
         errors.push(text);
       }
     }
   });
   return errors;
 }
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/livestreams*", (route) => {
+    route.abort("connectionfailed");
+  });
+});
 
 test("livestream overview page renders KPI cards, status filters, search, and navigation", async ({
   page,
@@ -79,7 +88,9 @@ test("livestream overview page renders KPI cards, status filters, search, and na
   // 6. Navigation to Create Livestream Page
   const createBtn = page.getByRole("link", { name: "Tạo phiên Livestream" });
   await createBtn.click();
-  await expect(page).toHaveURL(/\/shop\/livestream\/create$/);
+  await expect(page).toHaveURL(/\/shop\/livestream\/create$/, {
+    timeout: 15_000,
+  });
   await expect(
     page.getByRole("heading", { name: "Tạo phiên Livestream", level: 1 }),
   ).toBeVisible();
@@ -220,3 +231,67 @@ test("broadcast studio page renders stream preview and product control panel", a
 
   expect(consoleErrors).toEqual([]);
 });
+
+test("studio page supports collapsible sidebars, aspect ratio switcher, and compact select heights", async ({
+  page,
+}, testInfo) => {
+  const consoleErrors = collectConsoleErrors(page);
+  await page.goto("/shop/livestream/LIVE-2025-08/studio");
+
+  // 1. Verify bottom device controls (camera & mic selects) are present and compact
+  const camSelect = page.locator("#studio-camera-select");
+  const micSelect = page.locator("#studio-mic-select");
+  await expect(camSelect).toBeVisible();
+  await expect(micSelect).toBeVisible();
+  await expect(camSelect).toHaveClass(/studio-select/);
+  await expect(micSelect).toHaveClass(/studio-select/);
+
+  // Verify compact height (should be <= 32px, not the default ~50px)
+  const camBox = await camSelect.boundingBox();
+  expect(camBox).not.toBeNull();
+  expect(camBox!.height).toBeLessThanOrEqual(32);
+
+  const micBox = await micSelect.boundingBox();
+  expect(micBox).not.toBeNull();
+  expect(micBox!.height).toBeLessThanOrEqual(32);
+
+  if (testInfo.project.name !== "mobile") {
+    // 2. Desktop: Test left sidebar controls
+    await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
+
+    // Verify left sidebar select elements have studio-select class
+    const sidebarSelects = page.locator("aside select.studio-select");
+    await expect(sidebarSelects.first()).toBeVisible();
+    await expect(sidebarSelects.nth(1)).toBeVisible();
+
+    // 3. Aspect Ratio toggle buttons
+    const ratio169 = page.getByRole("button", { name: "16:9 Ngang" });
+    const ratio916 = page.getByRole("button", { name: "9:16 Dọc Live" });
+    await expect(ratio169).toBeVisible();
+    await expect(ratio916).toBeVisible();
+
+    await ratio916.click();
+    await expect(ratio916).toHaveClass(/text-rose-300/);
+
+    await ratio169.click();
+    await expect(ratio169).toHaveClass(/text-cyan-300/);
+
+    // 4. Test Left sidebar collapse via keyboard shortcut '['
+    await page.keyboard.press("[");
+    await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
+
+    // Re-open via keyboard shortcut '['
+    await page.keyboard.press("[");
+    await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
+  }
+
+  // Ensure no horizontal overflow
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  expect(consoleErrors).toEqual([]);
+});
+

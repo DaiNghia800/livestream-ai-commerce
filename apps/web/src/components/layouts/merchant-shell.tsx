@@ -22,6 +22,8 @@ import {
   Warehouse,
   Wifi,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { Brand } from "./brand";
@@ -48,6 +50,7 @@ function isActivePath(pathname: string, href: string, exact?: boolean) {
 export function MerchantShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const navigationId = useId();
 
   const isMonitoring = pathname ? /\/monitoring\/?$/.test(pathname) : false;
@@ -81,24 +84,54 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         />
       )}
 
+      {/* Floating edge tab to re-open sidebar when collapsed on desktop */}
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          className={styles.floatingExpandTab}
+          title="Mở menu quản lý"
+          aria-label="Mở menu quản lý"
+        >
+          <PanelLeftOpen size={16} aria-hidden="true" />
+        </button>
+      )}
+
       {/* Sidebar */}
       <aside
         id={navigationId}
-        className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""}`}
+        className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""} ${
+          sidebarCollapsed ? styles.sidebarCollapsed : ""
+        }`}
       >
-        <Link className={styles.brandLink} href="/shop" onClick={() => setMenuOpen(false)}>
-          <Brand />
-        </Link>
-        <Link
-          className={styles.primaryAction}
-          href="/shop/livestream"
-          title="Lối tắt truy cập quản lý livestream và Studio"
-          onClick={() => setMenuOpen(false)}
-        >
-          <Radio size={18} aria-hidden="true" />
-          <span>Bắt đầu Live</span>
-        </Link>
-        <nav className={styles.navigation} aria-label="Điều hướng chủ shop">
+        <div className={styles.sidebarHeader}>
+          <div className={styles.brandRow}>
+            <Link className={styles.brandLink} href="/shop" onClick={() => setMenuOpen(false)}>
+              <Brand />
+            </Link>
+            <button
+              type="button"
+              className={styles.collapseButton}
+              onClick={() => setSidebarCollapsed(true)}
+              title="Thu gọn menu điều hướng"
+              aria-label="Thu gọn menu điều hướng"
+            >
+              <PanelLeftClose size={18} aria-hidden="true" />
+            </button>
+          </div>
+          <Link
+            className={styles.primaryAction}
+            href="/shop/livestream"
+            title="Lối tắt truy cập quản lý livestream và Studio"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Radio size={18} aria-hidden="true" />
+            <span>Bắt đầu Live</span>
+          </Link>
+        </div>
+
+        {/* Scrollable Navigation - CHỈ cuộn phần main menu */}
+        <nav className={`${styles.navigation} custom-scrollbar`} aria-label="Điều hướng chủ shop">
           {navigation.map((item) => {
             const Icon = item.icon;
             if (!("href" in item)) {
@@ -131,6 +164,8 @@ export function MerchantShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+
+        {/* Fixed Footer */}
         <p className={styles.support}>
           <CircleHelp size={16} aria-hidden="true" /> Hỗ trợ kỹ thuật
           <br />
@@ -140,14 +175,31 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
       {/* Content wrapper */}
       <div
-        className={`${styles.content} ${isMonitoring ? styles.contentMonitoring : ""}`}
+        className={`${styles.content} ${isMonitoring ? styles.contentMonitoring : ""} ${
+          sidebarCollapsed ? styles.contentExpanded : ""
+        }`}
       >
         <header className={styles.header}>
-          <label className={styles.search}>
-            <span className="sr-only">Tìm kiếm trong khu vực quản lý</span>
-            <Search size={18} aria-hidden="true" />
-            <input placeholder="Tìm theo mã SKU, tên sản phẩm, vị trí kho..." disabled />
-          </label>
+          <div className={styles.headerLeft}>
+            <button
+              type="button"
+              className={styles.headerSidebarToggle}
+              onClick={() => setSidebarCollapsed((prev) => !prev)}
+              title={sidebarCollapsed ? "Mở menu quản lý" : "Thu gọn menu quản lý"}
+              aria-label={sidebarCollapsed ? "Mở menu quản lý" : "Thu gọn menu quản lý"}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen size={18} aria-hidden="true" />
+              ) : (
+                <PanelLeftClose size={18} aria-hidden="true" />
+              )}
+            </button>
+            <label className={styles.search}>
+              <span className="sr-only">Tìm kiếm trong khu vực quản lý</span>
+              <Search size={18} aria-hidden="true" />
+              <input placeholder="Tìm theo mã SKU, tên sản phẩm, vị trí kho..." disabled />
+            </label>
+          </div>
           <div className={styles.headerActions}>
             <div
               className={styles.connectionStatus}

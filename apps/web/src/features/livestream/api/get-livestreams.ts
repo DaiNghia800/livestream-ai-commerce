@@ -279,12 +279,23 @@ export async function getLivestreams(
   };
 }
 
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(id: string): boolean {
+  return UUID_V4_REGEX.test(id);
+}
+
 /**
  * Gọi API GET /api/livestreams/:id lấy chi tiết phiên livestream
  */
 export async function getLivestreamDetail(
   id: string
 ): Promise<BackendLivestreamDetailResponse> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
   const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}`;
 
   const res = await fetch(url, {
@@ -307,6 +318,10 @@ export async function updateLivestreamStatus(
   status: "draft" | "scheduled" | "live" | "ended" | "cancelled",
   merchantId: string = DEFAULT_DEV_MERCHANT_ID
 ): Promise<BackendLivestreamItem> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
   const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/status`;
 
   const res = await fetch(url, {
@@ -343,6 +358,10 @@ export async function getIvsStreamConfig(
   id: string,
   merchantId: string = DEFAULT_DEV_MERCHANT_ID
 ): Promise<IvsStreamConfig> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
   const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/stream-config`;
 
   const res = await fetch(url, {
