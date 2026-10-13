@@ -146,7 +146,7 @@ const PRODUCT_SELECT = `
       SELECT 1
       FROM livestream_products lp
       JOIN livestreams l ON l.id = lp.livestream_id AND l.status = 'live'
-      WHERE lp.product_id = p.livestream_product_id AND lp.is_featured
+      WHERE lp.product_id = p.livestream_product_id::text AND lp.is_featured
     ) AS "isPinned",
     CASE
       WHEN p.status = 'archived' THEN p.status
