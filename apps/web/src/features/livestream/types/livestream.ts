@@ -41,6 +41,7 @@ export interface Livestream {
 
 export interface LiveProductItem {
     id: string; // Mã chốt đơn / Product code (e.g. AO01, DM02)
+    liveProductId?: string;
     sku: string;
     name: string;
     price: number;

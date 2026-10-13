@@ -30,8 +30,15 @@ import {
 } from "../../api/get-livestreams";
 import type { StudioProductItem } from "../../types/studio";
 import type { Livestream, LivestreamStatus } from "../../types/livestream";
-import { updateLivestreamProduct } from "../../api/livestream-products";
 import { useIvsBroadcast } from "../../hooks/use-ivs-broadcast";
+import {
+  getLivestreamProducts,
+  getProductUuid,
+  updateLivestreamProduct,
+} from "../../api/livestream-products";
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface BroadcastStudioProps {
   livestreamId: string;
@@ -184,6 +191,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       originalPrice: p.originalPrice,
       stock: p.stock,
       image: p.image,
+      liveProductId: p.liveProductId,
       isPinned: Boolean(p.isPinned),
       orderCode: p.id,
       salesCount: p.chatOrders || 0,
@@ -216,6 +224,34 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     const pinned = allProducts.find((p) => p.isPinned);
     return pinned || (allProducts.length > 0 ? allProducts[0] : null);
   });
+  const [pinError, setPinError] = useState("");
+
+  useEffect(() => {
+    if (!UUID_PATTERN.test(livestreamId)) return;
+    let current = true;
+    getLivestreamProducts(livestreamId)
+      .then(({ data }) => {
+        if (!current) return;
+        const featured = data.find((item) => item.isFeatured);
+        const pinned = featured
+          ? allProducts.find(
+              (product) =>
+                getProductUuid(product.liveProductId ?? product.id) === featured.productId
+            ) ?? null
+          : null;
+        setPinnedProduct(pinned);
+        setPinError("");
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setPinError(
+          error instanceof Error ? error.message : "Không thể tải trạng thái ghim livestream."
+        );
+      });
+    return () => {
+      current = false;
+    };
+  }, [allProducts, livestreamId]);
 
   // Danh sách sản phẩm chưa ghim
   const unpinnedProducts = useMemo(() => {
@@ -352,7 +388,23 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  const handlePinProduct = (product: StudioProductItem) => {
+  // Thao tác Ghim sản phẩm
+  const handlePinProduct = async (product: StudioProductItem) => {
+    if (UUID_PATTERN.test(livestreamId)) {
+      try {
+        await updateLivestreamProduct(
+          livestreamId,
+          product.liveProductId ?? product.id,
+          { isFeatured: true }
+        );
+      } catch (error) {
+        setPinError(
+          error instanceof Error ? error.message : "Không thể ghim sản phẩm trên livestream."
+        );
+        return;
+      }
+    }
+    setPinError("");
     setPinnedProduct(product);
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (UUID_REGEX.test(livestreamId)) {
@@ -362,15 +414,24 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
-  const handleUnpinProduct = () => {
-    const prevPinned = pinnedProduct;
-    setPinnedProduct(null);
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (prevPinned && UUID_REGEX.test(livestreamId)) {
-      updateLivestreamProduct(livestreamId, prevPinned.id, { isFeatured: false }).catch((err) => {
-        console.warn("[Studio] Error syncing unpin status to backend:", err);
-      });
+  // Thao tác Gỡ ghim
+  const handleUnpinProduct = async () => {
+    if (UUID_PATTERN.test(livestreamId) && pinnedProduct) {
+      try {
+        await updateLivestreamProduct(
+          livestreamId,
+          pinnedProduct.liveProductId ?? pinnedProduct.id,
+          { isFeatured: false }
+        );
+      } catch (error) {
+        setPinError(
+          error instanceof Error ? error.message : "Không thể bỏ ghim sản phẩm livestream."
+        );
+        return;
+      }
     }
+    setPinError("");
+    setPinnedProduct(null);
   };
 
   const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
@@ -573,6 +634,15 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         onToggleTheaterMode={handleToggleTheaterMode}
         className="shrink-0"
       />
+      {pinError && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-rose-800 bg-rose-950/70 px-3 py-2 text-xs text-rose-200"
+          role="alert"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{pinError}</span>
+        </div>
+      )}
 
       {/* 2. Amazon IVS Stream Telemetry Header with OBS Config button */}
       <div className="flex items-center justify-between bg-[#111726] border-b border-slate-800/90 pr-3">

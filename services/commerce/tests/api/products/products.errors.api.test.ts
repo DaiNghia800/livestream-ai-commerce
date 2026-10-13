@@ -12,7 +12,9 @@ const endpoints: Call[] = [
   { method: "get", path: "/api/products/export.xlsx" },
   { method: "get", path: "/api/products" },
   { method: "get", path: "/api/products/categories" },
+  { method: "post", path: "/api/products/categories", body: { name: "Shoes" } },
   { method: "get", path: "/api/products/1" },
+  { method: "get", path: "/api/products/1/history" },
   { method: "post", path: "/api/products", body: { code: "A", name: "A" } },
   { method: "patch", path: "/api/products/1", body: { name: "B" } },
   { method: "delete", path: "/api/products/1" },
@@ -43,7 +45,9 @@ describe("Products API - error handling", () => {
       list: vi.fn(),
       listForExport: vi.fn(),
       findById: vi.fn(),
+      listEditHistory: vi.fn(),
       listCategories: vi.fn(),
+      createCategory: vi.fn(),
       create: vi.fn(),
       importMany: vi.fn(),
       update: vi.fn(),
@@ -84,11 +88,11 @@ describe("Products API - error handling", () => {
     vi.mocked(repository.createImage).mockResolvedValue(null);
     vi.mocked(repository.removeImage).mockResolvedValue(false);
     for (const call of [
-      endpoints[6],
-      endpoints[7],
-      endpoints[10],
-      endpoints[12],
-    ]) {
+      { method: "delete", path: "/api/products/1" },
+      { method: "post", path: "/api/products/1/skus", body: { skuCode: "S", variantName: "V", price: 1 } },
+      { method: "post", path: "/api/products/1/images", body: { url: "https://x.test/a.png" } },
+      { method: "delete", path: "/api/products/1/images/3" },
+    ] satisfies Call[]) {
       const response = await send(call);
       expect(response.status, `${call.method} ${call.path}`).toBe(404);
     }

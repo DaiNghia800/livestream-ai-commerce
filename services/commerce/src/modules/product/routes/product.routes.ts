@@ -56,6 +56,7 @@ export function createProductRouter(customRepository?: IProductRepository): Rout
   );
 
   router.get("/categories", controller.listCategories);
+  router.post("/categories", controller.createCategory);
   router.use(requireShopHeader);
   router.get("/export.xlsx", controller.exportExcel);
   router.post(
@@ -68,6 +69,7 @@ export function createProductRouter(customRepository?: IProductRepository): Rout
   );
   router.get("/", controller.list);
   router.post("/", controller.create);
+  router.get("/:id/history", requireNumericId("id"), controller.getEditHistory);
   router.get("/:id", requireNumericId("id"), controller.getById);
   router.patch("/:id", requireNumericId("id"), controller.update);
   router.delete("/:id", requireNumericId("id"), controller.archive);

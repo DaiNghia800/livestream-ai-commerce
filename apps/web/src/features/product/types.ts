@@ -30,10 +30,12 @@ export interface CatalogProductSummary {
   activeProducts: number;
   skuCount: number;
   inactiveProducts: number;
+  updatedThisWeekCount: number;
 }
 
 export interface ProductListItem {
   id: string;
+  livestreamProductId?: string;
   code: string;
   sku: string;
   name: string;
@@ -43,7 +45,7 @@ export interface ProductListItem {
   originalPrice?: number;
   availableStock: number | null;
   reservedStock: number | null;
-  status: "active" | "inactive";
+  status: "active" | "archived" | "discontinued";
   imageUrl?: string;
   isBestSeller?: boolean;
   isPinned?: boolean;

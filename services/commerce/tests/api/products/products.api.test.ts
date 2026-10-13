@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
 import {
   DuplicateProductCodeError,
+  DuplicateProductImageError,
   ProductImageLimitError,
   type IProductRepository,
 } from "../../../src/modules/product/repositories/product.repository.js";
@@ -27,13 +28,28 @@ const product: Product = {
 describe("Products API", () => {
   let repository: IProductRepository;
   let app: ReturnType<typeof createApp>;
+  const summary = {
+    totalProducts: 1,
+    activeProducts: 1,
+    skuCount: 2,
+    inactiveProducts: 0,
+    updatedThisWeekCount: 1,
+  };
 
   beforeEach(() => {
     repository = {
-      list: vi.fn().mockResolvedValue({ data: [product], page: 2, pageSize: 5, total: 1 }),
-      listForExport: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue({
+        data: [product],
+        page: 2,
+        pageSize: 5,
+        total: 1,
+        summary,
+      }),
+      listForExport: vi.fn().mockResolvedValue([product]),
       findById: vi.fn().mockResolvedValue(product),
+      listEditHistory: vi.fn().mockResolvedValue([]),
       listCategories: vi.fn().mockResolvedValue([{ id: 1, name: "Clothing", parentId: null }]),
+      createCategory: vi.fn().mockResolvedValue({ id: 2, name: "Shoes", parentId: null }),
       create: vi.fn().mockResolvedValue(product),
       importMany: vi.fn().mockResolvedValue([product]),
       update: vi.fn().mockResolvedValue(product),
@@ -62,7 +78,13 @@ describe("Products API", () => {
       .set("X-Shop-Id", "7");
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ page: 2, pageSize: 5, total: 1, data: [product] });
+    expect(response.body).toMatchObject({
+      page: 2,
+      pageSize: 5,
+      total: 1,
+      data: [product],
+      summary,
+    });
     expect(repository.list).toHaveBeenCalledWith(7, {
       q: "linen",
       categoryId: 2,
@@ -117,6 +139,23 @@ describe("Products API", () => {
     expect(repository.findById).toHaveBeenCalledWith(8, "41");
   });
 
+  it("returns edit history for a product in the selected shop", async () => {
+    const history = [{
+      id: "9",
+      summary: "Cập nhật thông tin sản phẩm",
+      changes: { name: { from: "Old", to: "New" } },
+      createdAt: "2026-10-13T10:30:00.000Z",
+    }];
+    vi.mocked(repository.listEditHistory).mockResolvedValue(history);
+    const response = await request(app)
+      .get("/api/products/41/history")
+      .set("X-Shop-Id", "7");
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual(history);
+    expect(repository.listEditHistory).toHaveBeenCalledWith(7, "41");
+  });
+
   it("archives products through DELETE", async () => {
     const response = await request(app)
       .delete("/api/products/41")
@@ -133,6 +172,7 @@ describe("Products API", () => {
       productId: "41",
       skuId: null,
       url: "https://example.com/product.jpg",
+      contentHash: "a".repeat(64),
       isPrimary: true,
       sortOrder: 0,
       createdAt: "2026-10-09T00:00:00.000Z",
@@ -141,14 +181,26 @@ describe("Products API", () => {
     const created = await request(app)
       .post("/api/products/41/images")
       .set("X-Shop-Id", "7")
-      .send({ url: image.url, isPrimary: true });
+      .send({ url: image.url, contentHash: image.contentHash, isPrimary: true });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject(image);
     expect(repository.createImage).toHaveBeenCalledWith(7, "41", {
       url: image.url,
+      contentHash: image.contentHash,
       isPrimary: true,
       sortOrder: 0,
     });
+  });
+
+  it("rejects duplicate product images", async () => {
+    vi.mocked(repository.createImage).mockRejectedValueOnce(new DuplicateProductImageError());
+    const response = await request(app)
+      .post("/api/products/41/images")
+      .set("X-Shop-Id", "7")
+      .send({ url: "https://example.com/duplicate.jpg", contentHash: "a".repeat(64) });
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toBe("Ảnh sản phẩm không được trùng nhau.");
   });
 
   it("rejects product images after reaching the configured limit", async () => {
@@ -182,6 +234,27 @@ describe("Products API", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([{ id: 1, name: "Clothing", parentId: null }]);
+  });
+
+  it("creates a new global category", async () => {
+    const response = await request(app)
+      .post("/api/products/categories")
+      .send({ name: "Shoes" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual({ id: 2, name: "Shoes", parentId: null });
+    expect(repository.createCategory).toHaveBeenCalledWith("Shoes");
+  });
+
+  it("rejects blank and overlong category names", async () => {
+    const blank = await request(app).post("/api/products/categories").send({ name: " " });
+    const longName = await request(app)
+      .post("/api/products/categories")
+      .send({ name: "a".repeat(151) });
+
+    expect(blank.status).toBe(400);
+    expect(longName.status).toBe(400);
+    expect(repository.createCategory).not.toHaveBeenCalled();
   });
 
   it("exports an xlsx workbook scoped to the requested shop", async () => {

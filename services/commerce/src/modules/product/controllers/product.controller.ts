@@ -11,13 +11,16 @@ import {
 } from "../schemas/product.schema.js";
 import {
   DuplicateProductCodeError,
+  DuplicateProductImageError,
   DuplicateSkuCodeError,
   InvalidProductReferenceError,
   ProductImageLimitError,
+  ProductOutOfStockError,
 } from "../repositories/product.repository.js";
 import { ProductNotFoundError, ProductService } from "../services/product.service.js";
 import {
   InvalidProductWorkbookError,
+  NoProductsToExportError,
   ProductSpreadsheetService,
 } from "../services/product-spreadsheet.service.js";
 
@@ -76,12 +79,38 @@ export class ProductController {
     }
   };
 
+  createCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const name =
+        typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      if (!name || name.length > 150) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: "Category name is required and must be at most 150 characters.",
+        });
+        return;
+      }
+      res.status(201).json({ data: await this.service.createCategory(name) });
+    } catch (error) {
+      this.handleError(error, res, "Failed to create product category");
+    }
+  };
+
   getById = async (req: Request, res: Response): Promise<void> => {
     try {
       const product = await this.service.findById(req.shopId!, req.params.id);
       res.status(200).json(product);
     } catch (error) {
       this.handleError(error, res, "Failed to fetch product");
+    }
+  };
+
+  getEditHistory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const history = await this.service.listEditHistory(req.shopId!, req.params.id);
+      res.status(200).json({ data: history });
+    } catch (error) {
+      this.handleError(error, res, "Failed to fetch product edit history");
     }
   };
 
@@ -183,6 +212,10 @@ export class ProductController {
       res.status(404).json({ error: "NotFoundError", message: error.message });
       return;
     }
+    if (error instanceof NoProductsToExportError) {
+      res.status(404).json({ error: "NotFoundError", message: error.message });
+      return;
+    }
     if (
       error instanceof DuplicateProductCodeError ||
       error instanceof DuplicateSkuCodeError
@@ -190,7 +223,11 @@ export class ProductController {
       res.status(409).json({ error: "ConflictError", message: error.message });
       return;
     }
-    if (error instanceof ProductImageLimitError) {
+    if (error instanceof ProductOutOfStockError) {
+      res.status(409).json({ error: "ConflictError", message: error.message });
+      return;
+    }
+    if (error instanceof ProductImageLimitError || error instanceof DuplicateProductImageError) {
       res.status(409).json({ error: "ConflictError", message: error.message });
       return;
     }

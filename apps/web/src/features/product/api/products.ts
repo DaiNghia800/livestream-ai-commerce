@@ -19,6 +19,8 @@ export interface BackendSku {
   price: string;
   aiCode?: string | null;
   stock: number;
+  availableStock?: number;
+  reservedStock?: number;
   status: "active" | "archived" | "discontinued";
 }
 
@@ -27,13 +29,22 @@ export interface ProductImage {
   productId: string;
   skuId: string | null;
   url: string;
+  contentHash?: string | null;
   isPrimary: boolean;
   sortOrder: number;
   createdAt: string;
 }
 
+export interface ProductEditHistoryEntry {
+  id: string;
+  summary: string;
+  changes: Record<string, { from: unknown; to: unknown }>;
+  createdAt: string;
+}
+
 export interface BackendProduct {
   id: string;
+  livestreamProductId?: string;
   shopId: number;
   categoryId: number | null;
   code: string;
@@ -42,6 +53,8 @@ export interface BackendProduct {
   description: string | null;
   brand?: string | null;
   listPrice?: string | null;
+  isBestSeller?: boolean;
+  isPinned?: boolean;
   stockWarning: number;
   triggerCode?: string | null;
   holdInventory?: boolean;
@@ -91,7 +104,7 @@ export interface ProductInput {
 
 export interface CreateProductInput extends ProductInput {
   skus?: ProductSkuInput[];
-  images?: Pick<ProductImage, "url" | "isPrimary" | "sortOrder">[];
+  images?: Pick<ProductImage, "url" | "contentHash" | "isPrimary" | "sortOrder">[];
 }
 
 export interface ProductSkuInput {
@@ -108,6 +121,13 @@ export class ProductApiError extends Error {
     super(message);
     this.name = "ProductApiError";
   }
+}
+
+export async function getImageContentHash(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
 }
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -143,6 +163,13 @@ async function productRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getProduct(productId: string, signal?: AbortSignal): Promise<BackendProduct> {
   return productRequest<BackendProduct>(`/api/products/${encodeURIComponent(productId)}`, { signal });
+}
+
+export async function getProductEditHistory(productId: string): Promise<ProductEditHistoryEntry[]> {
+  const result = await productRequest<{ data: ProductEditHistoryEntry[] }>(
+    `/api/products/${encodeURIComponent(productId)}/history`
+  );
+  return result.data;
 }
 
 export async function updateProduct(productId: string, input: ProductInput): Promise<BackendProduct> {
@@ -186,7 +213,7 @@ export async function discontinueProductSku(productId: string, skuId: string): P
 
 export async function createProductImage(
   productId: string,
-  input: Pick<ProductImage, "url" | "isPrimary" | "sortOrder">
+  input: Pick<ProductImage, "url" | "contentHash" | "isPrimary" | "sortOrder">
 ): Promise<ProductImage> {
   return productRequest<ProductImage>(`/api/products/${encodeURIComponent(productId)}/images`, {
     method: "POST",
@@ -269,22 +296,36 @@ export async function uploadProductImage(file: File): Promise<string> {
 }
 
 function mapProduct(product: BackendProduct): ProductListItem {
-  const sku = product.skus.find((item) => item.status === "active") ?? product.skus[0];
+  const activeSkus = product.skus.filter((item) => item.status === "active");
+  const sku = activeSkus[0];
   const image =
     product.images.find((item) => item.isPrimary) ??
     [...product.images].sort((left, right) => left.sortOrder - right.sortOrder)[0];
 
   return {
     id: product.id,
+    livestreamProductId: product.livestreamProductId,
     code: product.code,
     sku: sku?.skuCode ?? "—",
     name: product.name,
     category: product.categoryName ?? "Chưa phân loại",
-    variantDetails: product.skus.map((item) => item.variantName).join(", ") || "Chưa có SKU",
+    variantDetails: activeSkus.map((item) => item.variantName).join(", ") || "Chưa có SKU đang bán",
     livePrice: sku ? Number(sku.price) : 0,
-    availableStock: null,
-    reservedStock: null,
-    status: product.status === "active" ? "active" : "inactive",
+    originalPrice: product.listPrice == null ? undefined : Number(product.listPrice),
+    availableStock: activeSkus
+      .reduce((total, item) => total + (item.availableStock ?? 0), 0),
+    reservedStock: sku?.reservedStock ?? null,
+    status:
+      product.status === "archived" ||
+      !product.skus.some(
+        (item) => item.status === "active" && (item.availableStock ?? 0) > 0
+      )
+        ? "archived"
+        : product.status === "discontinued"
+          ? "discontinued"
+          : "active",
+    isBestSeller: product.isBestSeller,
+    isPinned: product.isPinned,
     imageUrl: image?.url,
   };
 }
@@ -329,9 +370,17 @@ export async function getProductCategories(signal?: AbortSignal): Promise<Produc
   return result.data;
 }
 
+export async function createProductCategory(name: string): Promise<ProductCategory> {
+  const result = await productRequest<{ data: ProductCategory }>("/api/products/categories", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  return result.data;
+}
+
 export async function updateProductStatus(
   productId: string,
-  status: "active" | "archived"
+  status: "active" | "discontinued"
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
     method: "PATCH",
