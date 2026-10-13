@@ -29,7 +29,8 @@ import {
   type IvsStreamConfig,
 } from "../../api/get-livestreams";
 import type { StudioProductItem } from "../../types/studio";
-import type { LivestreamStatus } from "../../types/livestream";
+import type { Livestream, LivestreamStatus } from "../../types/livestream";
+import { useIvsBroadcast } from "../../hooks/use-ivs-broadcast";
 import {
   getLivestreamProducts,
   getProductUuid,
@@ -431,12 +432,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
     setPinError("");
     setPinnedProduct(null);
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (prevPinned && UUID_REGEX.test(livestreamId)) {
-      updateLivestreamProduct(livestreamId, prevPinned.id, { isFeatured: false }).catch((err) => {
-        console.warn("[Studio] Error syncing unpin status to backend:", err);
-      });
-    }
   };
 
   const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
