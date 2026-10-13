@@ -353,4 +353,208 @@ describe("LivestreamService - Unit Tests", () => {
     expect(result).not.toBeNull();
     expect(result?.products).toEqual([]);
   });
+
+  it("UT-LS-018 - updateLivestreamStatus returns null when livestream does not exist", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(null);
+
+    const result = await service.updateLivestreamStatus("missing-id", "live");
+
+    expect(result).toBeNull();
+  });
+
+  it("UT-LS-019 - updateLivestreamStatus throws error when restarting an ended livestream", async () => {
+    vi.mocked(repository.findById).mockResolvedValue({
+      ...createdLivestream,
+      status: "ended",
+    });
+
+    await expect(
+      service.updateLivestreamStatus(createdLivestream.id, "live")
+    ).rejects.toThrow("Cannot restart an ended livestream");
+  });
+
+  it("UT-LS-020 - updateLivestreamStatus delegates to repository on valid transition", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    const updatedLivestream = { ...createdLivestream, status: "live" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const result = await service.updateLivestreamStatus(createdLivestream.id, "live");
+
+    expect(result).toEqual(updatedLivestream);
+    expect((repository as any).updateStatus).toHaveBeenCalledWith(createdLivestream.id, "live");
+  });
+
+  it("UT-LS-021 - getOrCreateIvsStreamConfig returns null when livestream is not found", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(null);
+
+    const result = await service.getOrCreateIvsStreamConfig("missing-id");
+
+    expect(result).toBeNull();
+    expect(repository.findById).toHaveBeenCalledWith("missing-id");
+  });
+
+  it("UT-LS-022 - getOrCreateIvsStreamConfig throws when IVS service is not provided", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    const serviceNoIvs = new LivestreamService(repository, undefined, undefined);
+
+    await expect(
+      serviceNoIvs.getOrCreateIvsStreamConfig(createdLivestream.id)
+    ).rejects.toThrow("AWS IVS service is not configured");
+  });
+
+  it("UT-LS-023 - getOrCreateIvsStreamConfig returns existing config if channel is already provisioned", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/existing-ch",
+      playbackUrl: "https://playback.live-video.net/existing.m3u8",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn().mockResolvedValue({
+        channelArn: livestreamWithIvs.channelArn,
+        playbackUrl: livestreamWithIvs.playbackUrl,
+        ingestEndpoint: "rtmps://existing.live-video.net:443/app/",
+        streamKeyValue: "mock-stream-key-existing",
+      }),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(livestreamWithIvs.id);
+
+    expect(result).toEqual({
+      channelArn: livestreamWithIvs.channelArn,
+      playbackUrl: livestreamWithIvs.playbackUrl,
+      ingestEndpoint: "rtmps://existing.live-video.net:443/app/",
+      streamKey: "mock-stream-key-existing",
+    });
+    expect(mockIvs.getStreamConfig).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+    expect(mockIvs.createChannel).not.toHaveBeenCalled();
+  });
+
+  it("UT-LS-024 - getOrCreateIvsStreamConfig provisions new channel and updates repository when not yet provisioned", async () => {
+    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    (repository as any).updateIvsChannel = vi.fn().mockResolvedValue(undefined);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn().mockResolvedValue({
+        channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
+        playbackUrl: "https://playback.live-video.net/new.m3u8",
+        ingestEndpoint: "rtmps://new.live-video.net:443/app/",
+        streamKeyValue: "mock-stream-key-new",
+      }),
+      getStreamConfig: vi.fn().mockResolvedValue(null),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(createdLivestream.id);
+
+    expect(result).toEqual({
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
+      playbackUrl: "https://playback.live-video.net/new.m3u8",
+      ingestEndpoint: "rtmps://new.live-video.net:443/app/",
+      streamKey: "mock-stream-key-new",
+    });
+    expect(mockIvs.createChannel).toHaveBeenCalledWith(createdLivestream.title);
+    expect((repository as any).updateIvsChannel).toHaveBeenCalledWith(
+      createdLivestream.id,
+      "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
+      "https://playback.live-video.net/new.m3u8"
+    );
+  });
+
+  it("UT-LS-025 - updateLivestreamStatus triggers ivsService.deleteChannel when status changes to ended", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/live-to-end",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "ended" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
+
+  it("UT-LS-026 - updateLivestreamStatus triggers ivsService.deleteChannel when status changes to cancelled", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/live-to-cancel",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "cancelled" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "cancelled");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
+
+  it("UT-LS-027 - updateLivestreamStatus does not trigger deleteChannel when status is live", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/stay-live",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "live" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "live");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("UT-LS-028 - updateLivestreamStatus succeeds gracefully even if ivsService.deleteChannel fails", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/error-channel",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const updatedLivestream = { ...livestreamWithIvs, status: "ended" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockRejectedValue(new Error("IVS AWS API down")),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+
+    expect(result).toEqual(updatedLivestream);
+    expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
 });

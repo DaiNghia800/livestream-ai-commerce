@@ -83,7 +83,7 @@ export function StudioDeviceControls({
             value={selectedCameraId}
             title={`Thiết bị camera: ${currentCamLabel}`}
             onChange={(e) => onCameraChange?.(e.target.value)}
-            className="w-auto max-w-[95px] sm:max-w-[105px] xl:max-w-[115px] 2xl:max-w-[135px] truncate bg-[#1F2A3F] text-slate-100 text-xs rounded-lg border border-slate-700 py-1.5 pl-2 pr-5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="studio-select w-auto max-w-[95px] sm:max-w-[105px] xl:max-w-[115px] 2xl:max-w-[135px] truncate bg-[#1F2A3F] text-slate-100 text-xs rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {videoDevices.length > 0 ? (
               videoDevices.map((cam) => (
@@ -111,7 +111,7 @@ export function StudioDeviceControls({
             value={selectedMicId}
             title={`Thiết bị micro: ${currentMicLabel}`}
             onChange={(e) => onMicrophoneChange?.(e.target.value)}
-            className="w-auto max-w-[95px] sm:max-w-[105px] xl:max-w-[115px] 2xl:max-w-[135px] truncate bg-[#1F2A3F] text-slate-100 text-xs rounded-lg border border-slate-700 py-1.5 pl-2 pr-5 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="studio-select w-auto max-w-[95px] sm:max-w-[105px] xl:max-w-[115px] 2xl:max-w-[135px] truncate bg-[#1F2A3F] text-slate-100 text-xs rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500 font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {audioDevices.length > 0 ? (
               audioDevices.map((mic) => (

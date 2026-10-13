@@ -26,6 +26,21 @@ export interface BackendLivestreamItem {
   createdAt: string;
   updatedAt: string;
   productCount: number;
+  products?: Array<{
+    id: string;
+    livestreamId: string;
+    productId: string;
+    variantId: string | null;
+    displayOrder: number;
+    isFeatured: boolean;
+    createdAt: string;
+    productName?: string | null;
+    productCode?: string | null;
+    skuCode?: string | null;
+    variantName?: string | null;
+    price?: number | null;
+    imageUrl?: string | null;
+  }>;
 }
 
 export interface BackendLivestreamListResponse {
@@ -45,6 +60,12 @@ export interface BackendLivestreamDetailResponse extends BackendLivestreamItem {
     displayOrder: number;
     isFeatured: boolean;
     createdAt: string;
+    productName?: string | null;
+    productCode?: string | null;
+    skuCode?: string | null;
+    variantName?: string | null;
+    price?: number | null;
+    imageUrl?: string | null;
   }>;
 }
 
@@ -160,8 +181,20 @@ export function mapBackendLivestreamToFrontend(
     channelName: item.channelArn ? "AWS IVS Channel" : "LiveOrder RTMP",
     ivsChannel: item.channelArn || "Chưa cấu hình",
     resolution: "1080p60",
-    hostName: "Merchant Store",
-    productCount: item.productCount || 0,
+    productCount:
+      item.productCount || (Array.isArray(item.products) ? item.products.length : 0),
+    products: Array.isArray(item.products)
+      ? item.products.map((p) => ({
+          id: p.productId || p.id,
+          sku: p.skuCode || p.productCode || p.productId,
+          name: p.productName || `Sản phẩm #${p.productId}`,
+          price: typeof p.price === "number" ? p.price : 0,
+          originalPrice: undefined,
+          stock: 100,
+          image: p.imageUrl || undefined,
+          isPinned: Boolean(p.isFeatured),
+        }))
+      : undefined,
     scheduledAt: item.scheduledAt || undefined,
     startedAt: item.startedAt || undefined,
     endedAt: item.endedAt || undefined,
@@ -246,12 +279,23 @@ export async function getLivestreams(
   };
 }
 
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(id: string): boolean {
+  return UUID_V4_REGEX.test(id);
+}
+
 /**
  * Gọi API GET /api/livestreams/:id lấy chi tiết phiên livestream
  */
 export async function getLivestreamDetail(
   id: string
 ): Promise<BackendLivestreamDetailResponse> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
   const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}`;
 
   const res = await fetch(url, {
@@ -265,3 +309,78 @@ export async function getLivestreamDetail(
 
   return (await res.json()) as BackendLivestreamDetailResponse;
 }
+
+/**
+ * Gọi API PATCH /api/livestreams/:id/status cập nhật trạng thái phiên livestream (bắt đầu, kết thúc...)
+ */
+export async function updateLivestreamStatus(
+  id: string,
+  status: "draft" | "scheduled" | "live" | "ended" | "cancelled",
+  merchantId: string = DEFAULT_DEV_MERCHANT_ID
+): Promise<BackendLivestreamItem> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/status`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Merchant-Id": merchantId,
+    },
+    body: JSON.stringify({ status }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Cập nhật trạng thái livestream thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as BackendLivestreamItem;
+}
+
+export interface IvsStreamConfig {
+  channelArn: string;
+  playbackUrl: string;
+  ingestEndpoint: string;
+  streamKey?: string;
+}
+
+/**
+ * Gọi API GET /api/livestreams/:id/stream-config để lấy hoặc tự động khởi tạo Channel IVS & Stream Key
+ */
+export async function getIvsStreamConfig(
+  id: string,
+  merchantId: string = DEFAULT_DEV_MERCHANT_ID
+): Promise<IvsStreamConfig> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/stream-config`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "X-Merchant-Id": merchantId,
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Lấy cấu hình phát sóng IVS thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as IvsStreamConfig;
+}
+
+

@@ -39,9 +39,23 @@ export default function setup() {
       return;
     }
 
-    const pool = new pg.Pool({ connectionString: config.databaseUrl });
+    const targetDb =
+      process.env.COMMERCE_DATABASE_URL ||
+      process.env.DATABASE_URL ||
+      (process.env.CI
+        ? "postgresql://postgres:postgres@localhost:5432/commerce_db"
+        : "postgresql://postgres:postgres@localhost:5432/commerce_test_db");
+
+    // Bảo vệ database dev: nếu không ở môi trường CI và không phải database test riêng thì KHÔNG xoá
+    if (!process.env.CI && !targetDb.includes("_test")) {
+      console.log("[test] Đang kết nối database dev chính, bỏ qua TRUNCATE để bảo vệ dữ liệu.");
+      return;
+    }
+
+    const pool = new pg.Pool({ connectionString: targetDb });
     try {
       await pool.query(`TRUNCATE ${TABLES} RESTART IDENTITY CASCADE`);
+      console.log("[test] Đã dọn dẹp sạch sẽ database test (commerce_test_db).");
     } finally {
       await pool.end();
     }

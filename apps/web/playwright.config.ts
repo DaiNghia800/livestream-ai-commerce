@@ -11,7 +11,7 @@ export default defineConfig({
   // Thử lại một lần cả ở máy cá nhân, không chỉ CI: một lần đỏ rồi
   // xanh lại là dấu hiệu tranh chấp, còn đỏ hai lần mới là lỗi thật.
   retries: 1,
-  workers: process.env.CI ? 2 : 3,
+  workers: process.env.CI ? 2 : 2,
   use: {
     baseURL: "http://localhost:3100",
     trace: "retain-on-failure",
@@ -25,5 +25,8 @@ export default defineConfig({
     command: "npm run start -- --port 3100",
     url: "http://localhost:3100",
     reuseExistingServer: false,
+    env: {
+      NODE_OPTIONS: "--max-old-space-size=4096",
+    },
   },
 });

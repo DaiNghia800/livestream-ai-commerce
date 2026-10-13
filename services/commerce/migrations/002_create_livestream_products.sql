@@ -1,8 +1,8 @@
 CREATE TABLE livestream_products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     livestream_id UUID NOT NULL,
-    product_id UUID NOT NULL,
-    variant_id UUID,
+    product_id VARCHAR(64) NOT NULL,
+    variant_id VARCHAR(64),
     display_order INTEGER NOT NULL DEFAULT 0
         CHECK (display_order >= 0),
     is_featured BOOLEAN NOT NULL DEFAULT FALSE,

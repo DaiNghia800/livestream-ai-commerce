@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { InMemoryLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { InMemoryLivestreamProductRepository } from "../../../src/modules/livestream/repositories/livestream-product.repository.js";
+import { InMemoryIvsService } from "../../../src/shared/ivs/ivs.service.js";
 
 const VALID_MERCHANT_ID = "a0000000-0000-0000-0000-000000000001";
 const OTHER_MERCHANT_ID = "b0000000-0000-0000-0000-000000000002";
@@ -10,12 +11,23 @@ const OTHER_MERCHANT_ID = "b0000000-0000-0000-0000-000000000002";
 describe("Livestream API - List and Get Detail Tests", () => {
   let mockLiveRepo: InMemoryLivestreamRepository;
   let mockProductRepo: InMemoryLivestreamProductRepository;
+  let mockIvsService: InMemoryIvsService;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
     mockLiveRepo = new InMemoryLivestreamRepository();
     mockProductRepo = new InMemoryLivestreamProductRepository();
-    app = createApp(mockLiveRepo, undefined, mockProductRepo);
+    mockIvsService = new InMemoryIvsService();
+    app = createApp(
+      mockLiveRepo,
+      undefined,
+      mockProductRepo,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      mockIvsService
+    );
   });
 
   // =========================================================================
@@ -465,4 +477,256 @@ describe("Livestream API - List and Get Detail Tests", () => {
       expect(res.body.error).toBe("InternalServerError");
     });
   });
+
+  // =========================================================================
+  // PATCH /api/livestreams/:id/status (Update Livestream Status)
+  // =========================================================================
+  describe("PATCH /api/livestreams/:id/status", () => {
+    it("TC-ST-001 - Missing X-Merchant-Id header -> HTTP 400", async () => {
+      const res = await request(app)
+        .patch("/api/livestreams/11111111-1111-4111-8111-111111111111/status")
+        .send({ status: "live" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("BadRequest");
+    });
+
+    it("TC-ST-002 - Invalid livestream ID format -> HTTP 400", async () => {
+      const res = await request(app)
+        .patch("/api/livestreams/not-a-valid-uuid/status")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("ValidationError");
+    });
+
+    it("TC-ST-003 - Invalid status value -> HTTP 400", async () => {
+      const res = await request(app)
+        .patch("/api/livestreams/11111111-1111-4111-8111-111111111111/status")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "unknown_status" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("ValidationError");
+    });
+
+    it("TC-ST-004 - Livestream session not found -> HTTP 404", async () => {
+      const res = await request(app)
+        .patch("/api/livestreams/99999999-9999-4999-8999-999999999999/status")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("NotFoundError");
+    });
+
+    it("TC-ST-005 - Start livestream (draft -> live): updates status and records startedAt -> HTTP 200", async () => {
+      const created = await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Flash Sale Live",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const res = await request(app)
+        .patch(`/api/livestreams/${created.id}/status`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(created.id);
+      expect(res.body.status).toBe("live");
+      expect(res.body.startedAt).toBeDefined();
+    });
+
+    it("TC-ST-006 - End livestream (live -> ended): updates status and records endedAt -> HTTP 200", async () => {
+      const created = await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Active Live Session",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+      });
+
+      const res = await request(app)
+        .patch(`/api/livestreams/${created.id}/status`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "ended" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(created.id);
+      expect(res.body.status).toBe("ended");
+      expect(res.body.endedAt).toBeDefined();
+    });
+
+    it("TC-ST-007 - Reject restart if livestream is already ended -> HTTP 400", async () => {
+      const created = await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Completed Session",
+        description: null,
+        coverImageKey: null,
+        status: "ended",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      });
+
+      const res = await request(app)
+        .patch(`/api/livestreams/${created.id}/status`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("InvalidStateTransition");
+    });
+
+    it("TC-ST-008 - Handle unexpected server error -> HTTP 500", async () => {
+      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+        new Error("Database crash")
+      );
+
+      const res = await request(app)
+        .patch("/api/livestreams/11111111-1111-4111-8111-111111111111/status")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe("InternalServerError");
+    });
+  });
+
+  // =========================================================================
+  // GET /api/livestreams/:id/stream-config (AWS IVS Stream Configuration)
+  // =========================================================================
+  describe("GET /api/livestreams/:id/stream-config", () => {
+    it("TC-SC-001 - Missing X-Merchant-Id header -> HTTP 400", async () => {
+      const res = await request(app).get(
+        "/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config"
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("BadRequest");
+    });
+
+    it("TC-SC-002 - Invalid livestream ID format -> HTTP 400", async () => {
+      const res = await request(app)
+        .get("/api/livestreams/invalid-uuid/stream-config")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("ValidationError");
+    });
+
+    it("TC-SC-003 - Livestream not found -> HTTP 404", async () => {
+      const res = await request(app)
+        .get("/api/livestreams/88888888-8888-4888-8888-888888888888/stream-config")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("NotFoundError");
+    });
+
+    it("TC-SC-004 - Auto-provisions IVS channel and returns stream config -> HTTP 200", async () => {
+      const created = await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Grand Opening Livestream",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const res = await request(app)
+        .get(`/api/livestreams/${created.id}/stream-config`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(200);
+      expect(res.body.channelArn).toContain("arn:aws:ivs:ap-southeast-1:");
+      expect(res.body.playbackUrl).toContain(".m3u8");
+      expect(res.body.ingestEndpoint).toContain("rtmps://");
+      expect(res.body.streamKey).toBeDefined();
+
+      // Verify that repository updated the livestream with the new channel ARN
+      const updatedLivestream = await mockLiveRepo.findById(created.id);
+      expect(updatedLivestream?.channelArn).toBe(res.body.channelArn);
+      expect(updatedLivestream?.playbackUrl).toBe(res.body.playbackUrl);
+    });
+
+    it("TC-SC-005 - Returns existing stream config when channel is already provisioned -> HTTP 200", async () => {
+      // First provision channel
+      const created = await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Evening Sale",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const firstRes = await request(app)
+        .get(`/api/livestreams/${created.id}/stream-config`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(firstRes.status).toBe(200);
+
+      // Second request should return the exact same channel without error
+      const secondRes = await request(app)
+        .get(`/api/livestreams/${created.id}/stream-config`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(secondRes.status).toBe(200);
+      expect(secondRes.body.channelArn).toBe(firstRes.body.channelArn);
+      expect(secondRes.body.streamKey).toBe(firstRes.body.streamKey);
+    });
+
+    it("TC-SC-006 - Handle AWS IVS not configured error -> HTTP 500 ConfigurationError", async () => {
+      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+        new Error("AWS IVS service is not configured")
+      );
+
+      const res = await request(app)
+        .get("/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe("ConfigurationError");
+    });
+
+    it("TC-SC-007 - Handle unexpected internal error -> HTTP 500 InternalServerError", async () => {
+      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+        new Error("Fatal AWS outage")
+      );
+
+      const res = await request(app)
+        .get("/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config")
+        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe("InternalServerError");
+    });
+  });
 });
+
+

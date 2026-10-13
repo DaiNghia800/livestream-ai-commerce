@@ -8,7 +8,6 @@ import { SessionProducts } from "./session-products";
 import { SessionSummary } from "./session-summary";
 import { CreateActions } from "./create-actions";
 import { ProductPicker } from "./product-picker";
-import { mockCatalogProducts } from "../../mocks/products.mock";
 import { mockLivestreams } from "../../mocks/livestream.mock";
 import type { LiveProductItem } from "../../types/livestream";
 import { CheckCircle2, AlertCircle } from "lucide-react";
@@ -48,36 +47,8 @@ export function LivestreamCreateForm() {
   const [endDate, setEndDate] = useState(getTodayDate());
   const [endTime, setEndTime] = useState("22:30");
 
-  // Initial products selected from catalog
-  const [products, setProducts] = useState<LiveProductItem[]>([
-    {
-      id: mockCatalogProducts[0].id,
-      sku: mockCatalogProducts[0].sku,
-      name: mockCatalogProducts[0].name,
-      price: mockCatalogProducts[0].price,
-      originalPrice: mockCatalogProducts[0].originalPrice,
-      stock: mockCatalogProducts[0].stock,
-      image: mockCatalogProducts[0].image,
-    },
-    {
-      id: mockCatalogProducts[1].id,
-      sku: mockCatalogProducts[1].sku,
-      name: mockCatalogProducts[1].name,
-      price: mockCatalogProducts[1].price,
-      originalPrice: mockCatalogProducts[1].originalPrice,
-      stock: mockCatalogProducts[1].stock,
-      image: mockCatalogProducts[1].image,
-    },
-    {
-      id: mockCatalogProducts[2].id,
-      sku: mockCatalogProducts[2].sku,
-      name: mockCatalogProducts[2].name,
-      price: mockCatalogProducts[2].price,
-      originalPrice: mockCatalogProducts[2].originalPrice,
-      stock: mockCatalogProducts[2].stock,
-      image: mockCatalogProducts[2].image,
-    },
-  ]);
+  // Initial products selected from catalog (default empty, user selects from catalog)
+  const [products, setProducts] = useState<LiveProductItem[]>([]);
 
   // UI state
   const [isPickerOpen, setIsPickerOpen] = useState(false);

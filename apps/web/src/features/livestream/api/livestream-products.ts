@@ -21,6 +21,12 @@ export interface BackendLivestreamProduct {
   displayOrder: number;
   isFeatured: boolean;
   createdAt: string;
+  productName?: string | null;
+  productCode?: string | null;
+  skuCode?: string | null;
+  variantName?: string | null;
+  price?: number | null;
+  imageUrl?: string | null;
 }
 
 export interface AddLivestreamProductPayload {
@@ -46,30 +52,11 @@ export class LivestreamProductApiError extends Error {
   }
 }
 
-// Map mock code (AO01, DM02,...) to stable deterministic UUIDs for backend PostgreSQL
-const MOCK_CODE_TO_UUID: Record<string, string> = {
-  AO01: "11111111-0000-4000-8000-000000000001",
-  DM02: "11111111-0000-4000-8000-000000000002",
-  QJ02: "11111111-0000-4000-8000-000000000003",
-  SM03: "11111111-0000-4000-8000-000000000004",
-  BL04: "11111111-0000-4000-8000-000000000005",
-  PK05: "11111111-0000-4000-8000-000000000006",
-};
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
- * Đảm bảo productId gửi lên backend luôn là một UUID hợp lệ.
+ * Giữ nguyên ID sản phẩm khi gửi lên backend (hỗ trợ cả UUID, BigInt string, và mã sản phẩm).
  */
 export function getProductUuid(productIdOrCode: string): string {
-  if (UUID_REGEX.test(productIdOrCode)) {
-    return productIdOrCode;
-  }
-  return (
-    MOCK_CODE_TO_UUID[productIdOrCode] ||
-    "22222222-0000-4000-8000-000000000001"
-  );
+  return productIdOrCode;
 }
 
 /**

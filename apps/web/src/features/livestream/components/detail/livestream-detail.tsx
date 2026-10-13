@@ -1,6 +1,14 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import { mockLivestreams } from "../../mocks/livestream.mock";
+import {
+  getLivestreamDetail,
+  mapBackendLivestreamToFrontend,
+} from "../../api/get-livestreams";
+import type { Livestream } from "../../types/livestream";
 import { DetailPageHeader } from "./detail-page-header";
 import { DetailSessionInfo } from "./detail-session-info";
 import { DetailKpiGrid } from "./detail-kpi-grid";
@@ -11,7 +19,40 @@ interface LivestreamDetailProps {
 }
 
 export function LivestreamDetail({ livestreamId }: LivestreamDetailProps) {
-  const session = mockLivestreams.find((item) => item.id === livestreamId);
+  const [session, setSession] = useState<Livestream | null>(() => {
+    return mockLivestreams.find((item) => item.id === livestreamId) || null;
+  });
+  const [isLoading, setIsLoading] = useState(!session);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadDetail() {
+      try {
+        const detail = await getLivestreamDetail(livestreamId);
+        if (!isMounted) return;
+        const mapped = mapBackendLivestreamToFrontend(detail);
+        setSession(mapped);
+      } catch (err) {
+        console.warn("[LivestreamDetail] Could not load detail from API:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadDetail();
+    return () => {
+      isMounted = false;
+    };
+  }, [livestreamId]);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto my-16 p-12 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-medium text-on-surface-variant">Đang tải chi tiết phiên Livestream...</p>
+      </div>
+    );
+  }
 
   // Xử lý phiên không tồn tại
   if (!session) {

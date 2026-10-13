@@ -3,11 +3,18 @@
 import { useId, type InputHTMLAttributes } from "react";
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
-  label: string;
+  label?: string;
   children: React.ReactNode;
 };
 
-export function Checkbox({ label, children, id, className = "", ...props }: Props) {
+export function Checkbox({
+  children,
+  id,
+  className = "",
+  label,
+  ...props
+}: Props) {
+  void label;
   const generated = useId();
   const fieldId = id ?? generated;
 
