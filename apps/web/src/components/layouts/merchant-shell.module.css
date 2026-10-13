@@ -316,6 +316,8 @@
   height: 36px;
   background: var(--color-surface-container-highest);
   box-shadow: inset 0 0 0 1px rgb(199 196 216 / 60%);
+}
+
 .headerLeft {
   display: flex;
   align-items: center;
