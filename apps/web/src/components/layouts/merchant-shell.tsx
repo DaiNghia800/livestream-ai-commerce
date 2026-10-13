@@ -103,7 +103,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         id={navigationId}
         className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""} ${
           isProductsPage ? styles.sidebarProduct : ""
-        }`}
+        } ${sidebarCollapsed ? styles.sidebarCollapsed : ""}`}
       >
         <div className={styles.sidebarHeader}>
           <div className={styles.brandRow}>
