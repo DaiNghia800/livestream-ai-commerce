@@ -39,7 +39,9 @@ describe("ProductSpreadsheetService", () => {
       list: vi.fn(),
       listForExport: vi.fn().mockResolvedValue([product]),
       findById: vi.fn(),
+      listEditHistory: vi.fn(),
       listCategories: vi.fn(),
+      createCategory: vi.fn(),
       create: vi.fn(),
       importMany: vi.fn().mockResolvedValue([product]),
       update: vi.fn(),
@@ -60,9 +62,72 @@ describe("ProductSpreadsheetService", () => {
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
 
     expect(repository.listForExport).toHaveBeenCalledWith(7, { q: "Linen" });
-    expect(workbook.worksheets[0].getRow(1).values).toContain("skuCode");
+    expect(workbook.worksheets[0].getRow(1).values).toEqual([
+      undefined,
+      "Mã chốt đơn chính",
+      "Tên sản phẩm",
+      "Mô tả",
+      "Mã danh mục",
+      "Trạng thái",
+      "Mã SKU",
+      "Phân loại",
+      "Giá Flash Live (VND)",
+      "Đường dẫn hình ảnh",
+    ]);
     expect(workbook.worksheets[0].getRow(2).getCell(1).text).toBe("LINEN-01");
+    expect(workbook.worksheets[0].getRow(2).getCell(5).text).toBe("Đang bán");
     expect(workbook.worksheets[0].getRow(2).getCell(6).text).toBe("LINEN-01-WHT-M");
+    expect(workbook.worksheets[0].getRow(1).getCell(1).font.bold).toBe(true);
+    expect(workbook.worksheets[0].getRow(1).getCell(1).fill.fgColor?.argb).toBe("FF3346A8");
+    expect(workbook.worksheets[0].getColumn(7).width).toBe(38);
+    expect(workbook.worksheets[0].getRow(2).getCell(8).numFmt).toBe("#,##0");
+    expect(workbook.worksheets[0].autoFilter).toBe("A1:I2");
+  });
+
+  it("imports an exported workbook with formatted prices", async () => {
+    const buffer = await service.export(7, {});
+
+    await expect(service.import(7, buffer)).resolves.toEqual({ products: 1, skus: 1 });
+    expect(repository.importMany).toHaveBeenCalledWith(7, [{
+      code: "LINEN-01",
+      name: "Linen shirt",
+      description: "Natural linen",
+      categoryId: null,
+      status: "active",
+      skus: [{
+        skuCode: "LINEN-01-WHT-M",
+        variantName: "White / M",
+        price: 299000,
+        status: "active",
+      }],
+      images: [],
+    }]);
+  });
+
+  it("reports when the current export filters match no products", async () => {
+    vi.mocked(repository.listForExport).mockResolvedValue([]);
+
+    await expect(service.export(7, {})).rejects.toThrow("Cửa hàng chưa có sản phẩm để xuất.");
+  });
+
+  it("imports Vietnamese headers as well as the legacy English headers", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Products");
+    worksheet.addRow([
+      "Mã chốt đơn chính",
+      "Tên sản phẩm",
+      "Mô tả",
+      "Mã danh mục",
+      "Trạng thái",
+      "Mã SKU",
+      "Phân loại",
+      "Giá Flash Live (VND)",
+      "Đường dẫn hình ảnh",
+    ]);
+    worksheet.addRow(["LINEN-VI", "Áo Linen", "", "", "Đang bán", "LINEN-VI-M", "Trắng / M", 299000, ""]);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    await expect(service.import(7, buffer)).resolves.toEqual({ products: 1, skus: 1 });
   });
 
   it("groups multiple rows with the same product code into one product with multiple SKUs", async () => {

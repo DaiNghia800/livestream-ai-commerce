@@ -11,8 +11,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Bot,
-  ArrowRight,
 } from "lucide-react";
 import { ProductKpiCards } from "@/components/ui/product-metrics-bar";
 import { ProductTable } from "@/components/ui/product-table";
@@ -26,6 +24,8 @@ import {
 } from "./api/products";
 import type { ProductCategory } from "./api/products";
 import type { CatalogProductSummary, ProductListItem } from "./types";
+import { getInventory } from "../inventory/api/inventory";
+import type { InventorySummary } from "../inventory/api/inventory";
 
 export function MerchantProduct() {
   const router = useRouter();
@@ -36,20 +36,23 @@ export function MerchantProduct() {
     activeProducts: 0,
     skuCount: 0,
     inactiveProducts: 0,
+    updatedThisWeekCount: 0,
   });
+  const [inventorySummary, setInventorySummary] = useState<InventorySummary | null>(null);
+  const [inventoryError, setInventoryError] = useState("");
   const [totalProducts, setTotalProducts] = useState(0);
   const [loadedQuery, setLoadedQuery] = useState("");
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [showImportGuidelines, setShowImportGuidelines] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const requestKey = `${searchQuery}|${categoryFilter}|${statusFilter}|${currentPage}|${pageSize}|${refreshKey}`;
   const loading = loadedQuery !== requestKey;
@@ -91,29 +94,39 @@ export function MerchantProduct() {
     return () => controller.abort();
   }, [searchQuery, categoryFilter, statusFilter, currentPage, pageSize, refreshKey, requestKey]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    getInventory({ page: 1, pageSize: 1 }, controller.signal)
+      .then((result) => {
+        setInventorySummary(result.summary);
+        setInventoryError("");
+      })
+      .catch((requestError: unknown) => {
+        if (!(requestError instanceof DOMException && requestError.name === "AbortError")) {
+          setInventoryError(
+            requestError instanceof Error ? requestError.message : "Không thể tải tổng quan tồn kho."
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [refreshKey]);
+
   const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
   const firstProduct = totalProducts === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const lastProduct = Math.min(currentPage * pageSize, totalProducts);
 
-  const handleToggleSelect = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleSelectAll = () => {
-    if (selectedIds.length === products.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(products.map((p) => p.id));
-    }
-  };
-
   const handleToggleStatus = async (id: string) => {
     const product = products.find((item) => item.id === id);
     if (!product) return;
+    if (product.status !== "active" && product.availableStock === 0) {
+      setError("Sản phẩm đã hết tồn khả dụng. Hãy bổ sung tồn kho trước khi kích hoạt lại.");
+      return;
+    }
     try {
-      await updateProductStatus(id, product.status === "active" ? "archived" : "active");
+      await updateProductStatus(
+        id,
+        product.status === "active" ? "discontinued" : "active"
+      );
       setRefreshKey((value) => value + 1);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Không thể cập nhật sản phẩm.");
@@ -128,11 +141,7 @@ export function MerchantProduct() {
     setError("");
     setIsExporting(true);
     try {
-      const file = await exportProducts({
-        q: searchQuery.trim() || undefined,
-        categoryId: categoryFilter || undefined,
-        status: statusFilter || undefined,
-      });
+      const file = await exportProducts({});
       const url = URL.createObjectURL(file);
       const link = document.createElement("a");
       link.href = url;
@@ -167,11 +176,11 @@ export function MerchantProduct() {
   };
 
   return (
-    <>
+    <div className={styles.productWorkspace}>
       {/* ==================== SCREEN HEADER ==================== */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-[26px] font-headline-lg text-on-surface font-bold">
+          <h1 className="text-headline-lg font-headline-lg text-on-surface font-bold">
             Quản lý Sản phẩm
           </h1>
           <p className="text-body-md font-body-md text-on-surface-variant mt-0.5">
@@ -180,7 +189,7 @@ export function MerchantProduct() {
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            className="h-10 whitespace-nowrap px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high text-sm font-label-md font-medium inline-flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+            className="h-10 whitespace-nowrap px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high text-label-md font-label-md text-on-surface-variant font-medium inline-flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
             type="button"
             disabled={isExporting}
             onClick={handleExport}
@@ -189,10 +198,10 @@ export function MerchantProduct() {
             <span>{isExporting ? "Đang xuất..." : "Xuất danh sách"}</span>
           </button>
           <button
-            className="h-10 whitespace-nowrap px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high text-sm font-label-md font-medium inline-flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+            className="h-10 whitespace-nowrap px-3.5 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-high text-label-md font-label-md text-on-surface-variant font-medium inline-flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
             type="button"
             disabled={isImporting}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setShowImportGuidelines(true)}
           >
             <Upload size={18} aria-hidden="true" />
             <span>{isImporting ? "Đang nhập..." : "Nhập file Excel"}</span>
@@ -204,10 +213,54 @@ export function MerchantProduct() {
             onChange={handleImport}
             type="file"
           />
+          {showImportGuidelines && (
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setShowImportGuidelines(false);
+              }}
+            >
+              <section
+                aria-labelledby="import-guidelines-title"
+                aria-modal="true"
+                className="w-full max-w-lg rounded-xl bg-surface-container-lowest p-6 shadow-2xl"
+                role="dialog"
+              >
+                <h2 id="import-guidelines-title" className="m-0 text-title-lg font-semibold text-on-surface">
+                  Quy định file nhập sản phẩm
+                </h2>
+                <div className="mt-4 space-y-3 text-body-sm text-on-surface-variant">
+                  <p>Chỉ chọn file Excel định dạng <strong>.xlsx</strong>. Mỗi dòng tương ứng với một SKU; các dòng cùng sản phẩm phải có cùng mã, tên, danh mục và trạng thái.</p>
+                  <p>Các cột bắt buộc: <strong>Mã chốt đơn chính, Tên sản phẩm, Mã SKU, Phân loại, Giá Flash Live (VND)</strong>.</p>
+                  <p>Mã SKU phải duy nhất. Giá phải là số không âm (ví dụ: <strong>400000</strong>). Trạng thái được để trống hoặc chọn <strong>Đang bán, Đã lưu trữ, Ngừng bán</strong>.</p>
+                  <p>Các cột Mô tả, Mã danh mục và Đường dẫn hình ảnh là tùy chọn. Nếu nhập mã danh mục, mã đó phải tồn tại.</p>
+                </div>
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    className="h-10 rounded-lg border border-outline-variant px-4 text-label-md font-medium text-on-surface-variant hover:bg-surface-container-high"
+                    type="button"
+                    onClick={() => setShowImportGuidelines(false)}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    className="h-10 rounded-lg bg-primary-container px-4 text-label-md font-semibold text-on-primary shadow-sm hover:bg-primary"
+                    type="button"
+                    onClick={() => {
+                      setShowImportGuidelines(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    OK, chọn file
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
           <Link
             role="button"
             href="/shop/products/new"
-            className="h-10 whitespace-nowrap px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-sm font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer hover:no-underline"
+            className="h-10 whitespace-nowrap px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-label-md font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer hover:no-underline"
           >
             <Plus size={18} aria-hidden="true" />
             <span>Thêm sản phẩm mới</span>
@@ -216,8 +269,13 @@ export function MerchantProduct() {
       </div>
 
       {/* ==================== 4 KPI HEADER CARDS (Bento Grid Style) ==================== */}
-      <ProductKpiCards kpi={summary} />
+      <ProductKpiCards kpi={summary} inventorySummary={inventorySummary} />
 
+      {inventoryError && (
+        <div role="alert" className="rounded-lg border border-error/30 bg-error-container/30 px-4 py-3 text-sm text-error">
+          {inventoryError}
+        </div>
+      )}
       {error && (
         <div role="alert" className="rounded-lg border border-error/30 bg-error-container/30 px-4 py-3 text-sm text-error">
           {error}
@@ -230,9 +288,9 @@ export function MerchantProduct() {
       )}
 
       {/* ==================== ACTION BAR & FILTERS ==================== */}
-      <div className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] flex flex-nowrap items-center gap-3 overflow-x-auto">
+      <div className="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         {/* Search Multi-Criteria */}
-        <div className="relative min-w-[240px] flex-1">
+        <div className="relative w-full md:w-80">
           <Search
             size={18}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none"
@@ -240,7 +298,7 @@ export function MerchantProduct() {
           />
           <input
             className={`${styles.filterSearchInput} w-full bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all`}
-            placeholder="Tìm tên, SKU hoặc mã chốt đơn..."
+            placeholder="Tìm theo Tên SP, SKU, Mã chốt đơn (VD: AO01, SP-LINEN)..."
             type="text"
             value={searchQuery}
             onChange={(e) => {
@@ -251,9 +309,9 @@ export function MerchantProduct() {
         </div>
 
         {/* Filters Row */}
-        <div className="flex w-auto shrink-0 flex-nowrap items-center gap-2.5 overflow-visible">
+        <div className="flex w-full md:w-auto flex-wrap items-center gap-2.5">
           {/* Category Filter */}
-          <div className="relative w-[160px] shrink-0">
+          <div className="relative min-w-[150px] flex-1 md:flex-none">
             <select
               aria-label="Lọc theo danh mục"
               className={`${styles.filterSelect} w-full min-w-0 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer`}
@@ -280,7 +338,7 @@ export function MerchantProduct() {
           </div>
 
           {/* Status Filter */}
-          <div className="relative w-[160px] shrink-0">
+          <div className="relative min-w-[140px] flex-1 md:flex-none">
             <select
               aria-label="Lọc theo trạng thái"
               className={`${styles.filterSelect} w-full min-w-0 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-sm font-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer`}
@@ -294,7 +352,7 @@ export function MerchantProduct() {
               <option value="">Tất cả trạng thái</option>
               <option value="active">Đang bán</option>
               <option value="archived">Đã lưu trữ</option>
-              <option value="discontinued">Ngừng kinh doanh</option>
+              <option value="discontinued">Ngừng bán</option>
             </select>
             <ChevronDown
               size={18}
@@ -302,7 +360,26 @@ export function MerchantProduct() {
               aria-hidden="true"
             />
           </div>
-
+          <div className="hidden xl:flex items-center gap-1.5 border-l border-outline-variant/60 pl-2">
+            <button
+              className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1.5 text-label-sm font-label-sm font-medium text-primary transition-colors hover:bg-surface-container"
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+                star
+              </span>
+              <span>Best Seller</span>
+            </button>
+            <button
+              className="inline-flex items-center gap-1 rounded-full bg-surface-container px-2.5 py-1.5 text-label-sm font-label-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container-high"
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+                push_pin
+              </span>
+              <span>Live Pin</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -310,9 +387,6 @@ export function MerchantProduct() {
       <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] overflow-hidden">
         <ProductTable
           products={products}
-          selectedIds={selectedIds}
-          onToggleSelect={handleToggleSelect}
-          onSelectAll={handleSelectAll}
           onToggleStatus={handleToggleStatus}
           onEdit={handleEdit}
           loading={loading}
@@ -356,9 +430,44 @@ export function MerchantProduct() {
               <ChevronLeft size={16} aria-hidden="true" />
               <span className="hidden sm:inline">Trước</span>
             </button>
-            <span aria-live="polite" className="px-2 text-on-surface-variant">
-              Trang {currentPage} / {totalPages}
-            </span>
+            {(() => {
+              const pageNumbers = new Set([
+                1,
+                totalPages,
+                ...Array.from({ length: 3 }, (_, index) => currentPage + index - 1),
+              ]);
+              const pages = [...pageNumbers]
+                .filter((page) => page >= 1 && page <= totalPages)
+                .sort((a, b) => a - b);
+
+              return (
+                <>
+                  {pages.map((page, index) => (
+                    <span key={page} className="inline-flex items-center gap-1">
+                      {index > 0 && page - pages[index - 1] > 1 && (
+                        <span aria-hidden="true" className="w-6 text-center text-outline">
+                          ...
+                        </span>
+                      )}
+                      <button
+                        aria-current={page === currentPage ? "page" : undefined}
+                        aria-label={`Trang ${page}`}
+                        className={`w-8 h-8 rounded-lg font-headline-md text-label-sm font-semibold flex items-center justify-center transition-colors ${
+                          page === currentPage
+                            ? "bg-primary text-on-primary shadow-sm"
+                            : "text-on-surface-variant hover:bg-surface-container"
+                        }`}
+                        disabled={loading}
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </button>
+                    </span>
+                  ))}
+                </>
+              );
+            })()}
             <button
               className="h-8 px-2 rounded-lg border border-outline-variant/60 text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 text-xs font-label-sm cursor-pointer"
               disabled={currentPage >= totalPages || loading}
@@ -372,29 +481,6 @@ export function MerchantProduct() {
         </div>
       </div>
 
-      {/* ==================== CONTEXTUAL BOTTOM BANNER: AI AUTO RECOGNITION SUMMARY ==================== */}
-      <div className="p-4 rounded-xl bg-surface-container border border-primary/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-body-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary-container text-on-primary flex items-center justify-center flex-shrink-0">
-            <Bot size={20} aria-hidden="true" />
-          </div>
-          <div>
-            <span className="font-semibold text-primary block">AI Parser Đang Hoạt Động (Độ nhạy: 99.4%)</span>
-            <span className="text-on-surface-variant text-label-sm">
-              Hệ thống đang tự động nhận diện các cú pháp chốt đơn trong Live chat theo công thức:{" "}
-              <strong>[Mã Chốt Đơn] + [Màu/Size] + [SĐT]</strong>.
-            </span>
-          </div>
-        </div>
-        <button
-          className="text-primary font-headline-md text-label-sm font-semibold hover:underline flex-shrink-0 flex items-center gap-1 bg-transparent border-none cursor-pointer"
-          type="button"
-          onClick={() => alert("Cấu hình bộ quy tắc AI")}
-        >
-          <span>Cấu hình bộ quy tắc AI</span>
-          <ArrowRight size={16} aria-hidden="true" />
-        </button>
-      </div>
-    </>
+    </div>
   );
 }

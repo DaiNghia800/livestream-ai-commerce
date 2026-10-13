@@ -31,15 +31,74 @@ describe("Products API - PostgreSQL integration", () => {
         code,
         name: "Integration product",
         description: "Temporary integration fixture",
-        skus: [{ skuCode, variantName: "Default", price: 125000 }],
-        images: [{ url: "https://example.com/product-test.jpg", isPrimary: true }],
+        brand: "Integration brand",
+        listPrice: 150000,
+        stockWarning: 15,
+        skus: [{ skuCode, variantName: "Default", price: 125000, aiCode: "ROUNDTRIP-AI" }],
+        images: [{
+          url: "https://example.com/product-test.jpg",
+          contentHash: "a".repeat(64),
+          isPrimary: true,
+        }],
       });
 
     expect(create.status).toBe(201);
     productId = create.body.id;
     expect(create.body.shopId).toBe(shopId);
-    expect(create.body.skus[0]).toMatchObject({ skuCode, variantName: "Default", price: "125000.00" });
+    expect(create.body.brand).toBe("Integration brand");
+    expect(create.body.listPrice).toBe("150000.00");
+    expect(create.body.stockWarning).toBe(15);
+    expect(create.body.skus[0]).toMatchObject({
+      skuCode,
+      variantName: "Default",
+      price: "125000.00",
+      aiCode: "ROUNDTRIP-AI",
+    });
     expect(create.body.images[0].isPrimary).toBe(true);
+    expect(create.body.images[0].contentHash).toBe("a".repeat(64));
+
+    const updateMetadata = await request(app)
+      .patch(`/api/products/${productId}`)
+      .set("X-Shop-Id", String(shopId))
+      .send({ brand: "Updated integration brand", listPrice: 175000, stockWarning: 21 });
+    expect(updateMetadata.status).toBe(200);
+    expect(updateMetadata.body.brand).toBe("Updated integration brand");
+    expect(updateMetadata.body.listPrice).toBe("175000.00");
+    expect(updateMetadata.body.stockWarning).toBe(21);
+
+    const updateAiCode = await request(app)
+      .patch(`/api/products/${productId}/skus/${create.body.skus[0].id}`)
+      .set("X-Shop-Id", String(shopId))
+      .send({ aiCode: "UPDATED-AI" });
+    expect(updateAiCode.status).toBe(200);
+    expect(updateAiCode.body.aiCode).toBe("UPDATED-AI");
+
+    const reloaded = await request(app)
+      .get(`/api/products/${productId}`)
+      .set("X-Shop-Id", String(shopId));
+    expect(reloaded.body.stockWarning).toBe(21);
+    expect(reloaded.body.brand).toBe("Updated integration brand");
+    expect(reloaded.body.listPrice).toBe("175000.00");
+    expect(reloaded.body.skus[0].aiCode).toBe("UPDATED-AI");
+
+    const history = await request(app)
+      .get(`/api/products/${productId}/history`)
+      .set("X-Shop-Id", String(shopId));
+    expect(history.status).toBe(200);
+    expect(history.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        summary: "Cập nhật thông tin sản phẩm",
+        changes: expect.objectContaining({
+          brand: { from: "Integration brand", to: "Updated integration brand" },
+          listPrice: { from: "150000.00", to: 175000 },
+        }),
+      }),
+      expect.objectContaining({
+        summary: `Cập nhật SKU ${skuCode}`,
+        changes: { "sku.aiCode": { from: "ROUNDTRIP-AI", to: "UPDATED-AI" } },
+      }),
+    ]));
+    expect(new Date(history.body.data[0].createdAt).toString()).not.toBe("Invalid Date");
 
     const duplicateSku = await request(app)
       .post(`/api/products/${productId}/skus`)
@@ -69,9 +128,20 @@ describe("Products API - PostgreSQL integration", () => {
     const addImage = await request(app)
       .post(`/api/products/${productId}/images`)
       .set("X-Shop-Id", String(shopId))
-      .send({ url: "https://example.com/product-second.jpg", sortOrder: 1 });
+      .send({
+        url: "https://example.com/product-second.jpg",
+        contentHash: "b".repeat(64),
+        sortOrder: 1,
+      });
     expect(addImage.status).toBe(201);
     expect(addImage.body.isPrimary).toBe(false);
+    expect(addImage.body.contentHash).toBe("b".repeat(64));
+
+    const duplicateImage = await request(app)
+      .post(`/api/products/${productId}/images`)
+      .set("X-Shop-Id", String(shopId))
+      .send({ url: "https://example.com/product-copy.jpg", contentHash: "b".repeat(64) });
+    expect(duplicateImage.status).toBe(409);
 
     const selectImage = await request(app)
       .patch(`/api/products/${productId}/images/${addImage.body.id}`)
@@ -95,5 +165,17 @@ describe("Products API - PostgreSQL integration", () => {
       .set("X-Shop-Id", String(shopId));
     expect(archive.status).toBe(200);
     expect(archive.body.status).toBe("archived");
+
+    const finalHistory = await request(app)
+      .get(`/api/products/${productId}/history`)
+      .set("X-Shop-Id", String(shopId));
+    expect(finalHistory.body.data.map((entry: { summary: string }) => entry.summary)).toEqual(
+      expect.arrayContaining([
+        "Thêm hình ảnh sản phẩm",
+        "Cập nhật hình ảnh sản phẩm",
+        "Xóa hình ảnh sản phẩm",
+        "Lưu trữ sản phẩm",
+      ])
+    );
   });
 });

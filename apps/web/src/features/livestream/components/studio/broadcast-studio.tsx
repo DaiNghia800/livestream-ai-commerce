@@ -20,6 +20,14 @@ import { StudioPreliveChecklist } from "./studio-prelive-checklist";
 import { StudioProductsPanel } from "./studio-products-panel";
 import type { StudioProductItem } from "../../types/studio";
 import type { LivestreamStatus } from "../../types/livestream";
+import {
+  getLivestreamProducts,
+  getProductUuid,
+  updateLivestreamProduct,
+} from "../../api/livestream-products";
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface BroadcastStudioProps {
   livestreamId: string;
@@ -49,6 +57,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       originalPrice: p.originalPrice,
       stock: p.stock,
       image: p.image,
+      liveProductId: p.liveProductId,
       isPinned: Boolean(p.isPinned),
       orderCode: p.id,
       salesCount: p.chatOrders || 0,
@@ -60,6 +69,34 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     const pinned = allProducts.find((p) => p.isPinned);
     return pinned || (allProducts.length > 0 ? allProducts[0] : null);
   });
+  const [pinError, setPinError] = useState("");
+
+  useEffect(() => {
+    if (!UUID_PATTERN.test(livestreamId)) return;
+    let current = true;
+    getLivestreamProducts(livestreamId)
+      .then(({ data }) => {
+        if (!current) return;
+        const featured = data.find((item) => item.isFeatured);
+        const pinned = featured
+          ? allProducts.find(
+              (product) =>
+                getProductUuid(product.liveProductId ?? product.id) === featured.productId
+            ) ?? null
+          : null;
+        setPinnedProduct(pinned);
+        setPinError("");
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setPinError(
+          error instanceof Error ? error.message : "Không thể tải trạng thái ghim livestream."
+        );
+      });
+    return () => {
+      current = false;
+    };
+  }, [allProducts, livestreamId]);
 
   // Danh sách sản phẩm chưa ghim
   const unpinnedProducts = useMemo(() => {
@@ -218,12 +255,42 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   };
 
   // Thao tác Ghim sản phẩm
-  const handlePinProduct = (product: StudioProductItem) => {
+  const handlePinProduct = async (product: StudioProductItem) => {
+    if (UUID_PATTERN.test(livestreamId)) {
+      try {
+        await updateLivestreamProduct(
+          livestreamId,
+          product.liveProductId ?? product.id,
+          { isFeatured: true }
+        );
+      } catch (error) {
+        setPinError(
+          error instanceof Error ? error.message : "Không thể ghim sản phẩm trên livestream."
+        );
+        return;
+      }
+    }
+    setPinError("");
     setPinnedProduct(product);
   };
 
   // Thao tác Gỡ ghim
-  const handleUnpinProduct = () => {
+  const handleUnpinProduct = async () => {
+    if (UUID_PATTERN.test(livestreamId) && pinnedProduct) {
+      try {
+        await updateLivestreamProduct(
+          livestreamId,
+          pinnedProduct.liveProductId ?? pinnedProduct.id,
+          { isFeatured: false }
+        );
+      } catch (error) {
+        setPinError(
+          error instanceof Error ? error.message : "Không thể bỏ ghim sản phẩm livestream."
+        );
+        return;
+      }
+    }
+    setPinError("");
     setPinnedProduct(null);
   };
 
@@ -338,6 +405,15 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         aiOrdersCount={isLive || isEnded ? session.aiOrderCount || 284 : "—"}
         className="shrink-0"
       />
+      {pinError && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-rose-800 bg-rose-950/70 px-3 py-2 text-xs text-rose-200"
+          role="alert"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{pinError}</span>
+        </div>
+      )}
 
       {/* 2. Amazon IVS Stream Telemetry Header */}
       <StudioStreamStatus

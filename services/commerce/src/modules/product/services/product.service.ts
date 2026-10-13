@@ -8,7 +8,14 @@ import type {
   UpdateProductSkuInput,
 } from "../schemas/product.schema.js";
 import type { IProductRepository } from "../repositories/product.repository.js";
-import type { Product, ProductCategory, ProductImage, ProductPage, ProductSku } from "../types/product.types.js";
+import type {
+  Product,
+  ProductCategory,
+  ProductEditHistoryEntry,
+  ProductImage,
+  ProductPage,
+  ProductSku,
+} from "../types/product.types.js";
 
 export class ProductNotFoundError extends Error {
   constructor() {
@@ -28,10 +35,19 @@ export class ProductService {
     return this.repository.listCategories();
   }
 
+  createCategory(name: string): Promise<ProductCategory> {
+    return this.repository.createCategory(name);
+  }
+
   async findById(shopId: number, productId: string): Promise<Product> {
     const product = await this.repository.findById(shopId, productId);
     if (!product) throw new ProductNotFoundError();
     return product;
+  }
+
+  async listEditHistory(shopId: number, productId: string): Promise<ProductEditHistoryEntry[]> {
+    await this.findById(shopId, productId);
+    return this.repository.listEditHistory(shopId, productId);
   }
 
   create(shopId: number, input: CreateProductInput): Promise<Product> {
