@@ -11,5 +11,5 @@ export default async function ProductEditRoute({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  return <EditProductPage productId={productId} />;
+  return <EditProductPage key={productId} productId={productId} />;
 }

@@ -1,22 +1,18 @@
 import { Bot } from "lucide-react";
 
-/**
- * Auth layout: 2 cột (form bên trái + marketing bên phải).
- * Dùng chung cho /login và /register.
- */
 export function AuthLayout({
   children,
   marketing,
+  compact = false,
 }: {
   children: React.ReactNode;
   marketing?: React.ReactNode;
+  compact?: boolean;
 }) {
-  const isSingleColumn = !marketing;
-
   return (
-    <div className={`auth-layout ${isSingleColumn ? "auth-layout-single" : ""}`}>
-      <div className="auth-left">
-        <div className="auth-left-inner">
+    <div className={`auth-layout ${marketing ? "" : "auth-layout-single"}`}>
+      <div className={`auth-left ${compact ? "auth-left-compact" : ""}`}>
+        <div className={`auth-left-inner ${compact ? "auth-left-inner-compact" : ""}`}>
           <div className="auth-brand">
             <span className="brand">
               <span className="brand-icon" aria-hidden="true">
@@ -33,17 +29,6 @@ export function AuthLayout({
           </div>
 
           {children}
-
-          <footer className="auth-footer">
-            <div className="auth-footer-badges">
-              <span>🔒 Bảo mật SPA &amp; Mã hóa TLS 1.3</span>
-              <span>🛡️ PCI-DSS Level 1</span>
-            </div>
-            <p>
-              LiveOrder AI v2.4.0 (Build 2025) · Cần trợ giúp? Liên hệ hotline{" "}
-              <a href="tel:19008888">1900 8888</a>
-            </p>
-          </footer>
         </div>
       </div>
 

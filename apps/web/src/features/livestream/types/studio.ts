@@ -1,5 +1,6 @@
 export interface StudioProductItem {
   id: string;
+  liveProductId?: string;
   name: string;
   sku: string;
   price: number;

@@ -1,11 +1,17 @@
 import { AuthLayout } from "@/components/layouts/auth-layout";
-import { LoginForm } from "@/features/login/login-form";
+import { AuthSwitcher } from "@/features/login/auth-switcher";
 import { MarketingPanel } from "@/features/login/marketing-panel";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ registered?: string }>;
+}) {
+  const { registered } = await searchParams;
+
   return (
     <AuthLayout marketing={<MarketingPanel />}>
-      <LoginForm />
+      <AuthSwitcher registrationComplete={registered === "1"} />
     </AuthLayout>
   );
 }

@@ -5,6 +5,11 @@ export const metadata = {
   description: "Điều chỉnh số lượng tồn kho và xác nhận phiếu kiểm kê.",
 };
 
-export default function InventoryAdjustmentPage() {
-  return <InventoryAdjustment />;
+export default async function InventoryAdjustmentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ skuId?: string }>;
+}) {
+  const { skuId } = await searchParams;
+  return <InventoryAdjustment initialSkuId={skuId} />;
 }

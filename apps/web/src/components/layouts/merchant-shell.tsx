@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ClipboardCheck,
   ArrowLeftRight,
   BarChart3,
   Bell,
@@ -21,6 +22,8 @@ import {
   Warehouse,
   Wifi,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { Brand } from "./brand";
@@ -30,6 +33,7 @@ const navigation = [
   { label: "Tổng quan", href: "/shop", icon: LayoutDashboard, exact: true },
   { label: "Livestream", href: "/shop/livestream", icon: Radio },
   { label: "Đơn hàng", href: "/shop/orders", icon: ShoppingCart },
+  { label: "Hàng đợi duyệt", href: "/shop/review-queue", icon: ClipboardCheck },
   { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", href: "/shop/inventory", icon: Warehouse },
   { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
@@ -46,9 +50,11 @@ function isActivePath(pathname: string, href: string, exact?: boolean) {
 export function MerchantShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const navigationId = useId();
 
   const isMonitoring = pathname ? /\/monitoring\/?$/.test(pathname) : false;
+  const isProductsPage = pathname === "/shop/products";
 
   return (
     <div className={styles.shell}>
@@ -79,24 +85,54 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         />
       )}
 
+      {/* Floating edge tab to re-open sidebar when collapsed on desktop */}
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          className={styles.floatingExpandTab}
+          title="Mở menu quản lý"
+          aria-label="Mở menu quản lý"
+        >
+          <PanelLeftOpen size={16} aria-hidden="true" />
+        </button>
+      )}
+
       {/* Sidebar */}
       <aside
         id={navigationId}
-        className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""}`}
+        className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""} ${
+          isProductsPage ? styles.sidebarProduct : ""
+        } ${sidebarCollapsed ? styles.sidebarCollapsed : ""}`}
       >
-        <Link className={styles.brandLink} href="/shop" onClick={() => setMenuOpen(false)}>
-          <Brand />
-        </Link>
-        <Link
-          className={styles.primaryAction}
-          href="/shop/livestream"
-          title="Lối tắt truy cập quản lý livestream và Studio"
-          onClick={() => setMenuOpen(false)}
-        >
-          <Radio size={18} aria-hidden="true" />
-          <span>Bắt đầu Live</span>
-        </Link>
-        <nav className={styles.navigation} aria-label="Điều hướng chủ shop">
+        <div className={styles.sidebarHeader}>
+          <div className={styles.brandRow}>
+            <Link className={styles.brandLink} href="/shop" onClick={() => setMenuOpen(false)}>
+              <Brand />
+            </Link>
+            <button
+              type="button"
+              className={styles.collapseButton}
+              onClick={() => setSidebarCollapsed(true)}
+              title="Thu gọn menu điều hướng"
+              aria-label="Thu gọn menu điều hướng"
+            >
+              <PanelLeftClose size={18} aria-hidden="true" />
+            </button>
+          </div>
+          <Link
+            className={styles.primaryAction}
+            href="/shop/livestream"
+            title="Lối tắt truy cập quản lý livestream và Studio"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Radio size={18} aria-hidden="true" />
+            <span>Bắt đầu Live</span>
+          </Link>
+        </div>
+
+        {/* Scrollable Navigation - CHỈ cuộn phần main menu */}
+        <nav className={`${styles.navigation} custom-scrollbar`} aria-label="Điều hướng chủ shop">
           {navigation.map((item) => {
             const Icon = item.icon;
             if (!("href" in item)) {
@@ -129,6 +165,8 @@ export function MerchantShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+
+        {/* Fixed Footer */}
         <p className={styles.support}>
           <CircleHelp size={16} aria-hidden="true" /> Hỗ trợ kỹ thuật
           <br />
@@ -138,21 +176,33 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
       {/* Content wrapper */}
       <div
-        className={`${styles.content} ${isMonitoring ? styles.contentMonitoring : ""}`}
+        className={`${styles.content} ${isMonitoring ? styles.contentMonitoring : ""} ${
+          sidebarCollapsed ? styles.contentExpanded : ""
+        }`}
       >
-        <header className={styles.header}>
+        <header className={`${styles.header} ${isProductsPage ? styles.headerProduct : ""}`}>
           <label className={styles.search}>
             <span className="sr-only">Tìm kiếm trong khu vực quản lý</span>
             <Search size={18} aria-hidden="true" />
-            <input placeholder="Tìm theo mã SKU, tên sản phẩm, vị trí kho..." disabled />
+            <input
+              placeholder={
+                isProductsPage
+                  ? "Tìm theo tên, SĐT, hoặc mã đơn..."
+                  : "Tìm theo mã SKU, tên sản phẩm, vị trí kho..."
+              }
+              disabled
+            />
           </label>
           <div className={styles.headerActions}>
             <div
               className={styles.connectionStatus}
               aria-label="Trạng thái kết nối IVS và Gemini"
             >
-              <span className={styles.connectionDot} aria-hidden="true" />
+              {isProductsPage && (
+                <Wifi className={styles.productConnectionIcon} size={16} aria-hidden="true" />
+              )}
               <span className={styles.connectionLabel}>Trạng thái kết nối</span>
+              <span className={styles.connectionDot} aria-hidden="true" />
               <span className={styles.connectionDetails}>
                 <span><Wifi size={14} aria-hidden="true" /> IVS: 12ms</span>
                 <span className={styles.connectionDivider} aria-hidden="true">•</span>
@@ -163,18 +213,26 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               <button
                 aria-label="Đồng bộ kho WMS"
                 className={styles.iconButton}
-                title="Đồng bộ kho WMS"
+                title={isProductsPage ? "AI Bot Tự động hóa" : "Đồng bộ kho WMS"}
                 type="button"
               >
-                <ArrowLeftRight size={17} aria-hidden="true" />
+                {isProductsPage ? (
+                  <Bot size={17} aria-hidden="true" />
+                ) : (
+                  <ArrowLeftRight size={17} aria-hidden="true" />
+                )}
               </button>
               <button
                 aria-label="Cảm biến và thiết bị"
                 className={styles.iconButton}
-                title="Cảm biến & Thiết bị"
+                title={isProductsPage ? "Đồng bộ kho đa kênh" : "Cảm biến & Thiết bị"}
                 type="button"
               >
-                <Radio size={17} aria-hidden="true" />
+                {isProductsPage ? (
+                  <ArrowLeftRight size={17} aria-hidden="true" />
+                ) : (
+                  <Radio size={17} aria-hidden="true" />
+                )}
               </button>
               <button
                 aria-label="Thông báo hệ thống"
@@ -191,7 +249,11 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               className={styles.checkoutButton}
               href="/shop/orders"
             >
-              <ShoppingCart size={16} aria-hidden="true" />
+              {isProductsPage ? (
+                <Radio size={16} aria-hidden="true" />
+              ) : (
+                <ShoppingCart size={16} aria-hidden="true" />
+              )}
               <span>Chốt đơn ngay</span>
             </Link>
             <div className={styles.profile} aria-label="Tài khoản đang xem">
@@ -199,7 +261,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                 <CircleUserRound size={21} aria-hidden="true" />
               </span>
               <span className={styles.profileCopy}>
-                <strong>Văn Vận Hành</strong>
+                <strong>{isProductsPage ? "Admin Kho Vận" : "Văn Vận Hành"}</strong>
                 <small>Quản trị viên kho và vận hành</small>
               </span>
             </div>
@@ -207,7 +269,9 @@ export function MerchantShell({ children }: { children: ReactNode }) {
         </header>
         <main
           id="main-content"
-          className={`${styles.main} ${isMonitoring ? styles.mainMonitoring : ""}`}
+          className={`${styles.main} ${isMonitoring ? styles.mainMonitoring : ""} ${
+            isProductsPage ? styles.mainProduct : ""
+          }`}
         >
           {children}
         </main>

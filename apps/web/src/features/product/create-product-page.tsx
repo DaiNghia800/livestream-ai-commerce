@@ -1,14 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import styles from "./product.module.css";
+import {
+  createProduct,
+  createProductCategory,
+  getProducts,
+  getProductCategories,
+  getImageContentHash,
+  ProductApiError,
+  uploadProductImage,
+  type ProductCategory,
+  type ProductSkuInput,
+} from "./api/products";
 
 // ===== Types =====
 interface VariantRow {
   id: string;
   color: string;
-  colorHex: string;
   size: string;
   sku: string;
   aiCode: string;
@@ -16,19 +27,74 @@ interface VariantRow {
   livePrice: number;
 }
 
-const INITIAL_VARIANTS: VariantRow[] = [
-  { id: "1", color: "Trắng", colorHex: "#ffffff", size: "M", sku: "AO01-WHT-M", aiCode: "AO01TM", stock: 50, livePrice: 299000 },
-  { id: "2", color: "Trắng", colorHex: "#ffffff", size: "L", sku: "AO01-WHT-L", aiCode: "AO01TL", stock: 65, livePrice: 299000 },
-  { id: "3", color: "Đen", colorHex: "#000000", size: "M", sku: "AO01-BLK-M", aiCode: "AO01DM", stock: 80, livePrice: 299000 },
-  { id: "4", color: "Đen", colorHex: "#000000", size: "XL", sku: "AO01-BLK-XL", aiCode: "AO01DXL", stock: 45, livePrice: 299000 },
-  { id: "5", color: "Be", colorHex: "#e8dab2", size: "L", sku: "AO01-BEI-L", aiCode: "AO01BL", stock: 110, livePrice: 299000 },
-];
+type VariantField = "color" | "size" | "sku" | "aiCode" | "stock" | "livePrice";
+type VariantErrors = Record<string, Partial<Record<VariantField, string>>>;
+type AttributeNameField = "first" | "second";
+
+type PricingField = "listedPrice" | "livePrice" | "stockWarning";
 
 // ===== Helper =====
+const COLOR_SKU_CODES: Record<string, string> = {
+  trắng: "WHT",
+  đen: "BLK",
+  be: "BEI",
+  đỏ: "RED",
+  "xanh dương": "BLU",
+  "xanh lá": "GRN",
+  vàng: "YLW",
+  hồng: "PNK",
+  tím: "PUR",
+  nâu: "BRN",
+  xám: "GRY",
+};
+
+function normalizeVariantValue(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLocaleLowerCase();
+}
+
+function toCodePart(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+}
+
+function getColorSkuCode(color: string) {
+  const normalizedColor = color.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return COLOR_SKU_CODES[normalizedColor] ??
+    normalizedColor.split(/\s+/).map(toCodePart).join("").slice(0, 3);
+}
+
+function generateVariantCodes(variant: VariantRow, triggerCode: string) {
+  const mainCode = triggerCode.trim().toUpperCase();
+  const firstValue = variant.color.trim();
+  const secondValue = toCodePart(variant.size);
+  if (!mainCode || !firstValue || !secondValue) return { sku: "", aiCode: "" };
+
+  const firstValueInitial = toCodePart(firstValue).slice(0, 1);
+  return {
+    sku: `${mainCode}-${getColorSkuCode(firstValue)}-${secondValue}`,
+    aiCode: `${toCodePart(mainCode)}${firstValueInitial}${secondValue}`,
+  };
+}
+
 function formatVnd(value: number | string) {
   const num = typeof value === "string" ? parseInt(value.replace(/\D/g, ""), 10) : value;
   if (isNaN(num)) return "";
   return num.toLocaleString("vi-VN");
+}
+
+function parseVnd(value: string): number | null {
+  const digits = value.replace(/\D/g, "");
+  return digits ? Number(digits) : null;
 }
 
 // ===== Sub-components =====
@@ -60,11 +126,13 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between pb-4 mb-5 border-b border-outline-variant/60">
-      <div className="flex items-center gap-2.5">
-        <span className="material-symbols-outlined text-primary" style={{ fontSize: "20px" }}>
-          {icon}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-6 w-5 shrink-0 items-center justify-center">
+          <span className="material-symbols-outlined text-primary leading-none" style={{ fontSize: "20px" }}>
+            {icon}
+          </span>
         </span>
-        <h2 className="font-title-sm text-title-sm font-semibold text-on-surface">{title}</h2>
+        <h2 className="m-0 font-title-sm text-title-sm font-semibold leading-6 text-on-surface">{title}</h2>
       </div>
       {right}
     </div>
@@ -92,7 +160,7 @@ function FormInput({
         </div>
       )}
       <input
-        className="w-full h-10 px-3.5 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface"
+        className="w-full h-10 px-3.5 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface placeholder:text-outline"
         {...props}
       />
     </div>
@@ -104,43 +172,475 @@ export function CreateProductPage() {
   const router = useRouter();
 
   // Form state
-  const [productName, setProductName] = useState("Áo Sơ Mi Linen Cổ Tàu Cao Cấp");
-  const [category, setCategory] = useState("thoi-trang-nam");
-  const [brand, setBrand] = useState("Linen Heritage Vietnam");
-  const [description, setDescription] = useState(
-    "- Chất liệu: 100% Linen bột cao cấp, thoáng mát, thấm hút mồ hôi tối đa.\n- Phom dáng: Regular-fit tôn dáng, cổ áo tàu 3cm sang trọng hiện đại.\n- Hướng dẫn giặt: Giặt tay hoặc giặt máy chế độ nhẹ, ủi ở nhiệt độ trung bình."
-  );
-  const [listedPrice, setListedPrice] = useState("450.000");
-  const [livePrice, setLivePrice] = useState("299.000");
-  const [totalStock, setTotalStock] = useState(350);
-  const [stockWarning, setStockWarning] = useState(15);
-  const [triggerCode, setTriggerCode] = useState("AO01");
+  const [productName, setProductName] = useState("");
+  const [category, setCategory] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [brand, setBrand] = useState("");
+  const [description, setDescription] = useState("");
+  const [listedPrice, setListedPrice] = useState("0");
+  const [livePrice, setLivePrice] = useState("0");
+  const [stockWarning, setStockWarning] = useState("0");
+  const [pricingErrors, setPricingErrors] = useState<Partial<Record<PricingField, string>>>({});
+  const [variantErrors, setVariantErrors] = useState<VariantErrors>({});
+  const [triggerCode, setTriggerCode] = useState("");
+  const [codeCheck, setCodeCheck] = useState<"idle" | "checking" | "available" | "duplicate" | "unknown">("idle");
   const [productStatus, setProductStatus] = useState<"active" | "draft" | "inactive">("active");
-  const [variants, setVariants] = useState<VariantRow[]>(INITIAL_VARIANTS);
+  const [variants, setVariants] = useState<VariantRow[]>([]);
+  const [firstAttributeName, setFirstAttributeName] = useState("Màu sắc");
+  const [secondAttributeName, setSecondAttributeName] = useState("Size");
+  const [attributeNameErrors, setAttributeNameErrors] = useState<
+    Partial<Record<AttributeNameField, string>>
+  >({});
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [images, setImages] = useState<
+    { file: File; previewUrl: string; fingerprint: string }[]
+  >([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Shipping
-  const [weight, setWeight] = useState(280);
-  const [dimL, setDimL] = useState(25);
-  const [dimW, setDimW] = useState(18);
-  const [dimH, setDimH] = useState(4);
-
-  const totalVariantStock = variants.reduce((sum, v) => sum + v.stock, 0);
+  const totalVariantStock = variants.reduce((sum, variant) => {
+    return sum + (Number.isFinite(variant.stock) ? variant.stock : 0);
+  }, 0);
+  const totalStock = String(totalVariantStock);
   const nameLength = productName.length;
 
+  const validatePricingField = (field: PricingField, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "Trường này không được để trống.";
+
+    if (field === "listedPrice" || field === "livePrice") {
+      if (!/^\d+(?:[.,\s]\d{3})*$/.test(trimmed) || parseVnd(trimmed) === null) {
+        return "Chỉ nhập số tiền không âm.";
+      }
+      return "";
+    }
+
+    const number = Number(trimmed);
+    if (!Number.isSafeInteger(number) || number < 0) {
+      return "Nhập số nguyên không âm.";
+    }
+    return "";
+  };
+
+  const updatePricingField = (field: PricingField, value: string) => {
+    const setters: Record<PricingField, (nextValue: string) => void> = {
+      listedPrice: setListedPrice,
+      livePrice: setLivePrice,
+      stockWarning: setStockWarning,
+    };
+    setters[field](value);
+    const nextListedPrice = field === "listedPrice" ? value : listedPrice;
+    const nextLivePrice = field === "livePrice" ? value : livePrice;
+    const nextErrors: Partial<Record<PricingField, string>> = {
+      listedPrice: validatePricingField("listedPrice", nextListedPrice),
+      livePrice: validatePricingField("livePrice", nextLivePrice),
+      stockWarning:
+        field === "stockWarning"
+          ? validatePricingField("stockWarning", value)
+          : pricingErrors.stockWarning,
+    };
+    const listed = parseVnd(nextListedPrice);
+    const live = parseVnd(nextLivePrice);
+    if (!nextErrors.listedPrice && !nextErrors.livePrice && listed !== null && live !== null && listed < live) {
+      nextErrors.listedPrice = "Giá niêm yết không được nhỏ hơn Giá Flash Live.";
+      nextErrors.livePrice = "Giá Flash Live không được vượt quá giá niêm yết.";
+    }
+    setPricingErrors(nextErrors);
+    if (field === "livePrice") {
+      const price = parseVnd(value) ?? 0;
+      setVariants((current) => {
+        const next = current.map((variant) => ({ ...variant, livePrice: price }));
+        setVariantErrors(validateVariants(next));
+        return next;
+      });
+    }
+  };
+
+  const formatPriceOnBlur = (field: "listedPrice" | "livePrice", value: string) => {
+    const parsedPrice = parseVnd(value);
+    const formattedValue =
+      parsedPrice !== null && !validatePricingField(field, value)
+        ? formatVnd(parsedPrice)
+        : value;
+    updatePricingField(field, formattedValue);
+  };
+
+  const validateVariants = (rows: VariantRow[]): VariantErrors => {
+    const errors: VariantErrors = {};
+    const setFieldError = (id: string, field: VariantField, message: string) => {
+      if (!message) return;
+      errors[id] = { ...errors[id], [field]: message };
+    };
+
+    rows.forEach((variant) => {
+      const codes = generateVariantCodes(variant, triggerCode);
+      setFieldError(
+        variant.id,
+        "color",
+        variant.color.trim() ? "" : `${firstAttributeName} không được để trống.`
+      );
+      setFieldError(
+        variant.id,
+        "size",
+        variant.size.trim() ? "" : `${secondAttributeName} không được để trống.`
+      );
+      setFieldError(
+        variant.id,
+        "sku",
+        codes.sku
+          ? codes.sku.length <= 50
+            ? ""
+            : "Mã SKU không được vượt quá 50 ký tự."
+          : `Không thể tạo mã SKU khi thiếu mã chốt đơn, ${firstAttributeName} hoặc ${secondAttributeName}.`
+      );
+      setFieldError(
+        variant.id,
+        "aiCode",
+        codes.aiCode
+          ? codes.aiCode.length <= 50
+            ? ""
+            : "Mã phụ AI không được vượt quá 50 ký tự."
+          : `Không thể tạo mã phụ AI khi thiếu mã chốt đơn, ${firstAttributeName} hoặc ${secondAttributeName}.`
+      );
+      setFieldError(
+        variant.id,
+        "stock",
+        Number.isSafeInteger(variant.stock) && variant.stock >= 0 ? "" : "Tồn kho phải là số nguyên không âm."
+      );
+      setFieldError(
+        variant.id,
+        "livePrice",
+        Number.isSafeInteger(variant.livePrice) && variant.livePrice >= 0
+          ? ""
+          : "Giá Live phải là số nguyên không âm."
+      );
+    });
+
+    const addDuplicates = (field: "color" | "sku" | "aiCode", values: string[]) => {
+      const grouped = new Map<string, string[]>();
+      values.forEach((value, index) => {
+        const key = normalizeVariantValue(value);
+        if (!key) return;
+        grouped.set(key, [...(grouped.get(key) ?? []), rows[index].id]);
+      });
+      grouped.forEach((ids) => {
+        if (ids.length < 2) return;
+        ids.forEach((id) => {
+          setFieldError(
+            id,
+            field,
+            field === "color"
+              ? "Màu sắc chỉ được lặp lại khi size khác nhau."
+              : field === "sku"
+                ? "Mã SKU bị trùng."
+                : "Mã phụ AI bị trùng."
+          );
+        });
+      });
+    };
+
+    addDuplicates("sku", rows.map((variant) => generateVariantCodes(variant, triggerCode).sku));
+    addDuplicates("aiCode", rows.map((variant) => generateVariantCodes(variant, triggerCode).aiCode));
+
+    const colorSizes = new Map<string, string[]>();
+    rows.forEach((variant) => {
+      const color = normalizeVariantValue(variant.color);
+      const size = normalizeVariantValue(variant.size);
+      if (!color) return;
+      colorSizes.set(color, [...(colorSizes.get(color) ?? []), size]);
+    });
+    colorSizes.forEach((sizes, color) => {
+      if (new Set(sizes).size === sizes.length) return;
+      rows.forEach((variant) => {
+        if (normalizeVariantValue(variant.color) === color) {
+          const message = `Không thể có hai biến thể trùng tổ hợp ${firstAttributeName} và ${secondAttributeName}.`;
+          setFieldError(variant.id, "color", message);
+          setFieldError(variant.id, "size", message);
+        }
+      });
+    });
+
+    return errors;
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getProductCategories(controller.signal)
+      .then((loadedCategories) => {
+        setCategories(loadedCategories);
+        if (loadedCategories.length > 0) setCategory(String(loadedCategories[0].id));
+      })
+      .catch((loadError: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : "Không thể tải danh mục sản phẩm.");
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const normalizedCode = triggerCode.trim();
+    if (!normalizedCode) {
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setCodeCheck("checking");
+      void getProducts({ q: normalizedCode, page: 1, pageSize: 20 }, controller.signal)
+        .then((result) => {
+          const duplicate = result.data.some(
+            (product) => product.code.trim().toUpperCase() === normalizedCode.toUpperCase()
+          );
+          setCodeCheck(duplicate ? "duplicate" : "available");
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setCodeCheck("unknown");
+        });
+    }, 300);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [triggerCode]);
+
   const handleDeleteVariant = (id: string) => {
-    setVariants((prev) => prev.filter((v) => v.id !== id));
+    setVariants((prev) => {
+      const next = prev.filter((variant) => variant.id !== id);
+      setVariantErrors(validateVariants(next));
+      return next;
+    });
   };
 
   const handleVariantStockChange = (id: string, val: number) => {
-    setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, stock: val } : v)));
+    setVariants((prev) => {
+      const next = prev.map((variant) => (variant.id === id ? { ...variant, stock: val } : variant));
+      setVariantErrors(validateVariants(next));
+      return next;
+    });
   };
 
-  const handleSave = () => {
-    router.push("/shop/products");
+  const updateVariant = (id: string, patch: Partial<VariantRow>) => {
+    setVariants((prev) => {
+      const next = prev.map((variant) => {
+        if (variant.id !== id) return variant;
+        const updated = { ...variant, ...patch };
+        return { ...updated, ...generateVariantCodes(updated, triggerCode) };
+      });
+      setVariantErrors(validateVariants(next));
+      return next;
+    });
+  };
+
+  const handleAddVariant = () => {
+    const price = parseInt(livePrice.replace(/\D/g, ""), 10) || 0;
+    setVariants((prev) => {
+      const next = [
+        ...prev,
+        {
+        id: `${Date.now()}-${prev.length}`,
+        color: "",
+        size: "",
+        sku: "",
+        aiCode: "",
+        stock: 0,
+        livePrice: price,
+        },
+      ];
+      setVariantErrors(validateVariants(next));
+      return next;
+    });
+  };
+
+  const handleTriggerCodeChange = (value: string) => {
+    const nextTriggerCode = value.toUpperCase();
+    setTriggerCode(nextTriggerCode);
+    setVariants((prev) => {
+      const next = prev.map((variant) => ({
+        ...variant,
+        ...generateVariantCodes(variant, nextTriggerCode),
+      }));
+      setVariantErrors(validateVariants(next));
+      return next;
+    });
+  };
+
+  const handleImageSelection = async (fileList: FileList | null) => {
+    if (!fileList) return;
+    const selected = Array.from(fileList);
+    const invalid = selected.find(
+      (file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024
+    );
+    if (invalid) {
+      setError("Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP có dung lượng tối đa 5MB.");
+      return;
+    }
+    let fingerprinted: { file: File; fingerprint: string }[];
+    try {
+      fingerprinted = await Promise.all(
+        selected.map(async (file) => ({ file, fingerprint: await getImageContentHash(file) }))
+      );
+    } catch (fingerprintError) {
+      setError(
+        fingerprintError instanceof Error
+          ? `Không thể kiểm tra ảnh: ${fingerprintError.message}`
+          : "Không thể kiểm tra ảnh đã chọn."
+      );
+      return;
+    }
+    const seen = new Set(images.map((image) => image.fingerprint));
+    let duplicateFound = false;
+    const unique = fingerprinted.filter(({ fingerprint }) => {
+      if (seen.has(fingerprint)) {
+        duplicateFound = true;
+        return false;
+      }
+      seen.add(fingerprint);
+      return true;
+    });
+    if (images.length + unique.length > 8) {
+      setError("Mỗi sản phẩm có thể có tối đa 8 ảnh.");
+      return;
+    }
+    setError(duplicateFound ? "Ảnh sản phẩm không được trùng nhau." : "");
+    setImages((current) => [
+      ...current,
+      ...unique.map(({ file, fingerprint }) => ({
+        file,
+        fingerprint,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSave = async () => {
+    setError("");
+    const nextAttributeNameErrors: Partial<Record<AttributeNameField, string>> = {};
+    if (!firstAttributeName.trim()) {
+      nextAttributeNameErrors.first = "Tên thuộc tính thứ nhất không được để trống.";
+    }
+    if (!secondAttributeName.trim()) {
+      nextAttributeNameErrors.second = "Tên thuộc tính thứ hai không được để trống.";
+    }
+    if (
+      firstAttributeName.trim() &&
+      secondAttributeName.trim() &&
+      normalizeVariantValue(firstAttributeName) === normalizeVariantValue(secondAttributeName)
+    ) {
+      nextAttributeNameErrors.first = "Tên hai thuộc tính phải khác nhau.";
+      nextAttributeNameErrors.second = "Tên hai thuộc tính phải khác nhau.";
+    }
+    setAttributeNameErrors(nextAttributeNameErrors);
+    if (Object.keys(nextAttributeNameErrors).length > 0) {
+      setError("Vui lòng kiểm tra tên hai thuộc tính của biến thể.");
+      return;
+    }
+
+    const nextPricingErrors: Partial<Record<PricingField, string>> = {};
+    (["listedPrice", "livePrice", "stockWarning"] as const).forEach((field) => {
+      const value = { listedPrice, livePrice, stockWarning }[field];
+      const fieldError = validatePricingField(field, value);
+      if (fieldError) nextPricingErrors[field] = fieldError;
+    });
+    const listed = parseVnd(listedPrice);
+    const live = parseVnd(livePrice);
+    if (
+      !nextPricingErrors.listedPrice &&
+      !nextPricingErrors.livePrice &&
+      listed !== null &&
+      live !== null &&
+      listed < live
+    ) {
+      nextPricingErrors.listedPrice = "Giá niêm yết không được nhỏ hơn Giá Flash Live.";
+      nextPricingErrors.livePrice = "Giá Flash Live không được vượt quá giá niêm yết.";
+    }
+    setPricingErrors(nextPricingErrors);
+    if (Object.keys(nextPricingErrors).length > 0) return;
+
+    if (!productName.trim()) {
+      setError("Tên sản phẩm là bắt buộc.");
+      return;
+    }
+    if (!triggerCode.trim()) {
+      setError("Mã chốt đơn chính là bắt buộc.");
+      return;
+    }
+    if (codeCheck === "duplicate") {
+      setError("Mã chốt đơn đã tồn tại trong database. Vui lòng chọn mã khác.");
+      return;
+    }
+    const codeValue = triggerCode.trim();
+    if (!variants.length) {
+      setError("Cần có ít nhất một biến thể sản phẩm.");
+      return;
+    }
+    const nextVariantErrors = validateVariants(variants);
+    setVariantErrors(nextVariantErrors);
+    const firstVariantError = Object.values(nextVariantErrors)
+      .flatMap((fieldErrors) => Object.values(fieldErrors))
+      .find(Boolean);
+    if (firstVariantError) {
+      setError(firstVariantError);
+      return;
+    }
+    const skus: ProductSkuInput[] = variants.map((variant) => ({
+      skuCode: variant.sku.trim(),
+      variantName: `${firstAttributeName.trim()}: ${variant.color.trim()} / ${secondAttributeName.trim()}: ${variant.size.trim()}`,
+      price: variant.livePrice,
+      aiCode: variant.aiCode.trim() || null,
+      stock: Math.max(0, Math.floor(variant.stock) || 0),
+      status: "active",
+    }));
+
+    setSaving(true);
+    try {
+      const matchingCategory = categories.find(
+        (item) => item.name.trim().toLocaleLowerCase() === newCategory.trim().toLocaleLowerCase()
+      );
+      const categoryId = newCategory.trim()
+        ? (matchingCategory ?? await createProductCategory(newCategory.trim())).id
+        : categories.find((item) => String(item.id) === category)?.id ?? null;
+      const uploadedImages = await Promise.all(
+        images.map(async ({ file, fingerprint }, index) => ({
+          url: await uploadProductImage(file),
+          contentHash: fingerprint,
+          isPrimary: index === 0,
+          sortOrder: index,
+        }))
+      );
+      await createProduct({
+        code: codeValue,
+        name: productName.trim(),
+        categoryId,
+        description: description.trim() || null,
+        brand: brand.trim() || null,
+        listPrice: parseVnd(listedPrice),
+        stockWarning: Number(stockWarning),
+        triggerCode: triggerCode.trim() || null,
+        status: productStatus === "active" ? "active" : productStatus === "draft" ? "archived" : "discontinued",
+        skus,
+        images: uploadedImages,
+      });
+      router.push("/shop/products");
+    } catch (saveError) {
+      if (saveError instanceof ProductApiError && saveError.status === 409) {
+        setError("Mã sản phẩm hoặc SKU đã tồn tại. Vui lòng kiểm tra lại.");
+      } else {
+        setError(saveError instanceof Error ? saveError.message : "Không thể lưu sản phẩm.");
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <>
+      {error && (
+        <div className="mb-5 rounded-lg border border-error/30 bg-error/5 px-4 py-3 text-body-sm text-error" role="alert">
+          {error}
+        </div>
+      )}
       {/* ===== Breadcrumb & Top Action Bar ===== */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-6 border-b border-outline-variant mb-8">
         <div>
@@ -180,11 +680,12 @@ export function CreateProductPage() {
             className="h-10 px-6 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md font-semibold shadow hover:bg-primary transition-all duration-150 flex items-center gap-2 cursor-pointer"
             type="button"
             onClick={handleSave}
+            disabled={saving}
           >
             <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
               save
             </span>
-            <span>Lưu sản phẩm</span>
+            <span>{saving ? "Đang lưu..." : "Lưu sản phẩm"}</span>
           </button>
         </div>
       </div>
@@ -201,7 +702,7 @@ export function CreateProductPage() {
               <FormInput
                 label="Tên sản phẩm"
                 required
-                placeholder="Ví dụ: Áo Sơ Mi Linen Cổ Tàu Dài Tay..."
+                placeholder="VD: Áo Sơ Mi Linen Cổ Tàu Dài Tay..."
                 value={productName}
                 maxLength={120}
                 onChange={(e) => setProductName(e.target.value)}
@@ -216,31 +717,42 @@ export function CreateProductPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
-                    Danh mục hàng hóa <span className="text-error">*</span>
-                  </label>
-                  <select
-                    className="w-full h-10 px-3 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface cursor-pointer"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  >
-                    <option value="thoi-trang-nam">Thời trang Nam / Sơ mi cao cấp</option>
-                    <option value="thoi-trang-nu">Thời trang Nữ</option>
-                    <option value="phu-kien">Phụ kiện &amp; Đồ lót</option>
-                    <option value="giay-dep">Giày dép &amp; Túi ví</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
-                    Thương hiệu / Nhãn hiệu
+                    Danh mục hàng hóa
                   </label>
                   <input
-                    className="w-full h-10 px-3.5 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface"
-                    placeholder="Nhập thương hiệu hoặc OEM..."
+                    aria-label="Nhập danh mục mới"
+                    className="mb-2 w-full h-10 px-3 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface placeholder:text-outline"
                     type="text"
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
+                    maxLength={150}
+                    placeholder="Nhập danh mục mới"
+                    value={newCategory}
+                    onChange={(e) => {
+                      setNewCategory(e.target.value);
+                      setCategory("");
+                    }}
                   />
+                  <select
+                    aria-label="Chọn danh mục đã có"
+                    className="w-full h-10 px-3 text-body-md font-body-md rounded-lg border border-outline-variant bg-surface-container-lowest focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/20 transition-all text-on-surface cursor-pointer"
+                    value={category}
+                    onChange={(e) => {
+                      setCategory(e.target.value);
+                      setNewCategory("");
+                    }}
+                  >
+                    <option value="">Chưa phân loại</option>
+                    {categories.map((item) => (
+                      <option key={item.id} value={String(item.id)}>{item.name}</option>
+                    ))}
+                  </select>
                 </div>
+                <FormInput
+                  label="Thương hiệu / Nhãn hiệu"
+                  placeholder="VD: Linen Heritage Vietnam"
+                  type="text"
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value)}
+                />
               </div>
 
               {/* Mô tả chi tiết */}
@@ -294,6 +806,7 @@ export function CreateProductPage() {
                     </button>
                   </div>
                   <textarea
+                    aria-label="Mô tả chi tiết sản phẩm"
                     className="w-full p-3.5 text-body-md font-body-md border-none focus:ring-0 bg-surface-container-lowest text-on-surface placeholder:text-outline resize-none outline-none"
                     placeholder="Mô tả chất liệu, phom dáng và bảng size hỗ trợ AI đọc thông tin cho streamer..."
                     rows={4}
@@ -316,47 +829,64 @@ export function CreateProductPage() {
                 </span>
               }
             />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {/* Giá niêm yết */}
               <div className="bg-surface-container-low/50 p-3.5 rounded-lg border border-outline-variant">
                 <label className="block font-label-sm text-label-sm font-medium text-on-surface-variant mb-1">
-                  Giá niêm yết (VND)
+                  Giá niêm yết (VND) <span className="text-error">*</span>
                 </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-8 pl-3 font-title-sm text-title-sm font-bold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 focus:border-primary-container transition-all"
+                    aria-label="Giá niêm yết (VND)"
+                    aria-invalid={Boolean(pricingErrors.listedPrice)}
+                    aria-describedby={pricingErrors.listedPrice ? "listed-price-error" : undefined}
+                    className={`w-full h-10 pr-8 pl-3 font-title-sm text-title-sm font-bold text-on-surface rounded-lg border bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 focus:border-primary-container transition-all ${pricingErrors.listedPrice ? "border-error" : "border-outline-variant"}`}
                     type="text"
+                    inputMode="numeric"
+                    required
                     value={listedPrice}
-                    onChange={(e) => setListedPrice(e.target.value)}
+                    onChange={(e) => updatePricingField("listedPrice", e.target.value)}
+                    onBlur={() => formatPriceOnBlur("listedPrice", listedPrice)}
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 font-label-sm text-label-sm text-outline">
                     ₫
                   </span>
                 </div>
+                {pricingErrors.listedPrice && (
+                  <p id="listed-price-error" className="mt-1 text-body-sm text-error" role="alert">
+                    {pricingErrors.listedPrice}
+                  </p>
+                )}
                 <p className="font-body-sm text-body-sm text-outline mt-1">Giá bán lẻ trên web</p>
               </div>
 
               {/* Giá Flash Live */}
               <div className="bg-primary-fixed/20 p-3.5 rounded-lg border border-primary-fixed-dim">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-label-sm text-label-sm font-bold text-primary">
-                    Giá Flash Live (VND) *
-                  </label>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-on-primary">
-                    -34%
-                  </span>
-                </div>
+                <label className="mb-1 block font-label-sm text-label-sm font-bold text-primary">
+                  Giá Flash Live (VND) *
+                </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-8 pl-3 font-title-sm text-title-sm font-bold text-primary rounded-lg border border-primary-container bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/30 transition-all"
+                    aria-label="Giá Flash Live (VND)"
+                    aria-invalid={Boolean(pricingErrors.livePrice)}
+                    aria-describedby={pricingErrors.livePrice ? "live-price-error" : undefined}
+                    className={`w-full h-10 pr-8 pl-3 font-title-sm text-title-sm font-bold text-primary rounded-lg border bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/30 transition-all ${pricingErrors.livePrice ? "border-error" : "border-primary-container"}`}
                     type="text"
+                    inputMode="numeric"
+                    required
                     value={livePrice}
-                    onChange={(e) => setLivePrice(e.target.value)}
+                    onChange={(e) => updatePricingField("livePrice", e.target.value)}
+                    onBlur={() => formatPriceOnBlur("livePrice", livePrice)}
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 font-label-sm text-label-sm text-primary font-bold">
                     ₫
                   </span>
                 </div>
+                {pricingErrors.livePrice && (
+                  <p id="live-price-error" className="mt-1 text-body-sm text-error" role="alert">
+                    {pricingErrors.livePrice}
+                  </p>
+                )}
                 <p className="font-body-sm text-body-sm text-on-primary-fixed-variant mt-1 font-medium">
                   Giá áp dụng khi khách chốt qua bot
                 </p>
@@ -365,14 +895,15 @@ export function CreateProductPage() {
               {/* Tổng tồn kho nhập */}
               <div className="bg-surface-container-low/50 p-3.5 rounded-lg border border-outline-variant">
                 <label className="block font-label-sm text-label-sm font-medium text-on-surface-variant mb-1">
-                  Tổng tồn kho nhập
+                  Tổng tồn kho nhập <span className="text-error">*</span>
                 </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-12 pl-3 font-title-sm text-title-sm font-bold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all"
+                    aria-label="Tổng tồn kho nhập"
+                    className={`${styles.numberInputWithSuffix} w-full font-title-sm text-title-sm font-bold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all`}
                     type="number"
                     value={totalStock}
-                    onChange={(e) => setTotalStock(Number(e.target.value))}
+                    readOnly
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 font-label-sm text-label-sm text-outline">
                     Cái
@@ -386,19 +917,31 @@ export function CreateProductPage() {
               {/* Ngưỡng cảnh báo */}
               <div className="bg-surface-container-low/50 p-3.5 rounded-lg border border-outline-variant">
                 <label className="block font-label-sm text-label-sm font-medium text-on-surface-variant mb-1">
-                  Ngưỡng cảnh báo
+                  Ngưỡng cảnh báo <span className="text-error">*</span>
                 </label>
                 <div className="relative">
                   <input
-                    className="w-full h-10 pr-12 pl-3 font-title-sm text-title-sm font-bold text-error rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all"
+                    aria-label="Ngưỡng cảnh báo tồn kho"
+                    aria-invalid={Boolean(pricingErrors.stockWarning)}
+                    aria-describedby={pricingErrors.stockWarning ? "stock-warning-error" : undefined}
+                    className={`${styles.numberInputWithSuffix} w-full font-title-sm text-title-sm font-bold text-error rounded-lg border bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all ${pricingErrors.stockWarning ? "border-error" : "border-outline-variant"}`}
                     type="number"
+                    min={0}
+                    step={1}
+                    required
                     value={stockWarning}
-                    onChange={(e) => setStockWarning(Number(e.target.value))}
+                    onChange={(e) => updatePricingField("stockWarning", e.target.value)}
+                    onBlur={() => updatePricingField("stockWarning", stockWarning)}
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 font-label-sm text-label-sm text-outline">
                     Cái
                   </span>
                 </div>
+                {pricingErrors.stockWarning && (
+                  <p id="stock-warning-error" className="mt-1 text-body-sm text-error" role="alert">
+                    {pricingErrors.stockWarning}
+                  </p>
+                )}
                 <p className="font-body-sm text-body-sm text-outline mt-1">
                   Thông báo streamer nhắc chốt
                 </p>
@@ -412,25 +955,21 @@ export function CreateProductPage() {
             <div className="absolute -top-16 -right-16 w-36 h-36 rounded-full bg-secondary-container/10 blur-2xl pointer-events-none" />
 
             <div className="flex items-center justify-between pb-4 mb-5 border-b border-outline-variant/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary-container flex items-center justify-center text-on-primary">
+              <div className="flex items-start gap-2">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary">
                   <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
                     smart_toy
                   </span>
                 </div>
                 <div>
-                  <h2 className="font-title-sm text-title-sm font-bold text-on-surface">
+                  <h2 className="font-title-sm text-title-sm font-bold leading-tight text-on-surface">
                     Thiết lập Mã Chốt Đơn AI (Order Trigger)
                   </h2>
-                  <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  <p className="-mt-2 font-body-sm text-body-sm leading-tight text-on-surface-variant">
                     Bộ não AI nhận diện comment livestream để tự động giữ hàng và tạo đơn
                   </p>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-sm font-label-sm font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                AI Active Scan
-              </span>
             </div>
 
             {/* Trigger Code Input */}
@@ -443,26 +982,34 @@ export function CreateProductPage() {
                   <div className="relative flex items-center">
                     <span className="absolute left-3.5 font-label-md font-bold text-primary">#</span>
                     <input
-                      className="h-11 w-full pl-8 pr-4 font-metric-num text-metric-num text-primary tracking-wider rounded-lg border-2 border-primary-container bg-surface-container-lowest focus:ring-4 focus:ring-primary-container/20 focus:outline-none transition-all"
+                      aria-label="Mã chốt đơn chính"
+                      className={`${styles.triggerCodeInput} w-full font-metric-num text-metric-num text-primary placeholder:text-outline tracking-wider rounded-lg border-2 border-primary-container bg-surface-container-lowest focus:ring-4 focus:ring-primary-container/20 focus:outline-none transition-all`}
                       type="text"
+                      placeholder="VD: AO01"
                       value={triggerCode}
-                      onChange={(e) => setTriggerCode(e.target.value.toUpperCase())}
+                      onChange={(e) => handleTriggerCodeChange(e.target.value)}
                     />
                   </div>
                 </div>
                 {/* Validation badge */}
                 <div className="flex md:flex-col justify-end items-start md:items-end gap-1.5 pt-2 md:pt-0">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-label-md text-label-md font-semibold">
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-label-md text-label-md font-semibold ${
+                    codeCheck === "duplicate"
+                      ? "bg-rose-50 text-rose-700 border border-rose-200"
+                      : codeCheck === "available"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                  }`}>
                     <span
-                      className="material-symbols-outlined text-emerald-600"
+                      className={`material-symbols-outlined ${codeCheck === "duplicate" ? "text-rose-600" : codeCheck === "available" ? "text-emerald-600" : "text-amber-600"}`}
                       style={{
                         fontSize: "16px",
                         fontVariationSettings: "'FILL' 1",
                       }}
                     >
-                      check_circle
+                      {codeCheck === "duplicate" ? "error" : codeCheck === "checking" ? "hourglass_top" : codeCheck === "available" ? "check_circle" : "help"}
                     </span>
-                    <span>Mã hợp lệ, chưa trùng</span>
+                    <span>{codeCheck === "duplicate" ? "Mã đã tồn tại" : codeCheck === "checking" ? "Đang kiểm tra..." : codeCheck === "available" ? "Mã hợp lệ, chưa trùng" : "Chưa kiểm tra mã"}</span>
                   </div>
                   <span className="font-body-sm text-body-sm text-outline">
                     Độ dài lý tưởng: 3-5 ký tự dễ gõ
@@ -487,7 +1034,7 @@ export function CreateProductPage() {
                     num: "1",
                     pattern: `"${triggerCode} [Số lượng]"`,
                     example: `"${triggerCode} 2 cái nha shop"`,
-                    result: "➔ SL = 2, Size mặc định M",
+                    result: "➔ SL = 2, nhận diện theo mã sản phẩm",
                   },
                   {
                     num: "2",
@@ -497,8 +1044,8 @@ export function CreateProductPage() {
                   },
                   {
                     num: "3",
-                    pattern: `"${triggerCode} [Size / Màu]"`,
-                    example: `"${triggerCode} size L màu Đen 0912xxx"`,
+                    pattern: `"${triggerCode} [${secondAttributeName} / ${firstAttributeName}]"`,
+                    example: `"${triggerCode} ${secondAttributeName.toLocaleLowerCase()} <giá trị> ${firstAttributeName.toLocaleLowerCase()} <giá trị>"`,
                     result: "➔ Tự map SKU & SĐT khách",
                   },
                 ].map((item) => (
@@ -534,20 +1081,18 @@ export function CreateProductPage() {
                     Bảng cấu hình biến thể &amp; SKU riêng
                   </h3>
                   <p className="font-body-sm text-body-sm text-outline">
-                    Tổ hợp giữa Size (M, L, XL) và Màu sắc (Trắng, Đen, Be)
+                    Tổ hợp giữa {secondAttributeName} và {firstAttributeName}
                   </p>
                 </div>
                 <button
                   className="inline-flex items-center gap-1.5 text-primary text-label-md font-label-md font-semibold hover:underline cursor-pointer bg-transparent border-none"
                   type="button"
-                  onClick={() =>
-                    alert("Thêm thuộc tính biến thể")
-                  }
+                  onClick={handleAddVariant}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
                     add_circle
                   </span>
-                  <span>Thêm thuộc tính</span>
+                  <span>Thêm biến thể</span>
                 </button>
               </div>
 
@@ -557,8 +1102,48 @@ export function CreateProductPage() {
                   <table className="w-full text-left border-collapse min-w-[640px]">
                     <thead>
                       <tr className="bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm uppercase tracking-wider border-b border-outline-variant">
-                        <th className="py-3 px-4 font-semibold">Màu sắc</th>
-                        <th className="py-3 px-4 font-semibold">Size</th>
+                        <th className="py-3 px-4 font-semibold">
+                          <input
+                            className={`w-full min-w-20 border-0 border-b border-dashed bg-transparent p-0 font-semibold uppercase tracking-wider text-on-surface-variant outline-none focus:border-primary focus:ring-0 ${attributeNameErrors.first ? "border-error" : "border-outline-variant"}`}
+                            aria-label="Tên thuộc tính thứ nhất"
+                            aria-invalid={Boolean(attributeNameErrors.first)}
+                            aria-describedby={attributeNameErrors.first ? "first-attribute-name-error" : undefined}
+                            maxLength={30}
+                            required
+                            value={firstAttributeName}
+                            onChange={(event) => {
+                              setFirstAttributeName(event.target.value);
+                              setAttributeNameErrors((current) => ({ ...current, first: undefined }));
+                              setVariantErrors({});
+                            }}
+                          />
+                          {attributeNameErrors.first && (
+                            <p id="first-attribute-name-error" className="mt-1 text-body-sm text-error normal-case" role="alert">
+                              {attributeNameErrors.first}
+                            </p>
+                          )}
+                        </th>
+                        <th className="py-3 px-4 font-semibold">
+                          <input
+                            className={`w-full min-w-16 border-0 border-b border-dashed bg-transparent p-0 font-semibold uppercase tracking-wider text-on-surface-variant outline-none focus:border-primary focus:ring-0 ${attributeNameErrors.second ? "border-error" : "border-outline-variant"}`}
+                            aria-label="Tên thuộc tính thứ hai"
+                            aria-invalid={Boolean(attributeNameErrors.second)}
+                            aria-describedby={attributeNameErrors.second ? "second-attribute-name-error" : undefined}
+                            maxLength={30}
+                            required
+                            value={secondAttributeName}
+                            onChange={(event) => {
+                              setSecondAttributeName(event.target.value);
+                              setAttributeNameErrors((current) => ({ ...current, second: undefined }));
+                              setVariantErrors({});
+                            }}
+                          />
+                          {attributeNameErrors.second && (
+                            <p id="second-attribute-name-error" className="mt-1 text-body-sm text-error normal-case" role="alert">
+                              {attributeNameErrors.second}
+                            </p>
+                          )}
+                        </th>
                         <th className="py-3 px-4 font-semibold">Mã SKU</th>
                         <th className="py-3 px-4 font-semibold">Mã phụ AI</th>
                         <th className="py-3 px-4 font-semibold text-right">Tồn kho</th>
@@ -573,35 +1158,102 @@ export function CreateProductPage() {
                           className={`hover:bg-surface-container-low/40 transition-colors ${idx % 2 === 1 ? "bg-surface-container-lowest" : ""}`}
                         >
                           <td className="py-2.5 px-4 font-medium">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="w-3.5 h-3.5 rounded-full border border-outline-variant shadow-sm inline-block shrink-0"
-                                style={{ backgroundColor: v.colorHex }}
-                              />
-                              <span>{v.color}</span>
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-4 font-semibold text-primary">{v.size}</td>
-                          <td className="py-2.5 px-4 font-mono text-body-sm text-outline">
-                            {v.sku}
+                            <input
+                              className={`w-24 h-8 px-2 rounded border bg-surface-container-lowest ${variantErrors[v.id]?.color ? "border-error" : "border-outline-variant"}`}
+                              aria-label={firstAttributeName}
+                              aria-invalid={Boolean(variantErrors[v.id]?.color)}
+                              aria-describedby={variantErrors[v.id]?.color ? `variant-${v.id}-color-error` : undefined}
+                              required
+                              maxLength={40}
+                              value={v.color}
+                              onChange={(e) => updateVariant(v.id, { color: e.target.value })}
+                            />
+                            {variantErrors[v.id]?.color && (
+                              <p id={`variant-${v.id}-color-error`} className="mt-1 text-body-sm text-error" role="alert">
+                                {variantErrors[v.id].color}
+                              </p>
+                            )}
                           </td>
                           <td className="py-2.5 px-4">
-                            <span className="inline-block px-2 py-0.5 rounded bg-surface-container text-on-surface-variant text-xs font-mono">
-                              {v.aiCode}
-                            </span>
+                            <input
+                              className={`w-16 h-8 px-2 rounded border bg-surface-container-lowest font-semibold text-primary ${variantErrors[v.id]?.size ? "border-error" : "border-outline-variant"}`}
+                              aria-label={secondAttributeName}
+                              aria-invalid={Boolean(variantErrors[v.id]?.size)}
+                              aria-describedby={variantErrors[v.id]?.size ? `variant-${v.id}-size-error` : undefined}
+                              required
+                              maxLength={40}
+                              value={v.size}
+                              onChange={(e) => updateVariant(v.id, { size: e.target.value })}
+                            />
+                            {variantErrors[v.id]?.size && (
+                              <p id={`variant-${v.id}-size-error`} className="mt-1 text-body-sm text-error" role="alert">
+                                {variantErrors[v.id].size}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <input
+                              className={`w-36 h-8 px-2 rounded border bg-surface-container-lowest font-mono text-body-sm ${variantErrors[v.id]?.sku ? "border-error" : "border-outline-variant"}`}
+                              aria-label="Mã SKU"
+                              aria-invalid={Boolean(variantErrors[v.id]?.sku)}
+                              aria-describedby={variantErrors[v.id]?.sku ? `variant-${v.id}-sku-error` : undefined}
+                              required
+                              maxLength={50}
+                              readOnly
+                              value={v.sku}
+                            />
+                            {variantErrors[v.id]?.sku && (
+                              <p id={`variant-${v.id}-sku-error`} className="mt-1 text-body-sm text-error" role="alert">
+                                {variantErrors[v.id].sku}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <input
+                              className={`w-24 h-8 px-2 rounded border bg-surface-container-lowest font-mono text-xs ${variantErrors[v.id]?.aiCode ? "border-error" : "border-outline-variant"}`}
+                              aria-label="Mã phụ AI"
+                              aria-invalid={Boolean(variantErrors[v.id]?.aiCode)}
+                              aria-describedby={variantErrors[v.id]?.aiCode ? `variant-${v.id}-ai-error` : undefined}
+                              required
+                              maxLength={50}
+                              readOnly
+                              value={v.aiCode}
+                            />
+                            {variantErrors[v.id]?.aiCode && (
+                              <p id={`variant-${v.id}-ai-error`} className="mt-1 text-body-sm text-error" role="alert">
+                                {variantErrors[v.id].aiCode}
+                              </p>
+                            )}
                           </td>
                           <td className="py-2.5 px-4 text-right">
                             <input
-                              className="w-20 h-8 text-right font-medium text-on-surface px-2 rounded border border-outline-variant bg-surface-container-lowest focus:ring-1 focus:ring-primary focus:outline-none"
+                              className={`w-20 h-8 text-right font-medium text-on-surface px-2 rounded border bg-surface-container-lowest focus:ring-1 focus:ring-primary focus:outline-none ${variantErrors[v.id]?.stock ? "border-error" : "border-outline-variant"}`}
+                              aria-label="Tồn kho biến thể"
+                              aria-invalid={Boolean(variantErrors[v.id]?.stock)}
+                              aria-describedby={variantErrors[v.id]?.stock ? `variant-${v.id}-stock-error` : undefined}
                               type="number"
-                              value={v.stock}
+                              min={0}
+                              step={1}
+                              required
+                              value={Number.isSafeInteger(v.stock) ? v.stock : ""}
                               onChange={(e) =>
-                                handleVariantStockChange(v.id, Number(e.target.value))
+                                handleVariantStockChange(v.id, e.target.value === "" ? Number.NaN : Number(e.target.value))
                               }
                             />
+                            {variantErrors[v.id]?.stock && (
+                              <p id={`variant-${v.id}-stock-error`} className="mt-1 text-body-sm text-error" role="alert">
+                                {variantErrors[v.id].stock}
+                              </p>
+                            )}
                           </td>
-                          <td className="py-2.5 px-4 text-right font-semibold text-on-surface">
-                            {formatVnd(v.livePrice)}
+                          <td className="py-2.5 px-4 text-right">
+                            <input
+                              className="w-28 h-8 text-right font-semibold px-2 rounded border border-outline-variant bg-surface-container-lowest"
+                              aria-label="Giá Live"
+                              inputMode="numeric"
+                              readOnly
+                              value={formatVnd(v.livePrice)}
+                            />
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <button
@@ -622,28 +1274,11 @@ export function CreateProductPage() {
               </div>
 
               {/* Footer summary */}
-              <div className="flex items-center justify-between mt-3 text-body-sm font-body-sm text-outline">
+              <div className="mt-3 text-body-sm font-body-sm text-outline">
                 <span>
                   Tổng {variants.length} biến thể kích hoạt • Tổng tồn kho phân bổ:{" "}
                   <strong className="text-on-surface">{totalVariantStock} cái</strong>
                 </span>
-                <div className="flex gap-2">
-                  <button
-                    className="text-primary hover:underline font-medium cursor-pointer bg-transparent border-none"
-                    type="button"
-                    onClick={() => alert("Áp dụng giá chung cho tất cả biến thể")}
-                  >
-                    Áp dụng giá chung
-                  </button>
-                  <span>•</span>
-                  <button
-                    className="text-primary hover:underline font-medium cursor-pointer bg-transparent border-none"
-                    type="button"
-                    onClick={() => alert("Đặt tồn kho đồng loạt")}
-                  >
-                    Đặt tồn đồng loạt
-                  </button>
-                </div>
               </div>
             </div>
           </section>
@@ -663,16 +1298,16 @@ export function CreateProductPage() {
                     : "border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className={`${styles.statusOptionContent} flex items-center gap-3`}>
                   <input
                     checked={productStatus === "active"}
-                    className="w-4 h-4 text-primary focus:ring-primary border-outline accent-primary"
+                    className={`${styles.statusOptionRadio} text-primary focus:ring-primary border-outline accent-primary`}
                     name="product_status"
                     type="radio"
                     value="active"
                     onChange={() => setProductStatus("active")}
                   />
-                  <div>
+                  <div className={`${styles.statusOptionText} min-w-0`}>
                     <span className="font-label-md text-label-md font-bold text-on-surface block">
                       Đang bán (Active)
                     </span>
@@ -692,16 +1327,16 @@ export function CreateProductPage() {
                     : "border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className={`${styles.statusOptionContent} flex items-center gap-3`}>
                   <input
                     checked={productStatus === "draft"}
-                    className="w-4 h-4 text-primary focus:ring-primary border-outline accent-primary"
+                    className={`${styles.statusOptionRadio} text-primary focus:ring-primary border-outline accent-primary`}
                     name="product_status"
                     type="radio"
                     value="draft"
                     onChange={() => setProductStatus("draft")}
                   />
-                  <div>
+                  <div className={`${styles.statusOptionText} min-w-0`}>
                     <span className="font-label-md text-label-md font-semibold text-on-surface block">
                       Nháp (Draft)
                     </span>
@@ -721,16 +1356,16 @@ export function CreateProductPage() {
                     : "border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className={`${styles.statusOptionContent} flex items-center gap-3`}>
                   <input
                     checked={productStatus === "inactive"}
-                    className="w-4 h-4 text-primary focus:ring-primary border-outline accent-primary"
+                    className={`${styles.statusOptionRadio} text-primary focus:ring-primary border-outline accent-primary`}
                     name="product_status"
                     type="radio"
                     value="inactive"
                     onChange={() => setProductStatus("inactive")}
                   />
-                  <div>
+                  <div className={`${styles.statusOptionText} min-w-0`}>
                     <span className="font-label-md text-label-md font-semibold text-on-surface block">
                       Ngừng bán (Inactive)
                     </span>
@@ -746,22 +1381,25 @@ export function CreateProductPage() {
 
           {/* 2. Card: Hình ảnh sản phẩm */}
           <SectionCard>
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/60">
-              <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-primary" style={{ fontSize: "20px" }}>
-                  photo_library
+            <SectionHeader
+              icon="photo_library"
+              title="Hình ảnh sản phẩm"
+              right={
+                <span className="font-label-sm text-label-sm text-outline">
+                  Tối đa 8 ảnh (Tỉ lệ 1:1)
                 </span>
-                <h2 className="font-title-sm text-title-sm font-semibold text-on-surface">
-                  Hình ảnh sản phẩm
-                </h2>
-              </div>
-              <span className="font-label-sm text-label-sm text-outline">
-                Tối đa 8 ảnh (Tỉ lệ 1:1)
-              </span>
-            </div>
+              }
+            />
 
             {/* Drag & Drop Zone */}
-            <div className="border-2 border-dashed border-outline-variant hover:border-primary-container bg-surface-container-low/50 hover:bg-surface-container-high/30 rounded-xl p-5 text-center cursor-pointer transition-all duration-150 mb-4 group">
+            <input ref={fileInputRef} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => handleImageSelection(event.target.files)} />
+            <button
+              className="w-full border-2 border-dashed border-outline-variant hover:border-primary-container bg-surface-container-low/50 hover:bg-surface-container-high/30 rounded-xl p-5 text-center cursor-pointer transition-all duration-150 mb-4 group"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { event.preventDefault(); handleImageSelection(event.dataTransfer.files); }}
+            >
               <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-surface-container-highest/60 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
                 <span className="material-symbols-outlined" style={{ fontSize: "24px" }}>
                   cloud_upload
@@ -774,173 +1412,35 @@ export function CreateProductPage() {
               <p className="font-body-sm text-body-sm text-outline">
                 Hỗ trợ PNG, JPG, WebP chất lượng cao
               </p>
-            </div>
+            </button>
 
             {/* Thumbnails */}
             <div>
-              <label className="block font-label-sm text-label-sm font-semibold text-on-surface-variant mb-2">
-                Ảnh đã tải lên (3 ảnh)
+              <label className="mb-2 flex items-center gap-1.5 font-label-sm text-label-sm font-semibold text-on-surface-variant">
+                Ảnh đã tải lên ({images.length} ảnh)
               </label>
               <div className="grid grid-cols-3 gap-2.5">
-                {/* Thumbnail 1 - Cover */}
-                <div className="relative group rounded-lg overflow-hidden border-2 border-primary-container aspect-square shadow-sm">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    className="w-full h-full object-cover"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuBafg4Ga7tht0r7ZohebqlUoRs8CeTmU5FZ37c5Qbd7APhJ6EKjuvbGBezctoFbVpSian1wFp1SxErLQqQU9YgQ9caWyFS_hTGClMSPNRd4DAmvsDKk_bcv5WEHi9CAdeKSjW8XgAe9YUomY0P9Xf6domsbY0ucelwf8tQD_B-YRNaEoteXtXkWr9QNh7B75t-eK9ax17t9PNBQfkTd5CqNjgi2HWPSAQFPdd3eloXMKNJNYjEXTjUt"
-                    alt="Ảnh sản phẩm chính"
-                  />
-                  <span className="absolute top-1 left-1 bg-primary text-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
-                    Ảnh bìa
-                  </span>
-                  <div className="absolute inset-0 bg-inverse-surface/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                    <button
-                      className="w-7 h-7 rounded bg-surface-container-lowest text-error flex items-center justify-center shadow hover:scale-105 cursor-pointer border-none"
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
-                        delete
-                      </span>
+                {images.map(({ previewUrl, fingerprint }, index) => (
+                  <div key={fingerprint} className="relative rounded-lg overflow-hidden border-2 border-primary-container aspect-square shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="w-full h-full object-cover" src={previewUrl} alt={`Product image ${index + 1}`} />
+                    <button aria-label={`Remove image ${index + 1}`} className="absolute top-1 right-1 w-7 h-7 rounded bg-surface-container-lowest text-error flex items-center justify-center shadow cursor-pointer border-none" type="button" onClick={() => {
+                      URL.revokeObjectURL(previewUrl);
+                      setImages((current) => current.filter((_, imageIndex) => imageIndex !== index));
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete</span>
                     </button>
                   </div>
-                </div>
-
-                {/* Thumbnail 2 */}
-                <div className="relative group rounded-lg overflow-hidden border border-outline-variant aspect-square shadow-sm">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    className="w-full h-full object-cover"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCze2RQgwsRViUplGuqiVQMVaO-JANHX1KYfn6-qCRO3G4_O_4E_A3TaH_J_gZ_6oNWaJyYLbo0YA4bTTJlg6uyLNmDemfpDPnif32qkK3F8IusBjQoGYIGIv9xJxcdzo7qaTeDoETbX_AFnBe_iXvGLIEgtOAbnfmjyo3qUfXgtyRYOxHEcR5X1Y1ImdwNlfn5RynGQQO9zJnOKM1rlI0w3TyAKWiXCDcQENHqR0P0SY_MSXsvsRi_"
-                    alt="Ảnh sản phẩm 2"
-                  />
-                  <div className="absolute inset-0 bg-inverse-surface/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                    <button
-                      className="w-7 h-7 rounded bg-surface-container-lowest text-error flex items-center justify-center shadow hover:scale-105 cursor-pointer border-none"
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
-                        delete
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Thumbnail 3 */}
-                <div className="relative group rounded-lg overflow-hidden border border-outline-variant aspect-square shadow-sm">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    className="w-full h-full object-cover"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuDi0da_GLmgA2WG7t0R1q_bLtXSB_qawzftdjaWXlNqQ1cR0-Qas79LJniEwjqSmEls_DxVersTB6CaRPm5uqlZYGeE5BXq43iJ9GxaU4Ea8xM0tOslM9Xyr1dcAqXdR1tJK9q5_oEDBHLXmRoMAuYLNwkSe2dW0OUmo_clcWH-26qjHnrfYafgzEC6dizMvkCbcCsrmREGDi0LnxYNstvJuDuIXNIB9slgu9naB5dluIfuRxFq1ls2"
-                    alt="Ảnh sản phẩm 3"
-                  />
-                  <div className="absolute inset-0 bg-inverse-surface/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                    <button
-                      className="w-7 h-7 rounded bg-surface-container-lowest text-error flex items-center justify-center shadow hover:scale-105 cursor-pointer border-none"
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
-                        delete
-                      </span>
-                    </button>
-                  </div>
-                </div>
+                ))}
+                {images.length === 0 && (
+                  <p className="col-span-3 rounded-lg border border-dashed border-outline-variant bg-surface-container-low/50 px-4 py-6 text-center font-body-sm text-body-sm text-outline">
+                    Chưa có ảnh sản phẩm.
+                  </p>
+                )}
               </div>
             </div>
           </SectionCard>
 
-          {/* 3. Card: Thuộc tính vận chuyển */}
-          <SectionCard>
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/60">
-              <div className="flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-primary" style={{ fontSize: "20px" }}>
-                  local_shipping
-                </span>
-                <h2 className="font-title-sm text-title-sm font-semibold text-on-surface">
-                  Thuộc tính vận chuyển
-                </h2>
-              </div>
-              <span className="font-label-sm text-label-sm text-tertiary font-semibold flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-tertiary" />
-                GHN / GHTK API
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              {/* Trọng lượng */}
-              <div>
-                <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
-                  Trọng lượng đóng gói (sau khi bọc chống sốc){" "}
-                  <span className="text-error">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    className="w-full h-10 pr-16 pl-3 font-body-md text-body-md font-semibold text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 transition-all"
-                    type="number"
-                    value={weight}
-                    onChange={(e) => setWeight(Number(e.target.value))}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-label-sm text-label-sm text-outline font-medium">
-                    Gram (g)
-                  </span>
-                </div>
-              </div>
-
-              {/* Kích thước */}
-              <div>
-                <label className="block font-label-md text-label-md font-medium text-on-surface mb-1.5">
-                  Kích thước bưu kiện (Dài × Rộng × Cao)
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: "Dài", value: dimL, setter: setDimL },
-                    { label: "Rộng", value: dimW, setter: setDimW },
-                    { label: "Cao", value: dimH, setter: setDimH },
-                  ].map(({ label, value, setter }) => (
-                    <div key={label} className="relative">
-                      <input
-                        className="w-full h-10 pr-8 pl-2.5 text-center font-body-md text-body-md font-medium text-on-surface rounded-lg border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 focus:outline-none"
-                        placeholder={label}
-                        type="number"
-                        value={value}
-                        onChange={(e) => setter(Number(e.target.value))}
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-outline">
-                        cm
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Cước ước tính */}
-              <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant text-body-sm font-body-sm flex items-center justify-between text-on-surface-variant">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary" style={{ fontSize: "16px" }}>
-                    calculate
-                  </span>
-                  <span>Ước tính cước nội thành HN/HCM:</span>
-                </div>
-                <span className="font-bold text-on-surface">16.500 ₫</span>
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* 4. Auto-save helper */}
-          <div className="p-4 rounded-xl bg-surface-container border border-outline-variant flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-              <span className="font-body-sm text-body-sm text-on-surface font-medium">
-                Tự động lưu nháp 1 phút trước
-              </span>
-            </div>
-            <button
-              className="text-primary font-label-sm text-label-sm font-bold hover:underline cursor-pointer bg-transparent border-none"
-              type="button"
-              onClick={() => alert("Xem lịch sử lưu nháp")}
-            >
-              Xem lịch sử
-            </button>
-          </div>
         </div>
       </div>
     </>
