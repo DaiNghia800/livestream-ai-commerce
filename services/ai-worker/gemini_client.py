@@ -21,7 +21,7 @@ from google.genai import errors as genai_errors
 from typing import Any
 import httpx
 import pydantic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_errors import AIParsingError
 
@@ -61,6 +61,9 @@ def _wait_for_rate_limit():
 # ── Schema ───────────────────────────────────────────────────
 
 class PurchaseIntentSchema(BaseModel):
+    # Preserve JSON types: booleans, strings and floats must not become counts.
+    model_config = ConfigDict(strict=True)
+
     has_intent: bool = Field(description="True if the comment expresses intent to buy")
     product_code: str | None = Field(None, description="The product code if found, else null")
     color: str | None = Field(None, description="The color if found, else null")
@@ -87,6 +90,10 @@ Rules:
 - Sizes: S, M, L, XL, XXL, etc.
 - Quantity: look for numbers with units like "cái", "chiếc", "bộ"
 - If the comment is just chatting (e.g. "Đẹp quá"), set has_intent to false
+- Quantity must be a JSON integer or null, never a string, boolean or decimal.
+- Never default quantity to 1. If no quantity is stated, return null.
+- Prices, product-code digits, sizes and phone numbers are not quantities.
+- Do not round quantities or remove a negative sign.
 - Return ONLY the JSON object, no explanation, no markdown
 """
 

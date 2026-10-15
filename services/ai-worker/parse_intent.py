@@ -12,8 +12,10 @@ Strategy (hybrid):
 
 import re
 import logging
+import unicodedata
 
 from intent_policy import apply_decision, guard_comment
+from quantity_parser import extract_quantity
 
 # --- Known values (will move to database/config later) ---
 # Sorted longest-first so "xanh dương" matches before "xanh"
@@ -58,16 +60,20 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
 
         A purchase_candidate still requires Commerce SKU validation.
     """
-    guarded = guard_comment(content)
+    guarded = guard_comment(content, known_colors=KNOWN_COLORS)
     if guarded is not None:
         return guarded
 
     # --- Step 1: Regex tries first (fast, free) ---
-    regex_result = _regex_parse(content)
+    regex_result, quantity_issue = _regex_parse(content)
 
     # No purchase evidence found by the current regex rules.
     if not regex_result["has_intent"]:
         return apply_decision(regex_result)
+
+    # Do not let AI reinterpret a known invalid or ambiguous numeric expression.
+    if quantity_issue:
+        return apply_decision(regex_result, quantity_issue=quantity_issue)
 
     # Skip AI for confident extraction, but still check completeness.
     if regex_result["confidence"] == "high":
@@ -86,20 +92,29 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
 # ── Regex parser ─────────────────────────────────────────────
 
 
-def _regex_parse(content: str) -> dict:
+def _regex_parse(content: str) -> tuple[dict, str | None]:
     """Pure regex-based parsing. No network, no side effects."""
     lower = content.lower()
 
-    has_strong = any(kw in lower for kw in STRONG_KEYWORDS)
-    has_weak = any(kw in lower for kw in WEAK_KEYWORDS)
+    # NFC keeps decomposed Vietnamese letters intact for Unicode word boundaries.
+    keyword_text = unicodedata.normalize("NFC", lower)
+    has_strong = any(
+        re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", keyword_text)
+        for kw in STRONG_KEYWORDS
+    )
+    has_weak = any(
+        re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", keyword_text)
+        for kw in WEAK_KEYWORDS
+    )
 
     if not has_strong and not has_weak:
-        return _no_intent(content, source="regex")
+        return _no_intent(content, source="regex"), None
 
     product_code = _extract_product_code(content)
     color = _extract_color(lower)
     size = _extract_size(content)
-    quantity = _extract_quantity(content, lower, product_code)
+    quantity_result = extract_quantity(content, product_code)
+    quantity = quantity_result.value
 
     fields_found = sum([
         product_code is not None,
@@ -113,7 +128,7 @@ def _regex_parse(content: str) -> dict:
     elif has_strong or fields_found >= 1:
         confidence = "low"
     else:
-        return _no_intent(content, source="regex")
+        return _no_intent(content, source="regex"), None
 
     return {
         "has_intent": True,
@@ -124,7 +139,7 @@ def _regex_parse(content: str) -> dict:
         "size": size,
         "quantity": quantity,
         "raw": content,
-    }
+    }, quantity_result.issue
 
 
 # ── Gemini AI caller ─────────────────────────────────────────
@@ -176,9 +191,10 @@ def _extract_product_code(content: str) -> str | None:
 
 
 def _extract_color(lower: str) -> str | None:
-    """Find a known color in the lowercased comment."""
+    """Find a standalone known color, preferring complete multiword names."""
+    text = " ".join(unicodedata.normalize("NFC", lower).casefold().split())
     for c in KNOWN_COLORS:
-        if c in lower:
+        if re.search(rf"(?<!\w){re.escape(c)}(?!\w)", text):
             return c
     return None
 
@@ -194,26 +210,4 @@ def _extract_size(content: str) -> str | None:
         raw_size = (match.group(1) or match.group(2)).upper()
         if raw_size in KNOWN_SIZES:
             return raw_size
-    return None
-
-
-def _extract_quantity(
-    content: str, lower: str, product_code: str | None
-) -> int | None:
-    """Find purchase quantity from the comment."""
-    qty_match = re.search(
-        r"(\d+)\s*(cái|chiếc|bộ|đôi|cặp|sp|sản phẩm)", lower
-    )
-    if qty_match:
-        return int(qty_match.group(1))
-
-    all_numbers = re.findall(r"\b(\d+)\b", content)
-    if product_code:
-        code_numbers = re.findall(r"\d+", product_code)
-        remaining = [n for n in all_numbers if n not in code_numbers]
-        if remaining:
-            return int(remaining[0])
-    elif all_numbers:
-        return int(all_numbers[-1])
-
     return None

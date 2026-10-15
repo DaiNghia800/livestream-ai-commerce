@@ -49,6 +49,45 @@ class TestKeywordDetection:
         assert result["has_intent"] is False
 
     @pytest.mark.parametrize("comment", [
+        pytest.param("Border A12 2 cái", id="order_inside_border"),
+        pytest.param("Chocolate A12 2 cái", id="cho_inside_chocolate"),
+    ])
+    def test_embedded_keyword_returns_no_purchase(self, comment):
+        """A keyword inside another word is not purchase evidence."""
+        with patch("parse_intent._try_gemini", side_effect=AssertionError("AI must not be called")) as ai:
+            result = parse_purchase_intent(comment, use_ai=False)
+        ai.assert_not_called()
+        assert result["decision"] == "no_purchase"
+        assert result["has_intent"] is False
+
+    @pytest.mark.parametrize("comment", [
+        "đorder A12 2 cái",
+        "orderđ A12 2 cái",
+        "order2 A12 2 cái",
+        "_order_ A12 2 cái",
+    ])
+    def test_keyword_adjacent_to_word_characters_returns_no_purchase(self, comment):
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["decision"] == "no_purchase"
+        assert result["has_intent"] is False
+
+    @pytest.mark.parametrize("comment", [
+        "(ORDER), A12 2 cái",
+        "[Cho] mình 2 cái A12",
+    ])
+    def test_standalone_keyword_with_punctuation_is_detected(self, comment):
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["has_intent"] is True
+
+    def test_decomposed_unicode_purchase_keyword_is_detected(self):
+        import unicodedata
+
+        comment = unicodedata.normalize("NFD", "Chốt A12 2 cái")
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["decision"] == "purchase_candidate"
+        assert result["raw"] == comment
+
+    @pytest.mark.parametrize("comment", [
         "Đẹp quá chị ơi",
         "Bao giờ live lại?",
         "Chào mọi người",
@@ -100,6 +139,48 @@ class TestColorExtraction:
     def test_simple_color_extracted(self, comment, expected_color):
         result = parse_purchase_intent(comment, use_ai=False)
         assert result["color"] == expected_color
+
+    @pytest.mark.parametrize("comment", [
+        pytest.param("Chốt A12 webcam 2 cái", id="inside_word"),
+        pytest.param("Chốt CAM12 2 cái", id="inside_product_code"),
+        pytest.param("Chốt A12 đcam 2 cái", id="unicode_prefix"),
+        pytest.param("Chốt A12 camđ 2 cái", id="unicode_suffix"),
+        pytest.param("Chốt cam2 2 cái", id="digit_suffix"),
+        pytest.param("Chốt A12 _cam_ 2 cái", id="underscores"),
+    ])
+    def test_embedded_color_returns_none(self, comment):
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["color"] is None
+        assert result["raw"] == comment
+
+    @pytest.mark.parametrize("comment,expected_color", [
+        ("Chốt A12 màu (CAM) 2 cái", "cam"),
+        ("Chốt A12 màu [XANH DƯƠNG] 2 cái", "xanh dương"),
+    ])
+    def test_standalone_color_with_punctuation_is_extracted(self, comment, expected_color):
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["color"] == expected_color
+
+    @pytest.mark.parametrize("color", ["đỏ", "hồng"])
+    @pytest.mark.parametrize("form", ["NFC", "NFD"])
+    def test_unicode_color_forms_are_equivalent(self, color, form):
+        import unicodedata
+
+        comment = unicodedata.normalize(form, f"Chốt A12 màu {color} 2 cái")
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["color"] == color
+        assert result["raw"] == comment
+
+    @pytest.mark.parametrize("color_text,expected_color", [
+        ("xanh   dương", "xanh dương"),
+        ("xanh\t dương", "xanh dương"),
+        ("xanh   lá", "xanh lá"),
+    ])
+    def test_multiword_color_with_extra_whitespace_is_extracted(self, color_text, expected_color):
+        comment = f"Chốt A12 {color_text} 2 cái"
+        result = parse_purchase_intent(comment, use_ai=False)
+        assert result["color"] == expected_color
+        assert result["raw"] == comment
 
     def test_xanh_duong_not_truncated_to_xanh(self):
         """Regression: 'xanh dương' should NOT match as just 'xanh'."""

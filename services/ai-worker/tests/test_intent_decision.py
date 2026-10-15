@@ -99,3 +99,104 @@ def test_repeated_product_code_is_not_multiple_products():
     result = parse_purchase_intent("Chốt A12 2 cái, A12 đen", use_ai=False)
     assert result["decision"] == "purchase_candidate"
     assert result["reason_codes"] == []
+
+@pytest.mark.parametrize("content", [
+    pytest.param("Chốt A12 đỏ hoặc đen 2 cái", id="colors-with-hoac"),
+    pytest.param("Chốt A12 màu đỏ hay đen 2 cái", id="colors-with-hay"),
+])
+def test_alternative_colors_require_clarification_without_ai(content):
+    with patch("parse_intent._try_gemini",
+               side_effect=AssertionError("AI must not choose an alternative color")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "needs_clarification"
+    assert result["has_intent"] is True
+    assert result["color"] is None
+    assert "ambiguous_color" in result["reason_codes"]
+    assert result["raw"] == content
+
+
+@pytest.mark.parametrize("content,color,size", [
+    pytest.param("Chốt A12 màu đỏ 2 cái", "đỏ", None, id="single-red"),
+    pytest.param("Chốt A12 màu đen 2 cái", "đen", None, id="single-black"),
+    pytest.param("Chốt A12 màu đỏ, size L, 2 cái", "đỏ", "L",
+                 id="single-color-with-size"),
+])
+def test_single_color_remains_a_purchase_candidate(content, color, size):
+    with patch("parse_intent._try_gemini",
+               side_effect=AssertionError("No AI call expected for a complete comment")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "purchase_candidate"
+    assert result["product_code"] == "A12"
+    assert result["color"] == color
+    assert result["size"] == size
+    assert result["quantity"] == 2
+    assert result["reason_codes"] == []
+    assert result["raw"] == content
+
+
+@pytest.mark.parametrize("content", [
+    "Chốt A12 đỏ hay đen 2 cái",
+    "Chốt A12 xanh dương hoặc đen 2 cái",
+    "Chốt A12 xanh dương hay xanh lá 2 cái",
+    "Chốt A12 đỏ hoặc màu đen 2 cái",
+    "Chốt A12 đỏ hoặc đỏ hoặc đen 2 cái",
+    "Cho A12 đỏ hay đen 2 cái",
+    "CHỐT A12 ĐỎ   HOẶC\tĐEN 2 cái",
+])
+def test_explicit_color_alternatives_never_reach_ai(content):
+    with patch("parse_intent._try_gemini",
+               side_effect=AssertionError("AI must not select a color")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "needs_clarification"
+    assert result["reason_codes"] == ["ambiguous_color"]
+    assert result["has_intent"] is True
+    assert result["color"] is None
+    assert result["raw"] == content
+
+
+def test_decomposed_unicode_color_alternatives_preserve_raw():
+    import unicodedata
+
+    content = unicodedata.normalize("NFD", "Chốt A12 đỏ hoặc đen 2 cái")
+    with patch("parse_intent._try_gemini",
+               side_effect=AssertionError("AI must not select a color")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "needs_clarification"
+    assert result["reason_codes"] == ["ambiguous_color"]
+    assert result["color"] is None
+    assert result["raw"] == content
+
+
+@pytest.mark.parametrize("content,product_code,color", [
+    ("Chốt A12 màu xanh dương 2 cái", "A12", "xanh dương"),
+    ("Chốt CAM12 màu đỏ 2 cái", "CAM12", "đỏ"),
+    ("Chốt CAM12 hay đỏ 2 cái", "CAM12", "đỏ"),
+    ("Chốt A12 đỏ 2 cái hoặc giao hôm nay", "A12", "đỏ"),
+    ("Chốt A12 màu đỏ hoặc đỏ 2 cái", "A12", "đỏ"),
+])
+def test_color_guard_preserves_unambiguous_purchases(content, product_code, color):
+    with patch("parse_intent._try_gemini",
+               side_effect=AssertionError("No AI call expected")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "purchase_candidate"
+    assert result["reason_codes"] == []
+    assert result["product_code"] == product_code
+    assert result["color"] == color
+    assert result["quantity"] == 2
+    assert result["raw"] == content
+
+
+def test_color_alternatives_without_purchase_evidence_remain_no_purchase():
+    content = "Đỏ hoặc đen đều đẹp"
+    with patch("parse_intent._try_gemini",
+               side_effect=AssertionError("No AI call expected")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "no_purchase"
+    assert result["has_intent"] is False
+    assert result["raw"] == content

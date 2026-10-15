@@ -19,7 +19,24 @@ _QUESTION = re.compile(
 )
 
 
-def guard_comment(content: str) -> dict | None:
+def _has_alternative_colors(text: str, known_colors: list[str]) -> bool:
+    """Find distinct color choices without matching inside product-code tokens."""
+    color_pattern = "|".join(re.escape(color) for color in known_colors)
+    colors = list(re.finditer(
+        rf"(?<![\w-])(?:{color_pattern})(?![\w-])", text
+    ))
+    for first, second in zip(colors, colors[1:]):
+        connector = text[first.end():second.start()]
+        if first.group() != second.group() and re.fullmatch(
+            r"\s+(?:hoặc|hay)\s+(?:màu\s+)?", connector
+        ):
+            return True
+    return False
+
+
+def guard_comment(
+    content: str, *, known_colors: list[str] | None = None
+) -> dict | None:
     """Short-circuit known risky language before either regex or Gemini.
 
     These rules are deliberately bounded; they are not a Vietnamese semantic
@@ -53,6 +70,13 @@ def guard_comment(content: str) -> dict | None:
         if len(codes) > 1:
             reason = "multiple_products"
 
+    if reason is None and known_colors:
+        # Match the regex parser's weak "cho" signal for this guard only.
+        if (has_purchase or re.search(r"\bcho\b", text)) and _has_alternative_colors(
+            text, known_colors
+        ):
+            reason = "ambiguous_color"
+
     if reason is None:
         return None
     return {
@@ -69,7 +93,7 @@ def guard_comment(content: str) -> dict | None:
     }
 
 
-def apply_decision(intent: dict) -> dict:
+def apply_decision(intent: dict, quantity_issue: str | None = None) -> dict:
     """Apply the same completeness gate to regex and AI extraction results.
 
     Keep legacy extraction fields for callers, but never use has_intent or
@@ -81,15 +105,17 @@ def apply_decision(intent: dict) -> dict:
         decision = "no_purchase"
         reasons.append("no_purchase_intent")
     else:
+        if quantity_issue:
+            reasons.append(quantity_issue)
         product_code = result.get("product_code")
         if not isinstance(product_code, str) or not product_code.strip():
             reasons.append("missing_product_code")
         quantity = result.get("quantity")
-        if quantity is None:
+        if quantity is None and quantity_issue is None:
             reasons.append("missing_quantity")
-        elif type(quantity) is not int or quantity <= 0:
+        elif quantity_issue is None and (type(quantity) is not int or quantity <= 0):
             reasons.append("invalid_quantity")
-        if result.get("confidence") != "high":
+        if result.get("confidence") != "high" and quantity_issue is None:
             reasons.append("uncertain_intent")
         decision = "needs_clarification" if reasons else "purchase_candidate"
     result["decision"] = decision

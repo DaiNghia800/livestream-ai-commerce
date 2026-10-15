@@ -195,3 +195,97 @@ def test_example_script_displays_clarification(monkeypatch, tmp_path, capsys):
     assert "needs_clarification" in output
     assert "missing_quantity" in output
     assert "[ERROR" not in output
+
+
+@pytest.mark.parametrize("payload", [
+    {"has_intent": True, "product_code": "B05", "quantity": True},
+    {"has_intent": True, "product_code": "B05", "quantity": False},
+    {"has_intent": True, "product_code": "B05", "quantity": "2"},
+    {"has_intent": True, "product_code": "B05", "quantity": 2.0},
+    {"has_intent": True, "product_code": "B05", "quantity": 2.5},
+    {"has_intent": "true", "product_code": "B05", "quantity": 2},
+    {"has_intent": 1, "product_code": "B05", "quantity": 2},
+])
+def test_wrong_json_types_are_technical_errors_without_retry(transport_client, payload):
+    # Exercise real SDK JSON parsing, including its handling of validation errors.
+    transport_client.return_value = response(json.dumps(payload))
+    source = event()
+    result = process_comment_event(source)
+    assert result["status"] == "error"
+    assert result["error_type"] == "ai_invalid_response"
+    assert "intent" not in result
+    assert result["event_id"] == source["event_id"]
+    assert result["comment_id"] == source["comment_id"]
+    assert transport_client.call_count == 1
+    gemini_client.time.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("content,reason", [
+    ("Chốt A12 giá 200000", "missing_quantity"),
+    ("Chốt A12 -2 cái", "invalid_quantity"),
+    ("Chốt A12 1.5 cái", "invalid_quantity"),
+    ("Chốt A12 2 cái hoặc 3 cái", "ambiguous_quantity"),
+])
+def test_quantity_issues_are_business_results_without_ai(monkeypatch, content, reason):
+    client = Mock(side_effect=AssertionError("AI must not guess a quantity"))
+    monkeypatch.setattr(gemini_client, "_get_client", client)
+    source = event()
+    source["content"] = content
+    result = process_comment_event(source)
+    assert result["status"] == "ok"
+    assert result["intent"]["decision"] == "needs_clarification"
+    assert result["intent"]["reason_codes"] == [reason]
+    assert result["event_id"] == source["event_id"]
+    assert result["comment_id"] == source["comment_id"]
+    client.assert_not_called()
+
+
+@pytest.mark.parametrize("content", [
+    "Chốt A12 đỏ hoặc đen 2 cái",
+    "Chốt A12 đỏ hay đen 2 cái",
+    "Chốt A12 xanh dương hoặc đen 2 cái",
+])
+def test_ambiguous_colors_preserve_context_without_ai(monkeypatch, content):
+    client = Mock(side_effect=AssertionError("AI must not select a color"))
+    monkeypatch.setattr(gemini_client, "_get_client", client)
+    source = event()
+    source["content"] = content
+
+    result = process_comment_event(source)
+
+    client.assert_not_called()
+    assert result["status"] == "ok"
+    assert "error_type" not in result
+    for field in ("event_id", "comment_id", "session_id", "customer_id"):
+        assert result[field] == source[field]
+    assert result["content"] == content
+    assert result["intent"]["raw"] == content
+    assert result["intent"]["has_intent"] is True
+    assert result["intent"]["decision"] == "needs_clarification"
+    assert result["intent"]["color"] is None
+    assert result["intent"]["reason_codes"] == ["ambiguous_color"]
+
+
+@pytest.mark.parametrize("content", [
+    "Chốt A12 sl: 2..5 cái",
+    "Chốt A12 sl: 2,,5 cái",
+    "Chốt A12 -+2 cái",
+])
+def test_partial_numeric_tokens_preserve_context_without_ai(monkeypatch, content):
+    client = Mock(side_effect=AssertionError("AI must not repair a numeric token"))
+    monkeypatch.setattr(gemini_client, "_get_client", client)
+    source = event()
+    source["content"] = content
+
+    result = process_comment_event(source)
+
+    client.assert_not_called()
+    assert result["status"] == "ok"
+    assert "error_type" not in result
+    for field in ("event_id", "comment_id", "session_id", "customer_id"):
+        assert result[field] == source[field]
+    assert result["content"] == content
+    assert result["intent"]["raw"] == content
+    assert result["intent"]["decision"] == "needs_clarification"
+    assert result["intent"]["reason_codes"] == ["invalid_quantity"]
+    assert result["intent"]["quantity"] is None
