@@ -22,6 +22,7 @@ export type StudioChatMessageStatus =
 
 export interface StudioChatMessage {
   id: string;
+  userId?: string;
   userName: string;
   userAvatar?: string;
   content: string;

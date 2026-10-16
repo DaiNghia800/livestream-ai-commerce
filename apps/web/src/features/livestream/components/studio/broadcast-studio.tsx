@@ -16,11 +16,11 @@ import { StudioSessionBar } from "./studio-session-bar";
 import { StudioStreamStatus } from "./studio-stream-status";
 import { StudioStreamPreview, type CameraStatus } from "./stream-preview";
 import { StudioLeftSidebar } from "./studio-left-sidebar";
-import { StudioDeviceControls } from "./studio-device-controls";
 import { StudioBroadcastActions } from "./studio-broadcast-actions";
 import { StudioPreliveChecklist } from "./studio-prelive-checklist";
 import { StudioProductsPanel } from "./studio-products-panel";
 import { StudioIvsConfigModal } from "./studio-ivs-config-modal";
+import { ProductPicker } from "../create/product-picker";
 import {
   getLivestreamDetail,
   updateLivestreamStatus,
@@ -29,25 +29,34 @@ import {
   type IvsStreamConfig,
 } from "../../api/get-livestreams";
 import type { StudioProductItem } from "../../types/studio";
-import type { Livestream, LivestreamStatus } from "../../types/livestream";
+import type { Livestream, LivestreamStatus, LiveProductItem } from "../../types/livestream";
 import { useIvsBroadcast } from "../../hooks/use-ivs-broadcast";
+import { useIvsChat } from "../../hooks/use-ivs-chat";
+import { mockStudioChatMessages } from "../../mocks/studio.mock";
 import {
   getLivestreamProducts,
   getProductUuid,
+  addLivestreamProduct,
   updateLivestreamProduct,
+  removeLivestreamProduct,
 } from "../../api/livestream-products";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 
 export interface BroadcastStudioProps {
   livestreamId: string;
 }
 
 export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
-  // 1. Quản lý thông tin phiên (từ DB hoặc fallback mock)
+  const isDemoSession = livestreamId === "LIVE-2025-08";
+
+  // 1. Quản lý thông tin phiên (từ DB hoặc fallback mock cho phiên demo)
   const [session, setSession] = useState<Livestream | null>(() => {
-    return mockLivestreams.find((item) => item.id === livestreamId) || null;
+    return isDemoSession
+      ? mockLivestreams.find((item) => item.id === livestreamId) || null
+      : null;
   });
   const [isLoadingSession, setIsLoadingSession] = useState<boolean>(!session);
 
@@ -68,6 +77,27 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     startBroadcast,
     stopBroadcast,
   } = useIvsBroadcast();
+
+  // 2.2.1 AWS IVS Chat Room & WebSocket Real-time Messaging
+  const {
+    connectionState: chatConnectionState,
+    chatMessages: liveChatMessages,
+    sendMessage: sendChatMessage,
+  } = useIvsChat({
+    livestreamId,
+    userId: session?.merchantId || "merchant-host",
+    username: "Chủ Shop (Host)",
+    role: "HOST",
+    autoConnect: true,
+  });
+
+  const allChatMessages = useMemo(() => {
+    // Chỉ chèn tin nhắn demo cho phiên mẫu LIVE-2025-08; phiên thực tế lấy 100% từ AWS IVS Chat
+    if (isDemoSession) {
+      return [...liveChatMessages, ...mockStudioChatMessages];
+    }
+    return liveChatMessages;
+  }, [isDemoSession, liveChatMessages]);
 
   // 2.3 Điều khiển Bố cục Studio phong cách TikTok Live Studio (Đóng/Mở Sidebars)
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
@@ -182,7 +212,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
 
   // 4. Danh sách sản phẩm từ session
   const [allProducts, setAllProducts] = useState<StudioProductItem[]>(() => {
-    const prods = session?.products || mockLivestreams[0]?.products || [];
+    const prods = session?.products || (isDemoSession ? mockLivestreams[0]?.products || [] : []);
     return prods.map((p, index) => ({
       id: p.id || `P-${index + 1}`,
       name: p.name,
@@ -198,31 +228,10 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }));
   });
 
-  const [prevProductsRef, setPrevProductsRef] = useState(session?.products);
-  if (session?.products && session.products !== prevProductsRef) {
-    setPrevProductsRef(session.products);
-    if (session.products.length > 0) {
-      setAllProducts(
-        session.products.map((p, index) => ({
-          id: p.id || `P-${index + 1}`,
-          name: p.name,
-          sku: p.sku,
-          price: p.price,
-          originalPrice: p.originalPrice,
-          stock: p.stock,
-          image: p.image,
-          isPinned: Boolean(p.isPinned),
-          orderCode: p.id,
-          salesCount: p.chatOrders || 0,
-        }))
-      );
-    }
-  }
-
-  // Sản phẩm đang ghim
+  // Sản phẩm đang ghim (chỉ ghim khi có sản phẩm được đánh dấu isPinned: true, không tự động ghim)
   const [pinnedProduct, setPinnedProduct] = useState<StudioProductItem | null>(() => {
     const pinned = allProducts.find((p) => p.isPinned);
-    return pinned || (allProducts.length > 0 ? allProducts[0] : null);
+    return pinned || null;
   });
   const [pinError, setPinError] = useState("");
 
@@ -252,6 +261,27 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       current = false;
     };
   }, [allProducts, livestreamId]);
+
+  const [prevProductsRef, setPrevProductsRef] = useState(session?.products);
+  if (session && session.products !== prevProductsRef) {
+    setPrevProductsRef(session.products);
+    const prods = session.products || (isDemoSession ? mockLivestreams[0]?.products || [] : []);
+    const mapped = prods.map((p, index) => ({
+      id: p.id || `P-${index + 1}`,
+      name: p.name,
+      sku: p.sku,
+      price: p.price,
+      originalPrice: p.originalPrice,
+      stock: p.stock,
+      image: p.image,
+      isPinned: Boolean(p.isPinned),
+      orderCode: p.id,
+      salesCount: p.chatOrders || 0,
+    }));
+    setAllProducts(mapped);
+    const pinned = mapped.find((p) => p.isPinned);
+    setPinnedProduct(pinned || null);
+  }
 
   // Danh sách sản phẩm chưa ghim
   const unpinnedProducts = useMemo(() => {
@@ -435,6 +465,73 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   };
 
   const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
+  const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
+
+  // Thêm sản phẩm trực tiếp từ kho vào phiên ngay tại Studio
+  const handleAddProductsFromPicker = async (selectedCatalogItems: LiveProductItem[]) => {
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isRealLive = UUID_REGEX.test(livestreamId);
+
+    const newStudioItems: StudioProductItem[] = [];
+
+    for (const item of selectedCatalogItems) {
+      if (isRealLive) {
+        try {
+          await addLivestreamProduct(livestreamId, {
+            productId: item.id,
+            isFeatured: false,
+            displayOrder: allProducts.length + newStudioItems.length + 1,
+          });
+        } catch (err) {
+          console.warn("[Studio] Error adding product to livestream:", err);
+        }
+      }
+      newStudioItems.push({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        price: item.price,
+        originalPrice: item.originalPrice,
+        stock: item.stock,
+        image: item.image,
+        isPinned: false,
+        orderCode: item.id,
+        salesCount: 0,
+      });
+    }
+
+    setAllProducts((prev) => {
+      const merged = [...prev];
+      for (const item of newStudioItems) {
+        if (!merged.some((p) => p.id === item.id)) {
+          merged.push(item);
+        }
+      }
+      return merged;
+    });
+
+    // Không tự động ghim sản phẩm: chỉ ghim khi người bán bấm nút Ghim
+    setIsProductPickerOpen(false);
+  };
+
+  // Bỏ sản phẩm ra khỏi phiên live
+  const handleRemoveProduct = async (product: StudioProductItem) => {
+    // Nếu sản phẩm đang được ghim, hủy ghim
+    if (pinnedProduct?.id === product.id) {
+      setPinnedProduct(null);
+    }
+    // Xóa khỏi danh sách sản phẩm hiển thị trong studio
+    setAllProducts((prev) => prev.filter((p) => p.id !== product.id));
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (UUID_REGEX.test(livestreamId)) {
+      try {
+        await removeLivestreamProduct(livestreamId, product.id);
+      } catch (err) {
+        console.warn("[Studio] Error removing product from livestream:", err);
+      }
+    }
+  };
 
   // Bắt đầu Livestream
   const handleStartLive = async () => {
@@ -594,11 +691,11 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   const canStartLive = Boolean(session.title && hasProducts && !isEnded);
 
   return (
-    <div className="relative flex flex-col h-[calc(100dvh-104px)] min-h-[580px] lg:h-[calc(100dvh-104px)] lg:min-h-[600px] lg:max-h-[calc(100dvh-104px)] w-full rounded-xl sm:rounded-2xl border border-slate-800/90 shadow-2xl bg-[#0B0E14] text-slate-100 overflow-hidden font-sans">
+    <div className="relative flex flex-col h-[calc(100dvh-104px)] min-h-[580px] lg:h-[calc(100dvh-104px)] lg:min-h-[600px] lg:max-h-[calc(100dvh-104px)] w-full rounded-xl sm:rounded-2xl border border-slate-800 shadow-2xl bg-[#0B1220] text-slate-100 overflow-hidden font-sans">
       {/* Toast Notification khi Bắt đầu phát sóng */}
       {liveToastMessage && (
-        <div className="absolute top-3 right-3 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
-          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+        <div className="absolute top-3 right-3 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-[#1E293B] border border-emerald-500/40 text-emerald-300 rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
           <span>{liveToastMessage}</span>
           <button
             type="button"
@@ -645,7 +742,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       )}
 
       {/* 2. Amazon IVS Stream Telemetry Header with OBS Config button */}
-      <div className="flex items-center justify-between bg-[#111726] border-b border-slate-800/90 pr-3">
+      <div className="flex items-center justify-between bg-[#0B1220] border-b border-slate-800 pr-3">
         <div className="flex-1 min-w-0">
           <StudioStreamStatus
             isLive={isLive}
@@ -656,15 +753,15 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         </div>
         <button
           onClick={handleOpenIvsModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md bg-cyan-950 text-cyan-300 border border-cyan-800/60 hover:bg-cyan-900 transition-all shrink-0 active:scale-95 shadow-xs"
+          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md bg-[#151F31] text-slate-200 border border-slate-700/80 hover:bg-slate-800 hover:text-white transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer"
         >
-          <Radio className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+          <Radio className="w-3.5 h-3.5 text-cyan-400" />
           <span>Cấu hình OBS / IVS</span>
         </button>
       </div>
 
       {/* Mobile Tab Switcher (Visible on < 1024px) */}
-      <div className="lg:hidden flex items-center bg-[#111726] border-b border-slate-800 text-xs shrink-0">
+      <div className="lg:hidden flex items-center bg-[#0B1220] border-b border-slate-800 text-xs shrink-0">
         <button
           type="button"
           onClick={() => setMobileTab("stage")}
@@ -682,7 +779,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           onClick={() => setMobileTab("chat")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
             mobileTab === "chat"
-              ? "text-[#FE2C55] border-b-2 border-[#FE2C55] bg-slate-900/90"
+              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
@@ -694,7 +791,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           onClick={() => setMobileTab("products")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
             mobileTab === "products"
-              ? "text-amber-400 border-b-2 border-amber-400 bg-slate-900/90"
+              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
@@ -755,7 +852,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             Tự động mở rộng 100% khi đóng 1 hoặc cả 2 sidebar!
             ======================================================== */}
         <main
-          className={`flex-1 min-w-0 flex flex-col bg-[#0B0E14] overflow-hidden transition-all duration-300 ease-in-out ${
+          className={`flex-1 min-w-0 flex flex-col bg-[#080B10] overflow-hidden transition-all duration-300 ease-in-out ${
             mobileTab !== "stage" ? "hidden lg:flex" : "flex"
           }`}
           aria-label="Khu vực màn hình Livestream chính"
@@ -775,6 +872,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
                   isStarting={isStarting}
                   onStartLive={handleStartLive}
                   onRequestPermissions={() => handleRequestCamera(selectedCameraId, selectedMicId)}
+                  onOpenProductPicker={() => setIsProductPickerOpen(true)}
                 />
               </div>
             )}
@@ -805,15 +903,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           </div>
 
           {/* Bottom Device Controls & Broadcast Action Bar */}
-          <div className="shrink-0 bg-[#101522] border-t border-slate-800/80 px-3 py-1.5 sm:px-4 sm:py-2 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-3">
-            <StudioDeviceControls
-              selectedCameraId={selectedCameraId}
-              selectedMicId={selectedMicId}
-              onCameraChange={handleCameraDeviceChange}
-              onMicrophoneChange={handleMicDeviceChange}
-              disabled={isEnded}
-            />
-
+          <div className="shrink-0 bg-[#0B1220] border-t border-slate-800 px-3 py-2 sm:px-4 flex items-center justify-between gap-3">
             <StudioBroadcastActions
               isLive={isLive}
               isStarting={isStarting}
@@ -827,7 +917,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
               onToggleScreenShare={handleToggleScreenShare}
               onStartLive={handleStartLive}
               onEndLive={handleEndLive}
-              className="basis-full 2xl:basis-auto 2xl:flex-1"
+              className="w-full"
             />
           </div>
         </main>
@@ -859,9 +949,15 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
                 setMobileTab(tab);
               }
             }}
+            chatMessages={allChatMessages}
+            connectionState={chatConnectionState}
+            onSendMessage={sendChatMessage}
             isEnded={isEnded}
             isExpandedMode={false}
             onCloseSidebar={() => setIsRightSidebarOpen(false)}
+            onOpenAddProduct={() => setIsProductPickerOpen(true)}
+            onRemoveProduct={handleRemoveProduct}
+            className="w-full h-full"
           />
         </div>
       </div>
@@ -872,6 +968,24 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         onClose={() => setIsIvsModalOpen(false)}
         config={ivsConfig}
         isLoading={isLoadingIvsConfig}
+      />
+
+      {/* Modal Thêm sản phẩm trực tiếp từ kho vào phiên ngay tại Studio */}
+      <ProductPicker
+        isOpen={isProductPickerOpen}
+        onClose={() => setIsProductPickerOpen(false)}
+        selectedProducts={allProducts.map((p) => ({
+          id: p.id,
+          code: p.orderCode || p.id,
+          sku: p.sku,
+          name: p.name,
+          price: p.price,
+          originalPrice: p.originalPrice,
+          stock: p.stock,
+          image: p.image,
+          category: "",
+        }))}
+        onAddProducts={handleAddProductsFromPicker}
       />
     </div>
   );

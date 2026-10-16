@@ -348,6 +348,28 @@ select.studio-select {
   width: 100%;
 }
 
+/* Studio chat input — resets global min-height, white background and border */
+input.studio-chat-input {
+  min-height: unset !important;
+  height: auto !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0.25rem 0.5rem !important;
+  color: #f1f5f9 !important;
+  width: 100% !important;
+}
+
+input.studio-chat-input::placeholder {
+  color: #64748b !important;
+}
+
+input.studio-chat-input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .field-error {
   color: var(--color-error);
 }
