@@ -7,11 +7,13 @@ export type LivestreamStatus =
 
 export interface Livestream {
     id: string;
+    merchantId?: string;
     title: string;
     status: LivestreamStatus;
     thumbnail?: string;
     hostName?: string;
     ivsChannel?: string;
+    chatRoomArn?: string;
     resolution?: string;
     channelName?: string;
     scheduledAt?: string;

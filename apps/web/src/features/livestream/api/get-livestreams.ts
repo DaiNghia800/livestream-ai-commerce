@@ -383,4 +383,80 @@ export async function getIvsStreamConfig(
   return (await res.json()) as IvsStreamConfig;
 }
 
+export interface IvsChatConfig {
+  roomArn: string;
+  roomId: string;
+}
+
+export interface IvsChatTokenResponse {
+  token: string;
+  sessionExpirationTime?: string;
+  tokenExpirationTime?: string;
+  roomArn: string;
+  roomId: string;
+}
+
+/**
+ * Gọi API GET /api/livestreams/:id/chat-config để lấy thông tin IVS Chat Room
+ */
+export async function getIvsChatConfig(id: string): Promise<IvsChatConfig> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/chat-config`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Lấy cấu hình phòng chat IVS thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as IvsChatConfig;
+}
+
+/**
+ * Gọi API POST /api/livestreams/:id/chat-token để lấy token xác thực kết nối WebSocket IVS Chat
+ */
+export async function getIvsChatToken(
+  id: string,
+  params: {
+    userId: string;
+    role?: "HOST" | "MODERATOR" | "VIEWER";
+    username?: string;
+    avatarUrl?: string;
+  }
+): Promise<IvsChatTokenResponse> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/chat-token`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Lấy token chat IVS thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as IvsChatTokenResponse;
+}
+
 

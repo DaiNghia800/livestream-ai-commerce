@@ -31,6 +31,11 @@ export interface StudioProductsPanelProps {
   isExpandedMode?: boolean;
   onToggleExpandMode?: () => void;
   onCloseSidebar?: () => void;
+  connectionState?: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "ERROR";
+  onSendMessage?: (content: string) => Promise<void> | void;
+  onOpenAddProduct?: () => void;
+  onRemoveProduct?: (product: StudioProductItem) => void;
+  className?: string;
 }
 
 export function StudioProductsPanel({
@@ -41,6 +46,7 @@ export function StudioProductsPanel({
   totalProductsCount,
   onPinProduct,
   onUnpinProduct,
+  onRemoveProduct,
   activeTab: controlledTab,
   onTabChange,
   chatMessages = mockStudioChatMessages,
@@ -48,6 +54,10 @@ export function StudioProductsPanel({
   isExpandedMode = false,
   onToggleExpandMode,
   onCloseSidebar,
+  connectionState,
+  onSendMessage,
+  onOpenAddProduct,
+  className = "",
 }: StudioProductsPanelProps) {
   const [internalTab, setInternalTab] = useState<"chat" | "products">("chat");
   const currentTab = controlledTab !== undefined ? controlledTab : internalTab;
@@ -86,11 +96,11 @@ export function StudioProductsPanel({
   const hasAnyProducts = totalProductsCount > 0;
 
   return (
-    <div className="flex flex-col h-full bg-[#101522] select-none overflow-hidden text-slate-100 border-l border-slate-800/80">
+    <div className={`flex flex-col h-full w-full bg-[#151F31] select-none overflow-hidden text-slate-100 border-l border-slate-800 ${className}`}>
       {/* 1. Header with Close Button */}
-      <div className="h-10 px-3 bg-[#141C2E] border-b border-slate-800/80 flex items-center justify-between shrink-0">
+      <div className="h-10 px-3 bg-[#0B1220] border-b border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <ShoppingBag className="h-4 w-4 text-[#FE2C55] shrink-0" aria-hidden="true" />
+          <ShoppingBag className="h-4 w-4 text-cyan-400 shrink-0" aria-hidden="true" />
           <span className="text-xs font-bold text-white tracking-wide uppercase truncate">
             Bán Hàng &amp; Chat Live
           </span>
@@ -109,39 +119,44 @@ export function StudioProductsPanel({
         )}
       </div>
 
-      {hasAnyProducts ? (
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          {/* 2. Pinned Product Card - Chuyển sang Micro-Bar khi ở Tab Chat để tăng chiều dài tin nhắn */}
-          <div className="p-2 sm:p-2.5 shrink-0 border-b border-slate-800 bg-[#0F1420]">
-            <PinnedProductCard
-              product={pinnedProduct}
-              onUnpin={onUnpinProduct}
-              onChangeProduct={() => setIsSwitcherOpen(true)}
-              onSelectPrev={handleSelectPrevProduct}
-              onSelectNext={handleSelectNextProduct}
-              disabled={isEnded}
-              isExpanded={isPinnedCardExpanded}
-              onToggleExpand={() => setIsPinnedCardExpanded((prev) => !prev)}
-              isCompactMode={currentTab === "chat"}
-            />
-          </div>
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* 2. Pinned Product Card - Luôn hiển thị thanh ghim gọn gàng */}
+        <div className="p-2 sm:p-2.5 shrink-0 border-b border-slate-800 bg-[#0B1220]/70">
+          <PinnedProductCard
+            product={pinnedProduct}
+            onUnpin={onUnpinProduct}
+            onChangeProduct={() => {
+              if (hasAnyProducts) {
+                setIsSwitcherOpen(true);
+              } else if (onOpenAddProduct) {
+                onOpenAddProduct();
+              }
+            }}
+            onSelectPrev={allProducts.length > 1 ? handleSelectPrevProduct : undefined}
+            onSelectNext={allProducts.length > 1 ? handleSelectNextProduct : undefined}
+            disabled={isEnded}
+            isExpanded={isPinnedCardExpanded}
+            onToggleExpand={() => setIsPinnedCardExpanded((prev) => !prev)}
+            isCompactMode={currentTab === "chat"}
+          />
+        </div>
 
-          {/* 3. Tab Navigation */}
-          <div className="flex items-center border-b border-slate-800 bg-[#121826] px-2.5 pt-1 shrink-0">
+        {/* 3. Tab Navigation (Tin nhắn & Sản phẩm) */}
+        <div className="flex items-center justify-between border-b border-slate-800 bg-[#0B1220] px-2.5 pt-1 shrink-0">
+          <div className="flex items-center">
             <button
               type="button"
               onClick={() => handleTabChange("chat")}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${
-                currentTab === "chat"
-                  ? "border-[#FE2C55] text-white bg-[#101522] rounded-t-lg"
+              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${currentTab === "chat"
+                  ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
                   : "border-transparent text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-cyan-400" aria-hidden="true" />
+              <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${currentTab === "chat" ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
               <span>Tin nhắn ({totalChatCount})</span>
               {needsReviewCount > 0 && (
                 <span
-                  className="px-1.5 py-0.2 rounded-full bg-[#FE2C55] text-white text-[10px] font-extrabold"
+                  className="px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-bold"
                   title={`${needsReviewCount} tin nhắn cần xử lý`}
                 >
                   <span className="hidden sm:inline">{needsReviewCount} cần xử lý</span>
@@ -153,60 +168,91 @@ export function StudioProductsPanel({
             <button
               type="button"
               onClick={() => handleTabChange("products")}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${
-                currentTab === "products"
-                  ? "border-[#FE2C55] text-white bg-[#101522] rounded-t-lg"
+              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${currentTab === "products"
+                  ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
                   : "border-transparent text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
-              <ShoppingBag className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden="true" />
+              <ShoppingBag className={`h-3.5 w-3.5 shrink-0 ${currentTab === "products" ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
               <span>Sản phẩm ({totalProductsCount})</span>
             </button>
           </div>
 
-          {/* 4. Tab Content */}
-          <div className="flex-1 min-h-0 flex flex-col p-2 sm:p-2.5 overflow-hidden">
-            <div className={`flex-1 min-h-0 flex flex-col ${currentTab === "chat" ? "" : "hidden"}`}>
-              <StudioChatPanel
-                messages={chatMessages}
-                isExpandedMode={isExpandedMode}
-                onToggleExpandMode={onToggleExpandMode}
-                activeFilter={chatFilter}
-                onFilterChange={setChatFilter}
-              />
-            </div>
-            <div className={`flex-1 min-h-0 flex flex-col ${currentTab === "products" ? "" : "hidden"}`}>
+          {/* Nút Thêm sản phẩm trực tiếp ngay trong Studio */}
+          {onOpenAddProduct && !isEnded && (
+            <button
+              type="button"
+              onClick={onOpenAddProduct}
+              className="inline-flex items-center gap-1 px-2 py-0.5 mb-1 text-[11px] font-semibold text-cyan-400 hover:text-white bg-cyan-500/10 hover:bg-cyan-600 rounded border border-cyan-500/30 transition cursor-pointer"
+              title="Gán sản phẩm từ kho trực tiếp vào phiên live"
+            >
+              <Plus className="h-3 w-3" />
+              <span>Thêm SP</span>
+            </button>
+          )}
+        </div>
+
+        {/* 4. Tab Content */}
+        <div className="flex-1 min-h-0 flex flex-col p-2 sm:p-2.5 overflow-hidden">
+          {/* Tab Tin nhắn */}
+          <div className={`flex-1 min-h-0 flex flex-col ${currentTab === "chat" ? "" : "hidden"}`}>
+            <StudioChatPanel
+              messages={chatMessages}
+              isExpandedMode={isExpandedMode}
+              onToggleExpandMode={onToggleExpandMode}
+              activeFilter={chatFilter}
+              onFilterChange={setChatFilter}
+              connectionState={connectionState}
+              onSendMessage={onSendMessage}
+            />
+          </div>
+
+          {/* Tab Sản phẩm */}
+          <div className={`flex-1 min-h-0 flex flex-col ${currentTab === "products" ? "" : "hidden"}`}>
+            {hasAnyProducts ? (
               <StudioProductList
                 products={unpinnedProducts}
                 onPinProduct={onPinProduct}
+                onRemoveProduct={onRemoveProduct}
                 disabled={isEnded}
                 isExpandedMode={isExpandedMode}
                 onToggleExpandMode={onToggleExpandMode}
               />
-            </div>
+            ) : (
+              /* Empty State thân thiện bên trong tab Sản phẩm */
+              <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center py-10 px-3 text-center text-slate-400">
+                <div className="h-10 w-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-2 text-slate-400">
+                  <Package className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h4 className="text-xs font-bold text-slate-200">
+                  Chưa có sản phẩm nào trong phiên
+                </h4>
+                <p className="text-[11px] text-slate-400 max-w-xs mt-1 leading-relaxed">
+                  Gán sản phẩm từ kho hàng để AI tự động nhận diện và chốt đơn trực tiếp.
+                </p>
+                {onOpenAddProduct ? (
+                  <button
+                    type="button"
+                    onClick={onOpenAddProduct}
+                    className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Thêm sản phẩm</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={`/shop/livestream/${livestreamId}/edit`}
+                    className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg shadow-xs transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Thêm sản phẩm</span>
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      ) : (
-        /* Empty State */
-        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center py-8 px-3 text-center text-slate-400">
-          <div className="h-10 w-10 rounded-full bg-slate-900 flex items-center justify-center mb-2 text-slate-500">
-            <Package className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <h4 className="text-xs font-bold text-slate-200">
-            Chưa có sản phẩm nào trong phiên
-          </h4>
-          <p className="text-[11px] text-slate-400 max-w-xs mt-1">
-            Gán sản phẩm từ kho hàng để AI tự động nhận diện chốt đơn trực tiếp.
-          </p>
-          <Link
-            href={`/shop/livestream/${livestreamId}/edit`}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs"
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Thêm sản phẩm</span>
-          </Link>
-        </div>
-      )}
+      </div>
 
       {/* Quick switcher modal */}
       <QuickProductSwitcher

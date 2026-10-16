@@ -44,7 +44,7 @@ export function PinnedProductCard({
   // Empty state gọn (~46px) khi chưa ghim sản phẩm nào
   if (!product) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-3 py-1.5 text-center flex items-center justify-between gap-2 min-h-[46px]">
+      <div className="rounded-xl border border-dashed border-slate-700 bg-[#0B1220]/60 px-3 py-1.5 text-center flex items-center justify-between gap-2 min-h-[46px]">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 min-w-0">
           <Package className="h-4 w-4 text-slate-500 shrink-0" aria-hidden="true" />
           <span className="truncate">Chưa ghim sản phẩm lên live</span>
@@ -53,7 +53,7 @@ export function PinnedProductCard({
           <button
             type="button"
             onClick={onChangeProduct}
-            className="inline-flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer active:scale-95 shrink-0"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer active:scale-95 shrink-0"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Chọn ghim</span>
@@ -68,25 +68,21 @@ export function PinnedProductCard({
   // 1. CHẾ ĐỘ MICRO-BAR SIÊU MỎNG (KHI Ở TAB CHAT): Tiết kiệm 40px chiều cao cho tin nhắn
   if (isCompactMode && !isExpanded) {
     return (
-      <div className="rounded-lg border border-cyan-500/30 bg-gradient-to-r from-slate-950 via-[#131B2C] to-slate-950 px-2.5 py-1.5 relative shadow-xs flex items-center justify-between gap-2 text-xs transition-all">
+      <div className="rounded-lg border border-slate-700/80 bg-[#151F31] px-2.5 py-1.5 relative shadow-xs flex items-center justify-between gap-2 text-xs transition-all">
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <span className="inline-flex items-center gap-1 bg-[#FE2C55] text-white text-[8px] font-extrabold px-1.5 py-0.2 rounded-full uppercase shrink-0">
-            <span className="relative flex h-1 w-1">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-              <span className="relative inline-flex rounded-full h-1 w-1 bg-white" />
-            </span>
-            <span>GHIM</span>
+          <span className="inline-flex items-center gap-1 bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[9px] font-semibold px-1.5 py-0.2 rounded shrink-0">
+            GHIM
           </span>
 
-          <span className="font-mono text-cyan-300 font-bold text-[10px] bg-cyan-950/80 px-1 rounded border border-cyan-800/40 shrink-0">
+          <span className="font-mono text-slate-300 font-medium text-[10px] bg-slate-800/80 px-1 py-0.2 rounded border border-slate-700 shrink-0">
             {product.orderCode || product.sku}
           </span>
 
-          <span className="font-bold text-slate-200 truncate text-[11px]" title={product.name}>
+          <span className="font-semibold text-slate-200 truncate text-[11px]" title={product.name}>
             {product.name}
           </span>
 
-          <span className="font-bold text-amber-300 text-[11px] tabular-nums shrink-0 hidden sm:inline">
+          <span className="font-semibold text-slate-100 text-[11px] tabular-nums shrink-0 hidden sm:inline">
             {product.price.toLocaleString("vi-VN")} ₫
           </span>
         </div>
@@ -120,7 +116,7 @@ export function PinnedProductCard({
           <button
             type="button"
             onClick={toggleExpand}
-            className="p-1 rounded text-slate-400 hover:text-cyan-300 transition"
+            className="p-1 rounded text-slate-400 hover:text-slate-200 transition"
             title="Mở rộng chi tiết"
           >
             <ChevronDown className="h-3.5 w-3.5" />
@@ -133,7 +129,7 @@ export function PinnedProductCard({
   // 2. CHẾ ĐỘ THU GỌN TIÊU CHUẨN (~64px): Có nút trước / sau
   if (!isExpanded) {
     return (
-      <div className="rounded-xl border border-cyan-500/40 bg-gradient-to-r from-slate-900 via-[#131B2C] to-slate-900 p-2 sm:p-2.5 relative shadow-md flex items-center justify-between gap-2.5 min-h-[62px] max-h-[74px] transition-all">
+      <div className="rounded-xl border border-slate-700/80 bg-[#151F31] p-2 sm:p-2.5 relative shadow-xs flex items-center justify-between gap-2.5 min-h-[62px] max-h-[74px] transition-all">
         {/* Left: Thumbnail */}
         <div className="w-11 h-11 rounded-lg bg-slate-950 overflow-hidden shrink-0 border border-slate-700/80 shadow-xs">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -147,25 +143,21 @@ export function PinnedProductCard({
         {/* Middle: Badge + Code + Price + Name */}
         <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 bg-[#FE2C55] text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full tracking-wider uppercase shrink-0 shadow-xs">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
-              </span>
-              <span>GHIM</span>
+            <span className="inline-flex items-center gap-1 bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[9px] font-semibold px-1.5 py-0.2 rounded uppercase shrink-0">
+              GHIM
             </span>
 
-            <span className="font-mono text-cyan-300 font-bold text-[10px] bg-cyan-950/80 border border-cyan-800/60 px-1.5 py-0.2 rounded shrink-0">
+            <span className="font-mono text-slate-300 font-medium text-[10px] bg-slate-800/80 border border-slate-700 px-1.5 py-0.2 rounded shrink-0">
               Mã: {product.orderCode || product.id}
             </span>
 
-            <span className="text-xs sm:text-[13px] font-bold text-amber-300 tabular-nums shrink-0">
+            <span className="text-xs sm:text-[13px] font-bold text-slate-100 tabular-nums shrink-0">
               {product.price.toLocaleString("vi-VN")} ₫
             </span>
           </div>
 
           <h3
-            className="text-xs font-bold text-slate-100 truncate leading-tight"
+            className="text-xs font-semibold text-slate-100 truncate leading-tight"
             title={product.name}
           >
             {product.name}
@@ -201,7 +193,7 @@ export function PinnedProductCard({
           <button
             type="button"
             onClick={toggleExpand}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-cyan-300 hover:text-white hover:bg-cyan-500/20 transition cursor-pointer border border-cyan-500/30 bg-slate-900/80"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition cursor-pointer border border-slate-700 bg-slate-800/50"
             title="Mở rộng chi tiết sản phẩm ghim"
             aria-expanded={false}
           >
@@ -215,15 +207,11 @@ export function PinnedProductCard({
 
   // 3. CHẾ ĐỘ MỞ RỘNG
   return (
-    <div className="rounded-xl border border-cyan-500/50 bg-gradient-to-b from-[#131B2C] to-slate-900 p-2.5 sm:p-3 relative shadow-lg transition-all space-y-2.5">
+    <div className="rounded-xl border border-slate-700/80 bg-[#151F31] p-2.5 sm:p-3 relative shadow-xs transition-all space-y-2.5">
       {/* Top row: Status Badge & Actions */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1.5 bg-[#FE2C55] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full tracking-wider uppercase shadow-xs">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
-          </span>
-          <span>ĐANG GHIM TRÊN LIVE</span>
+        <span className="inline-flex items-center gap-1.5 bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-semibold px-2 py-0.5 rounded uppercase">
+          ĐANG GHIM TRÊN LIVE
         </span>
 
         <div className="flex items-center gap-1.5 text-xs">
@@ -313,7 +301,7 @@ export function PinnedProductCard({
           </h3>
 
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs sm:text-sm font-bold text-amber-300 tabular-nums">
+            <span className="text-xs sm:text-sm font-bold text-slate-100 tabular-nums">
               {product.price.toLocaleString("vi-VN")} ₫
             </span>
             {product.originalPrice && (
@@ -324,7 +312,7 @@ export function PinnedProductCard({
           </div>
 
           <div className="flex items-center gap-2 mt-1 text-[11px]">
-            <span className="font-mono text-cyan-300 font-bold bg-cyan-950 px-1.5 py-0.2 rounded border border-cyan-800/60">
+            <span className="font-mono text-slate-300 font-medium bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
               Mã: {product.orderCode || product.id}
             </span>
             <span className="text-slate-400">
@@ -338,7 +326,7 @@ export function PinnedProductCard({
       </div>
 
       {isOutOfStock && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rose-950/70 border border-rose-800 rounded-lg text-rose-300 text-[11px] font-semibold">
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-400 text-[11px] font-semibold">
           <AlertOctagon className="h-3.5 w-3.5 shrink-0" />
           <span>Sản phẩm này đã hết hàng trong kho! Hãy đổi sang sản phẩm khác.</span>
         </div>

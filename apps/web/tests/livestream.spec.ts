@@ -238,7 +238,12 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/livestream/LIVE-2025-08/studio");
 
-  // 1. Verify bottom device controls (camera & mic selects) are present and compact
+  // On mobile devices, switch to sources/tools tab to view device selects in sidebar
+  if (testInfo.project.name === "mobile") {
+    await page.getByRole("button", { name: /Nguồn phát/ }).click();
+  }
+
+  // 1. Verify device controls (camera & mic selects in sidebar) are present and compact
   const camSelect = page.locator("#studio-camera-select");
   const micSelect = page.locator("#studio-mic-select");
   await expect(camSelect).toBeVisible();
@@ -271,7 +276,7 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
     await expect(ratio916).toBeVisible();
 
     await ratio916.click();
-    await expect(ratio916).toHaveClass(/text-rose-300/);
+    await expect(ratio916).toHaveClass(/text-cyan-300/);
 
     await ratio169.click();
     await expect(ratio169).toHaveClass(/text-cyan-300/);

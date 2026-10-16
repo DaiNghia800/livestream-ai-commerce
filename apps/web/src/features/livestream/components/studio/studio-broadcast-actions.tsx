@@ -71,15 +71,15 @@ export function StudioBroadcastActions({
             onClick={onToggleMic}
             className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
               micEnabled
-                ? "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
-                : "bg-rose-950/70 hover:bg-rose-900/70 text-rose-300 border-rose-800/80"
+                ? "bg-[#151F31] hover:bg-slate-800 text-slate-200 border-slate-700/80"
+                : "bg-slate-900/80 hover:bg-slate-800 text-slate-400 border-slate-800"
             }`}
             title={micEnabled ? "Tắt Microphone" : "Bật Microphone"}
           >
             {micEnabled ? (
               <Mic className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
             ) : (
-              <MicOff className="h-3.5 w-3.5 text-rose-400 shrink-0" aria-hidden="true" />
+              <MicOff className="h-3.5 w-3.5 text-slate-500 shrink-0" aria-hidden="true" />
             )}
             <span>{micEnabled ? "Tắt Mic" : "Bật Mic"}</span>
           </button>
@@ -91,15 +91,15 @@ export function StudioBroadcastActions({
             onClick={onToggleCamera}
             className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
               cameraEnabled
-                ? "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
-                : "bg-rose-950/70 hover:bg-rose-900/70 text-rose-300 border-rose-800/80"
+                ? "bg-[#151F31] hover:bg-slate-800 text-slate-200 border-slate-700/80"
+                : "bg-slate-900/80 hover:bg-slate-800 text-slate-400 border-slate-800"
             }`}
             title={cameraEnabled ? "Tắt Camera" : "Bật Camera"}
           >
             {cameraEnabled ? (
               <Video className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
             ) : (
-              <VideoOff className="h-3.5 w-3.5 text-rose-400 shrink-0" aria-hidden="true" />
+              <VideoOff className="h-3.5 w-3.5 text-slate-500 shrink-0" aria-hidden="true" />
             )}
             <span>{cameraEnabled ? "Tắt Cam" : "Bật Cam"}</span>
           </button>
@@ -111,12 +111,12 @@ export function StudioBroadcastActions({
             onClick={onToggleScreenShare}
             className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
               isScreenSharing
-                ? "bg-indigo-950 text-indigo-300 border-indigo-600 ring-1 ring-indigo-500"
-                : "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
+                ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
+                : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-800"
             }`}
             title="Chia sẻ màn hình làm nguồn phát video"
           >
-            <ScreenShare className="h-3.5 w-3.5 text-indigo-400 shrink-0" aria-hidden="true" />
+            <ScreenShare className={`h-3.5 w-3.5 shrink-0 ${isScreenSharing ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
             <span className="hidden sm:inline">
               {isScreenSharing ? "Đang chia sẻ" : "Chia sẻ màn hình"}
             </span>
@@ -128,16 +128,16 @@ export function StudioBroadcastActions({
           {/* Visual Separator */}
           <div className="h-5 w-px bg-slate-800 hidden sm:block shrink-0" aria-hidden="true" />
 
-          {/* Start Livestream button (Pre-live) - TikTok Gradient */}
+          {/* Start Livestream button (Pre-live) */}
           {!isLive && !isEnded && (
             <button
               type="button"
               disabled={!canStartLive || isStarting}
               onClick={onStartLive}
-              className={`h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-lg flex items-center gap-1.5 font-bold text-xs shadow-md transition active:scale-95 whitespace-nowrap shrink-0 ${
+              className={`h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-lg flex items-center gap-1.5 font-bold text-xs shadow-xs transition active:scale-95 whitespace-nowrap shrink-0 ${
                 canStartLive && !isStarting
-                  ? "bg-gradient-to-r from-[#FE2C55] to-[#FF0050] hover:brightness-110 text-white cursor-pointer shadow-lg shadow-[#FE2C55]/30 ring-1 ring-white/20"
-                  : "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
+                  ? "bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-rose-950/30"
+                  : "bg-slate-800/70 text-slate-500 border border-slate-800 cursor-not-allowed"
               }`}
             >
               <Radio className={`h-3.5 w-3.5 shrink-0 ${isStarting ? "animate-spin" : ""}`} aria-hidden="true" />
@@ -156,7 +156,7 @@ export function StudioBroadcastActions({
             <button
               type="button"
               onClick={handleEndStreamClick}
-              className="h-8.5 sm:h-9 bg-rose-700 hover:bg-rose-600 text-white font-bold text-xs px-3 sm:px-4 rounded-lg flex items-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap border border-rose-500/40"
+              className="h-8.5 sm:h-9 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-3 sm:px-4 rounded-lg flex items-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <PhoneOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>KẾT THÚC PHIÊN</span>
@@ -165,7 +165,7 @@ export function StudioBroadcastActions({
 
           {/* Ended State */}
           {isEnded && (
-            <div className="h-8.5 sm:h-9 bg-purple-950/60 text-purple-300 border border-purple-800/80 px-3.5 rounded-lg flex items-center gap-1.5 font-semibold text-xs select-none whitespace-nowrap shrink-0">
+            <div className="h-8.5 sm:h-9 bg-slate-800/80 text-slate-400 border border-slate-700/60 px-3.5 rounded-lg flex items-center gap-1.5 font-semibold text-xs select-none whitespace-nowrap shrink-0">
               <span>Phiên đã kết thúc (Xem lại)</span>
             </div>
           )}
@@ -178,12 +178,12 @@ export function StudioBroadcastActions({
           role="dialog"
           aria-modal="true"
           aria-labelledby="end-stream-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
         >
-          <div className="bg-[#121622] border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
+          <div className="bg-[#151F31] border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-rose-950/80 border border-rose-800 flex items-center justify-center text-rose-500 shrink-0">
+                <div className="h-10 w-10 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
                   <AlertTriangle className="h-5 w-5" aria-hidden="true" />
                 </div>
                 <div>
@@ -205,7 +205,7 @@ export function StudioBroadcastActions({
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+            <p className="text-xs text-slate-300 leading-relaxed bg-[#0B1220] p-3 rounded-xl border border-slate-800">
               Sau khi kết thúc, phiên sẽ chuyển sang trạng thái <strong>ĐÃ KẾT THÚC</strong> và không thể tiếp tục phát sóng lại. Bạn có chắc chắn muốn kết thúc không?
             </p>
 
@@ -213,14 +213,14 @@ export function StudioBroadcastActions({
               <button
                 type="button"
                 onClick={handleCancelEnd}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition"
+                className="px-4 py-2 bg-[#1E293B] hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700/80 transition"
               >
                 Hủy thao tác
               </button>
               <button
                 type="button"
                 onClick={handleConfirmEnd}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition active:scale-95"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 cursor-pointer"
               >
                 Đồng ý kết thúc
               </button>

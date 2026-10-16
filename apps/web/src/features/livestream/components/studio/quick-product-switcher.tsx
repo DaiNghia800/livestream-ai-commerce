@@ -68,11 +68,11 @@ export function QuickProductSwitcher({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-[#121622] rounded-2xl border border-slate-700/80 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden text-slate-100 select-none"
+        className="w-full max-w-xl bg-[#151F31] rounded-2xl border border-slate-700 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden text-slate-100 select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 py-3.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-[#161C2C]">
+        <div className="px-4 py-3.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-[#0B1220]">
           <div>
             <h3 id="quick-switcher-title" className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
               <Package className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" aria-hidden="true" />
@@ -93,7 +93,7 @@ export function QuickProductSwitcher({
         </div>
 
         {/* Search Bar */}
-        <div className="p-3 sm:p-3.5 border-b border-slate-800 shrink-0 bg-[#101420]">
+        <div className="p-3 sm:p-3.5 border-b border-slate-800 shrink-0 bg-[#0B1220]/70">
           <div className="relative">
             <Search className="h-4 w-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
             <input
@@ -102,7 +102,7 @@ export function QuickProductSwitcher({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm theo tên sản phẩm hoặc mã cú pháp (AO01, V01...)"
-              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-950 rounded-xl border border-slate-800 focus:outline-hidden focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white placeholder:text-slate-500"
+              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-[#0B1220] rounded-xl border border-slate-800 focus:outline-hidden focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-white placeholder:text-slate-500"
             />
             {searchQuery && (
               <button
@@ -135,8 +135,8 @@ export function QuickProductSwitcher({
                   key={item.id}
                   className={`p-2.5 sm:p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
                     isPinned
-                      ? "border-cyan-500/80 bg-cyan-950/20"
-                      : "border-slate-800/90 bg-[#161C2C] hover:border-slate-700"
+                      ? "border-cyan-500/40 bg-cyan-500/10"
+                      : "border-slate-800 bg-[#0B1220]/70 hover:border-slate-700"
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -151,16 +151,16 @@ export function QuickProductSwitcher({
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono text-cyan-300 font-bold text-[10px] bg-cyan-950 px-1.5 py-0.2 rounded border border-cyan-800/50">
+                        <span className="font-mono text-slate-300 font-medium text-[10px] bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
                           {item.orderCode || item.sku}
                         </span>
-                        <h4 className="text-xs sm:text-[13px] font-bold text-white truncate" title={item.name}>
+                        <h4 className="text-xs sm:text-[13px] font-semibold text-white truncate" title={item.name}>
                           {item.name}
                         </h4>
                       </div>
 
                       <div className="flex items-center gap-2.5 mt-1 text-xs">
-                        <span className="font-bold text-amber-300 tabular-nums">
+                        <span className="font-semibold text-slate-100 tabular-nums">
                           {item.price.toLocaleString("vi-VN")} ₫
                         </span>
                         <span className="text-[11px] text-slate-400">
@@ -175,7 +175,7 @@ export function QuickProductSwitcher({
 
                   <div className="shrink-0">
                     {isPinned ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold">
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold">
                         <Check className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>Đang ghim</span>
                       </span>
@@ -184,7 +184,7 @@ export function QuickProductSwitcher({
                         type="button"
                         disabled={disabled || isOutOfStock}
                         onClick={() => onSelectProduct(item)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs ${
                           isOutOfStock
                             ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
                             : "bg-cyan-600 hover:bg-cyan-500 text-white"
@@ -202,12 +202,12 @@ export function QuickProductSwitcher({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0 bg-[#141A28]">
+        <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0 bg-[#0B1220]">
           <span>Tổng số: {products.length} sản phẩm</span>
           <button
             type="button"
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer transition active:scale-95"
+            className="px-3.5 py-1.5 rounded-lg border border-slate-700/80 bg-[#1E293B] hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer transition active:scale-95"
           >
             Đóng
           </button>
