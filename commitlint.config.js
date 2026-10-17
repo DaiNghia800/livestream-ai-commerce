@@ -19,10 +19,11 @@ export default {
     //   style    → format code (whitespace, semicolon...)
     //   perf     → cải thiện performance
     //   revert   → revert commit trước
+    //   ci       → thay đổi cấu hình/quy trình CI
     "type-enum": [
       2,
       "always",
-      ["feat", "fix", "docs", "refactor", "test", "chore", "style", "perf", "revert"],
+      ["feat", "fix", "docs", "refactor", "test", "chore", "style", "perf", "revert", "ci"],
     ],
 
     // Type phải viết thường
