@@ -88,7 +88,7 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
     if not use_ai:
         return apply_decision(regex_result)
 
-    logger.info(f"Low confidence, calling Gemini AI for: {content}")
+    logger.info("Low confidence, calling Gemini AI")
     # Will raise AIParsingError if AI fails. We let it bubble up.
     ai_result = _try_gemini(content)
     return _ground_ai_result(ai_result, regex_result)

@@ -167,7 +167,7 @@ def test_client_disables_sdk_retries(monkeypatch):
 def test_rate_limiter_waits_only_for_remaining_interval(monkeypatch):
     import gemini_client
     monkeypatch.setattr(gemini_client, "_last_request_time", 100.0)
-    with patch("gemini_client.time.time", side_effect=[101.0, 104.0]), \
+    with patch("gemini_client.time.monotonic", side_effect=[101.0, 104.0]), \
          patch("gemini_client.time.sleep") as sleep:
         gemini_client._wait_for_rate_limit()
         sleep.assert_called_once_with(3.0)
