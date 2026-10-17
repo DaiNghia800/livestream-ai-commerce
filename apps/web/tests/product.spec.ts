@@ -69,6 +69,7 @@ async function mockProductApi(
         page: 1,
         pageSize: 1,
         total: 0,
+        filteredTotalHeld: 0,
         summary: {
           skuCount: 0,
           totalOnHand: 0,

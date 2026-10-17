@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowRight,
-  BadgeCheck,
   Bolt,
   Boxes,
   Check,
@@ -17,6 +15,7 @@ import {
   Edit3,
   History,
   PackageCheck,
+  PackageOpen,
   RotateCcw,
   Search,
   Settings2,
@@ -26,7 +25,7 @@ import {
 import { formatMoney } from "@/lib/format";
 import {
   getInventory,
-  updateLowStockThreshold,
+  exportInventory as exportInventoryFile,
   type InventoryItem,
   type InventoryPage,
 } from "./api/inventory";
@@ -63,9 +62,19 @@ export function InventoryManagement() {
   const [data, setData] = useState<InventoryPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -85,116 +94,79 @@ export function InventoryManagement() {
 
   useEffect(() => {
     const controller = new AbortController();
-    getInventory(
-      {
-        q: debouncedQuery || undefined,
-        status: statusFilter === "all" ? undefined : (statusFilter as "low"),
-        categoryId: categoryFilter === "all" ? undefined : categoryFilter,
-        page,
-        pageSize,
-      },
-      controller.signal,
-    )
-      .then((result) => {
-        setData(result);
-        setError("");
-        setLoading(false);
-      })
-      .catch((reason: unknown) => {
-        if (reason instanceof DOMException && reason.name === "AbortError") return;
-        setError(reason instanceof Error ? reason.message : "Không thể tải tồn kho.");
-        setLoading(false);
-      });
+    const params = {
+      q: debouncedQuery || undefined,
+      status: statusFilter === "all" ? undefined : (statusFilter as "low"),
+      categoryId: categoryFilter === "all" ? undefined : categoryFilter,
+      page,
+      pageSize,
+    };
+
+    // Retry transient failures and keep the last loaded rows visible on error.
+    async function load() {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const result = await getInventory(params, controller.signal);
+          setData(result);
+          setError("");
+          break;
+        } catch (reason) {
+          if (controller.signal.aborted) return;
+          if (attempt >= 2) {
+            setError(reason instanceof Error ? reason.message : "Không thể tải tồn kho.");
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
+      }
+      if (!controller.signal.aborted) setLoading(false);
+    }
+
+    void load();
     return () => controller.abort();
-  }, [categoryFilter, debouncedQuery, page, pageSize, reloadKey, statusFilter]);
+  }, [categoryFilter, debouncedQuery, page, pageSize, statusFilter]);
 
   const rows = data?.data ?? [];
   const summary = data?.summary;
   const total = data?.total ?? 0;
+  const filteredTotalHeld = data?.filteredTotalHeld ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const firstShown = rows.length ? (page - 1) * pageSize + 1 : 0;
   const lastShown = (page - 1) * pageSize + rows.length;
-  const allSelected =
-    rows.length > 0 && rows.every((row) => selectedIds.includes(row.skuId));
-
-  const toggleRow = useCallback((id: string) => {
-    setSelectedIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
-    );
-  }, []);
-
+  const pageNumbers = [...new Set([
+    1,
+    totalPages,
+    ...Array.from({ length: 3 }, (_, index) => page + index - 1),
+  ])]
+    .filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages)
+    .sort((a, b) => a - b);
   function resetFilters() {
     setQuery("");
     setDebouncedQuery("");
     setStatusFilter("all");
     setCategoryFilter("all");
     setPage(1);
-    setSelectedIds([]);
-  }
-
-  async function editThreshold(item: InventoryItem) {
-    const input = window.prompt(
-      `Ngưỡng cảnh báo tồn thấp cho ${itemName(item)}`,
-      String(item.lowStockThreshold),
-    );
-    if (input === null) return;
-    const value = Number(input);
-    if (!Number.isInteger(value) || value < 0) {
-      setNotice("Ngưỡng cảnh báo phải là số nguyên không âm.");
-      return;
-    }
-    try {
-      await updateLowStockThreshold(item.skuId, value);
-      setNotice(`Đã cập nhật ngưỡng cảnh báo của ${item.skuCode} thành ${value}.`);
-      setReloadKey((key) => key + 1);
-    } catch (reason) {
-      setNotice(reason instanceof Error ? reason.message : "Không thể cập nhật ngưỡng.");
-    }
   }
 
   async function exportInventory() {
-    const all: InventoryItem[] = [];
     try {
-      for (let current = 1; ; current += 1) {
-        const result = await getInventory({
-          q: debouncedQuery || undefined,
-          status: statusFilter === "all" ? undefined : (statusFilter as "low"),
-          categoryId: categoryFilter === "all" ? undefined : categoryFilter,
-          page: current,
-          pageSize: 100,
-        });
-        all.push(...result.data);
-        if (all.length >= result.total || result.data.length === 0) break;
-      }
+      const file = await exportInventoryFile({
+        q: debouncedQuery || undefined,
+        status: statusFilter === "all" ? undefined : (statusFilter as "low"),
+        categoryId: categoryFilter === "all" ? undefined : categoryFilter,
+      });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "kiem-ke-ton-kho.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setNotice("Đã xuất file Excel tồn kho (tất cả các trang).");
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : "Không thể xuất dữ liệu tồn kho.");
-      return;
     }
-    const header = ["Sản phẩm", "SKU", "Danh mục", "Tổng tồn", "Đang giữ", "Tồn khả dụng", "Giá niêm yết"];
-    const csvRows = all.map((row) => [
-      itemName(row),
-      row.skuCode,
-      row.categoryName ?? "",
-      row.onHandQuantity,
-      row.heldQuantity,
-      row.availableQuantity,
-      row.price,
-    ]);
-    const csv = [header, ...csvRows]
-      .map((values) =>
-        values.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","),
-      )
-      .join("\r\n");
-    const file = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "kiem-ke-ton-kho.csv";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    setNotice(`Đã xuất ${all.length} SKU (tất cả các trang).`);
   }
 
   const alertCount = (summary?.lowStockCount ?? 0) + (summary?.outOfStockCount ?? 0);
@@ -220,14 +192,6 @@ export function InventoryManagement() {
             <History size={15} aria-hidden="true" />
             Nhật ký biến động
           </Link>
-          <button
-            className={styles.secondaryButton}
-            onClick={() => setReloadKey((key) => key + 1)}
-            type="button"
-          >
-            <RotateCcw size={15} aria-hidden="true" />
-            Làm mới
-          </button>
           <button className={styles.secondaryButton} onClick={() => void exportInventory()} type="button">
             <Download size={15} aria-hidden="true" />
             Xuất file kiểm kê
@@ -344,7 +308,15 @@ export function InventoryManagement() {
             <span title="Tồn khả dụng thấp hơn ngưỡng cảnh báo">
               {summary?.outOfStockCount ?? 0} hết hàng · {summary?.lowStockCount ?? 0} sắp hết
             </span>
-            <a href="#inventory-table">Xem ngay</a>
+            <a
+              href="#inventory-table"
+              onClick={() => {
+                setStatusFilter("low");
+                setPage(1);
+              }}
+            >
+              Xem ngay
+            </a>
           </div>
         </article>
       </section>
@@ -376,7 +348,7 @@ export function InventoryManagement() {
               <option value="in_stock">Còn hàng (trên ngưỡng)</option>
               <option value="low">Sắp hết hàng</option>
               <option value="out">Hết hàng (0)</option>
-              <option value="high_hold">Đang giữ chỗ cao</option>
+              <option value="high_hold">Đang giữ chỗ Live</option>
             </select>
             <ChevronDown size={15} aria-hidden="true" />
           </label>
@@ -407,6 +379,11 @@ export function InventoryManagement() {
         <div className={styles.filterSummary}>
           <span>
             Hiển thị <strong>{rows.length}</strong> trên <strong>{total}</strong> SKU
+            {statusFilter === "high_hold" && (
+              <>
+                {" · "}Đang giữ chỗ <strong>{numberFormat.format(filteredTotalHeld)}</strong> sản phẩm
+              </>
+            )}
           </span>
         </div>
       </section>
@@ -419,20 +396,6 @@ export function InventoryManagement() {
             </caption>
             <thead>
               <tr>
-                <th className={styles.checkboxCell}>
-                  <input
-                    aria-label="Chọn tất cả sản phẩm"
-                    checked={allSelected}
-                    onChange={() =>
-                      setSelectedIds(
-                        allSelected
-                          ? selectedIds.filter((id) => !rows.some((row) => row.skuId === id))
-                          : [...new Set([...selectedIds, ...rows.map((row) => row.skuId)])],
-                      )
-                    }
-                    type="checkbox"
-                  />
-                </th>
                 <th className={styles.productColumn}>Sản phẩm &amp; SKU</th>
                 <th className={styles.numberHeading}>Tổng tồn</th>
                 <th className={styles.centerHeading}>Đang giữ chỗ Live</th>
@@ -452,14 +415,6 @@ export function InventoryManagement() {
                     className={`${isLow ? styles.lowRow : ""} ${isOut ? styles.outRow : ""}`}
                     key={row.skuId}
                   >
-                    <td className={styles.checkboxCell}>
-                      <input
-                        aria-label={`Chọn ${itemName(row)}`}
-                        checked={selectedIds.includes(row.skuId)}
-                        onChange={() => toggleRow(row.skuId)}
-                        type="checkbox"
-                      />
-                    </td>
                     <td className={styles.productCell}>
                       <div className={styles.productInfo}>
                         {row.imageUrl ? (
@@ -546,14 +501,13 @@ export function InventoryManagement() {
                         >
                           <Edit3 size={15} aria-hidden="true" />
                         </Link>
-                        <button
-                          aria-label={`Đặt ngưỡng cảnh báo ${itemName(row)}`}
-                          onClick={() => void editThreshold(row)}
-                          title="Đặt ngưỡng cảnh báo"
-                          type="button"
+                        <Link
+                          aria-label={`Chỉnh sửa sản phẩm ${itemName(row)}`}
+                          href={`/shop/products/${row.productId}/edit?from=inventory`}
+                          title="Chỉnh sửa sản phẩm"
                         >
-                          <Settings2 size={15} aria-hidden="true" />
-                        </button>
+                          <PackageOpen size={15} aria-hidden="true" />
+                        </Link>
                         <Link
                           aria-label={`Lịch sử audit log ${itemName(row)}`}
                           href={`/shop/inventory/history?skuId=${row.skuId}`}
@@ -568,14 +522,16 @@ export function InventoryManagement() {
               })}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td className={styles.emptyState} colSpan={9}>
-                    Không tìm thấy sản phẩm phù hợp với bộ lọc.
+                  <td className={styles.emptyState} colSpan={8}>
+                    {data === null
+                      ? "Không thể tải dữ liệu tồn kho. Vui lòng thử lại sau."
+                      : "Không tìm thấy sản phẩm phù hợp với bộ lọc."}
                   </td>
                 </tr>
               )}
               {loading && rows.length === 0 && (
                 <tr>
-                  <td className={styles.emptyState} colSpan={9}>
+                  <td className={styles.emptyState} colSpan={8}>
                     Đang tải dữ liệu tồn kho...
                   </td>
                 </tr>
@@ -585,17 +541,13 @@ export function InventoryManagement() {
         </div>
         <footer className={styles.tableFooter}>
           <div>
-            {selectedIds.length > 0 ? (
-              <span className={styles.selectedCount}>Đã chọn {selectedIds.length} sản phẩm</span>
-            ) : (
-              <span>
-                Hiển thị{" "}
-                <strong>
-                  {firstShown} - {lastShown}
-                </strong>{" "}
-                trong tổng số <strong>{total} SKU</strong>
-              </span>
-            )}
+            <span>
+              Hiển thị{" "}
+              <strong>
+                {firstShown} - {lastShown}
+              </strong>{" "}
+              trong tổng số <strong>{total} SKU</strong>
+            </span>
             <label className={styles.pageSize}>
               Số dòng:
               <select
@@ -617,53 +569,47 @@ export function InventoryManagement() {
           <nav className={styles.pagination} aria-label="Phân trang tồn kho">
             <button
               aria-label="Trang trước"
-              disabled={page <= 1}
-              onClick={() => setPage((current) => current - 1)}
+              className={styles.pageNav}
+              disabled={page === 1 || loading}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
               type="button"
             >
               <ChevronLeft size={15} aria-hidden="true" />
+              <span className={styles.paginationLabel}>Trước</span>
             </button>
-            <button aria-current="page" className={styles.currentPage} type="button">
-              {page} / {totalPages}
-            </button>
+            {pageNumbers.map((pageNumber, index) => (
+              <span key={pageNumber} className={styles.pageGroup}>
+                {index > 0 && pageNumber - pageNumbers[index - 1] > 1 && (
+                  <span aria-hidden="true" className={styles.paginationEllipsis}>
+                    ...
+                  </span>
+                )}
+                <button
+                  aria-current={pageNumber === page ? "page" : undefined}
+                  aria-label={`Trang ${pageNumber}`}
+                  className={pageNumber === page ? styles.currentPage : styles.pageNumber}
+                  disabled={loading}
+                  onClick={() => setPage(pageNumber)}
+                  type="button"
+                >
+                  {pageNumber}
+                </button>
+              </span>
+            ))}
             <button
               aria-label="Trang sau"
-              disabled={page >= totalPages}
-              onClick={() => setPage((current) => current + 1)}
+              className={styles.pageNav}
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               type="button"
             >
+              <span className={styles.paginationLabel}>Sau</span>
               <ChevronRight size={15} aria-hidden="true" />
             </button>
           </nav>
         </footer>
       </section>
 
-      <section className={styles.bottomGrid}>
-        <article className={styles.aiCard}>
-          <span className={styles.aiIcon}>
-            <BadgeCheck size={22} aria-hidden="true" />
-          </span>
-          <div>
-            <div className={styles.aiHeading}>
-              <h2>Cơ chế Gemini AI Giữ tồn kho (Hold Inventory &amp; Auto Rollback)</h2>
-              <span>ACTIVE</span>
-            </div>
-            <p>
-              Hệ thống giữ chỗ (Hold Inventory) khi Gemini AI bắt đơn thành công từ comment
-              live. Số lượng giữ chỗ được trừ khỏi <strong>Tồn khả dụng</strong> và hoàn lại
-              khi đơn bị hủy hoặc hết hạn, chống bán vượt kho.
-            </p>
-            <div className={styles.aiBenefits}>
-              <span>
-                <Check size={14} aria-hidden="true" /> Chống bán vượt kho (Overselling Zero-Risk)
-              </span>
-              <span>
-                <ArrowRight size={14} aria-hidden="true" /> Mọi biến động được ghi vào nhật ký kho
-              </span>
-            </div>
-          </div>
-        </article>
-      </section>
     </div>
   );
 }

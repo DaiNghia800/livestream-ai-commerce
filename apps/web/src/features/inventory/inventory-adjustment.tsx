@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -25,9 +25,14 @@ import { Dialog } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/format";
 import {
   adjustInventoryBatch,
+  getAdjustmentDraft,
   getInventory,
+  saveAdjustmentDraft,
+  type AdjustmentDocument,
   type InventoryItem,
 } from "./api/inventory";
+import { moHopThoaiIn } from "@/features/orders/print-orders";
+import { PrintableAdjustment } from "./inventory-adjustment-print";
 import styles from "./inventory.module.css";
 
 const REASONS = [
@@ -79,19 +84,92 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
+  const [syncLive, setSyncLive] = useState(true);
+  const [draft, setDraft] = useState<AdjustmentDocument | null>(null);
+  const [openedAt] = useState(() => new Date().toLocaleString("vi-VN"));
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
+  // Applies a server-side draft to the form, or clears the form when there is none.
+  const applyDraft = useCallback((document: AdjustmentDocument | null) => {
+    setDraft(document);
+    setAdjustments(Object.fromEntries((document?.items ?? []).map((i) => [i.skuId, i.delta])));
+    setReasons(Object.fromEntries((document?.items ?? []).map((i) => [i.skuId, i.reason])));
+    setNotes(Object.fromEntries((document?.items ?? []).map((i) => [i.skuId, i.note ?? ""])));
+    setSyncLive(document?.syncLive ?? true);
+  }, []);
+
+  const loadDraft = useCallback(
+    async (productId: string): Promise<boolean> => {
+      try {
+        const document = await getAdjustmentDraft(productId);
+        applyDraft(document);
+        return document !== null;
+      } catch {
+        applyDraft(null);
+        return false;
+      }
+    },
+    [applyDraft],
+  );
+
+  async function persistDraft(): Promise<AdjustmentDocument | null> {
+    if (!selectedProductId) return null;
+    const document = await saveAdjustmentDraft({
+      productId: selectedProductId,
+      syncLive,
+      items: changed.map((variant) => ({
+        skuId: variant.skuId,
+        delta: adjustments[variant.skuId],
+        reason: reasons[variant.skuId] ?? REASONS[0],
+        note: notes[variant.skuId]?.trim() || null,
+      })),
+    });
+    setDraft(document);
+    return document;
+  }
+
+  async function saveDraft() {
+    if (changed.length === 0) {
+      setNotice("Chưa có biến thể nào thay đổi số lượng để lưu nháp.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const document = await persistDraft();
+      setNotice(`Đã lưu nháp phiếu ${document?.code ?? ""}.`);
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Không thể lưu nháp.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
     getInventory({ page: 1, pageSize: 100 }, controller.signal)
-      .then((result) => {
+      .then(async (result) => {
         setItems(result.data);
         setError("");
         setLoading(false);
-        setSelectedProductId((current) => {
-          if (current && result.data.some((item) => item.productId === current)) return current;
-          const initial = result.data.find((item) => item.skuId === initialSkuId);
-          return initial?.productId ?? result.data[0]?.productId ?? null;
-        });
+        const initial = result.data.find((item) => item.skuId === initialSkuId);
+        const productId = initial?.productId ?? result.data[0]?.productId ?? null;
+        setSelectedProductId((current) =>
+          current && result.data.some((item) => item.productId === current) ? current : productId,
+        );
+        if (productId && (await loadDraft(productId))) {
+          setNotice("Đã khôi phục bản nháp điều chỉnh đã lưu.");
+        }
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -99,7 +177,7 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
         setLoading(false);
       });
     return () => controller.abort();
-  }, [initialSkuId]);
+  }, [initialSkuId, loadDraft]);
 
   const products = useMemo(() => groupByProduct(items), [items]);
   const selectedProduct = products.find((product) => product.productId === selectedProductId);
@@ -125,20 +203,19 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
     (variant) => (adjustments[variant.skuId] ?? 0) < -variant.availableQuantity,
   );
 
-  function resetAdjustments() {
-    setAdjustments({});
-    setNotes({});
-    setReasons({});
-    setNotice("Đã khôi phục số liệu điều chỉnh ban đầu.");
+  function resetFilters() {
+    setOnlyChanged(false);
+    setNotice("Đã đặt lại bộ lọc biến thể.");
   }
 
   function selectProduct(productId: string) {
     setSelectedProductId(productId);
-    setAdjustments({});
-    setNotes({});
-    setReasons({});
+    applyDraft(null);
     setIsProductPickerOpen(false);
     setNotice("Đã đổi sản phẩm và cập nhật dữ liệu biến thể tương ứng.");
+    void loadDraft(productId).then((found) => {
+      if (found) setNotice("Đã đổi sản phẩm và khôi phục bản nháp đã lưu.");
+    });
   }
 
   async function save() {
@@ -152,6 +229,7 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
     }
     setSaving(true);
     try {
+      const document = await persistDraft();
       await adjustInventoryBatch(
         changed.map((variant) => ({
           skuId: variant.skuId,
@@ -159,6 +237,7 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
           reason: reasons[variant.skuId] ?? REASONS[0],
           note: notes[variant.skuId]?.trim() || null,
         })),
+        document?.id,
       );
       router.push("/shop/inventory");
     } catch (reason) {
@@ -187,7 +266,8 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
           <div className={styles.adjustmentHeaderActions}>
             <button
               className={styles.adjustmentSecondaryButton}
-              onClick={() => window.print()}
+              disabled={!selectedProduct}
+              onClick={moHopThoaiIn}
               type="button"
             >
               <Printer size={14} aria-hidden="true" />
@@ -355,7 +435,7 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
                     <SlidersHorizontal size={12} aria-hidden="true" />
                     {onlyChanged ? "Hiển thị tất cả biến thể" : "Lọc biến thể có thay đổi"}
                   </button>
-                  <button type="button" onClick={resetAdjustments}>
+                  <button type="button" onClick={resetFilters}>
                     <RotateCcw size={12} aria-hidden="true" />
                     Đặt lại mặc định
                   </button>
@@ -482,10 +562,38 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
                   <ClipboardList size={17} aria-hidden="true" />
                 </span>
                 <div>
-                  <h2 id="approval-title">Tóm tắt phiếu điều chỉnh</h2>
-                  <p>Xem lại tác động trước khi cập nhật tồn kho khả dụng.</p>
+                  <h2 id="approval-title">Thông tin chứng từ &amp; Xác nhận phê duyệt</h2>
+                  <p>
+                    Lưu vết kiểm kê theo quy chuẩn kế toán kho và đồng bộ tức thời với phiên
+                    Live đang phát sóng
+                  </p>
                 </div>
+                <span className={styles.documentCode}>
+                  Mã phiếu: <b>{draft ? `#${draft.code}` : "Cấp khi lưu nháp"}</b>
+                </span>
               </header>
+              <div className={styles.approvalDetails}>
+                <div>
+                  <span>Người tạo phiếu</span>
+                  <strong>
+                    <i className={styles.approverAvatar}>
+                      {(draft?.createdBy?.name ?? "Quản trị viên kho").charAt(0).toUpperCase()}
+                    </i>
+                    {draft?.createdBy?.name ?? "Quản trị viên kho"}
+                  </strong>
+                  {draft?.createdBy && <small>{draft.createdBy.email}</small>}
+                </div>
+                <div>
+                  <span>Thời gian thực hiện</span>
+                  <strong>
+                    {draft ? new Date(draft.createdAt).toLocaleString("vi-VN") : openedAt}
+                  </strong>
+                </div>
+                <div>
+                  <span>Kênh kiểm kê</span>
+                  <strong>{draft?.channel ?? "Kho tổng & Livestream Studio"}</strong>
+                </div>
+              </div>
               <div className={styles.impactSummary}>
                 <span>
                   Tổng SKU điều chỉnh: <strong>{changed.length} biến thể</strong>
@@ -512,6 +620,30 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
                 )}
               </div>
               <footer className={styles.approvalFooter}>
+                <label>
+                  <input
+                    checked={syncLive}
+                    onChange={(event) => setSyncLive(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>
+                      Gửi thông báo cập nhật tồn tự động sang phiên Livestream đang chạy
+                    </strong>
+                    <small>
+                      Bot chốt đơn sẽ mở thêm quota cho các biến thể được tăng tồn cho khán giả
+                      đang xem live
+                    </small>
+                  </span>
+                </label>
+                <button
+                  className={styles.draftButton}
+                  disabled={saving}
+                  onClick={() => void saveDraft()}
+                  type="button"
+                >
+                  Lưu nháp
+                </button>
                 <button
                   className={styles.adjustmentPrimaryButton}
                   disabled={saving}
@@ -526,6 +658,18 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
           </>
         )}
       </section>
+      {selectedProduct && (
+        <PrintableAdjustment
+          adjustments={adjustments}
+          categoryName={selectedProduct.categoryName}
+          defaultReason={REASONS[0]}
+          notes={notes}
+          productCode={selectedProduct.productCode}
+          productName={selectedProduct.productName}
+          reasons={reasons}
+          variants={variants}
+        />
+      )}
       <Dialog
         open={isProductPickerOpen}
         onClose={() => setIsProductPickerOpen(false)}

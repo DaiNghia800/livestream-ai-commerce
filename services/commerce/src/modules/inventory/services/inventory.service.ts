@@ -3,6 +3,7 @@ import type {
   AdjustmentListQuery,
   BatchAdjustInventoryInput,
   InventoryListQuery,
+  SaveAdjustmentDraftInput,
   StockHoldInput,
 } from "../schemas/inventory.schema.js";
 import type { IInventoryRepository } from "../repositories/inventory.repository.js";
@@ -23,6 +24,14 @@ export class InventoryNotFoundError extends Error {
 
 export class InventoryService {
   constructor(private readonly repository: IInventoryRepository) {}
+
+  async getAdjustmentDraft(shopId: number, productId: string) {
+    return this.repository.getAdjustmentDraft(shopId, productId);
+  }
+
+  saveAdjustmentDraft(shopId: number, input: SaveAdjustmentDraftInput, userId?: number) {
+    return this.repository.saveAdjustmentDraft(shopId, input, userId);
+  }
 
   list(shopId: number, query: InventoryListQuery): Promise<InventoryPage> {
     return this.repository.list(shopId, query);
