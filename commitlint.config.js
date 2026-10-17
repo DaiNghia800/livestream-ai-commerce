@@ -35,14 +35,14 @@ export default {
     // Subject không được để trống
     "subject-empty": [2, "never"],
 
-    // Subject không được có dấu chấm cuối
-    "subject-full-stop": [2, "never", "."],
+    // Không giới hạn dấu câu cuối subject
+    "subject-full-stop": [0],
 
     // Không ép case subject (nhóm có thể viết tiếng Việt)
     "subject-case": [0],
 
     // ── Header (toàn bộ dòng đầu) ────────────────────────────────
-    // Giới hạn 100 ký tự (72 là chuẩn cũ, 100 dễ đọc hơn trên GitHub)
-    "header-max-length": [2, "always", 100],
+    // Giới hạn 120 ký tự để header vẫn dễ đọc trên GitHub
+    "header-max-length": [2, "always", 120],
   },
 };
