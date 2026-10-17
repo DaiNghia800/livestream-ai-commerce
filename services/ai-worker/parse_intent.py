@@ -91,7 +91,7 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
     logger.info(f"Low confidence, calling Gemini AI for: {content}")
     # Will raise AIParsingError if AI fails. We let it bubble up.
     ai_result = _try_gemini(content)
-    return apply_decision(ai_result)
+    return _ground_ai_result(ai_result, regex_result)
 
 
 # ── Regex parser ─────────────────────────────────────────────
@@ -163,7 +163,7 @@ def _try_gemini(content: str) -> dict:
 
     return {
         "has_intent": ai_response["has_intent"],
-        "confidence": "high",  # AI verified → treat as high
+        "confidence": "high",  # Intent classification still requires field evidence.
         "source": "gemini",
         "product_code": ai_response.get("product_code"),
         "color": ai_response.get("color"),
@@ -171,6 +171,41 @@ def _try_gemini(content: str) -> dict:
         "quantity": ai_response.get("quantity"),
         "raw": content,
     }
+
+
+
+def _ground_ai_result(ai_result: dict, evidence: dict) -> dict:
+    """Validate AI fields against the existing deterministic comment evidence."""
+    result = dict(ai_result)
+    result["raw"] = evidence["raw"]
+
+    code = result.get("product_code")
+    code = code.strip() if isinstance(code, str) else ""
+    result["product_code"] = (
+        evidence["product_code"]
+        if is_supported_product_code(code) and code.upper() == evidence["product_code"]
+        else None
+    )
+
+    quantity_issue = None
+    quantity = result.get("quantity")
+    if type(quantity) is int and quantity > 0:
+        if evidence["quantity"] is None:
+            result["quantity"] = None
+        elif quantity != evidence["quantity"]:
+            result["quantity"] = None
+            quantity_issue = "invalid_quantity"
+
+    for field in ("color", "size"):
+        value, expected = result.get(field), evidence.get(field)
+        if isinstance(value, str) and expected is not None:
+            normalized = " ".join(unicodedata.normalize("NFC", value).casefold().split())
+            if normalized == expected.casefold():
+                result[field] = expected
+                continue
+        result[field] = None
+
+    return apply_decision(result, quantity_issue=quantity_issue)
 
 
 # ── Private helpers ──────────────────────────────────────────

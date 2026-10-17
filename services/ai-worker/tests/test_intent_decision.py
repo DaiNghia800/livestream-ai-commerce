@@ -70,13 +70,13 @@ def test_regex_result_receives_business_decision(content, decision, reason):
 def test_gemini_result_uses_same_decision_policy(fields, decision, reason):
     reply = {"has_intent": True, "confidence": "high", "source": "gemini",
              "product_code": "B05", "quantity": 2, "color": None,
-             "size": None, "raw": "Mua B05"}
+             "size": None, "raw": "Lấy B05 2 cái"}
     reply.update(fields)
     with patch("parse_intent._try_gemini", return_value=reply) as ai:
-        result = parse_purchase_intent("Mua B05")
+        result = parse_purchase_intent("Lấy B05 2 cái")
     assert result["decision"] == decision
     assert result["reason_codes"] == ([] if reason is None else [reason])
-    ai.assert_called_once_with("Mua B05")
+    ai.assert_called_once_with("Lấy B05 2 cái")
 
 
 def test_offline_low_confidence_is_not_a_purchase_candidate():

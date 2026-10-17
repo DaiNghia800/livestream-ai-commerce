@@ -302,6 +302,9 @@ class TestGeminiRouting:
         mock_gemini.assert_called_once_with("Mua B05")
         assert result["source"] == "gemini"
         assert result["confidence"] == "high"
+        assert result["quantity"] is None
+        assert result["decision"] == "needs_clarification"
+        assert result["reason_codes"] == ["missing_quantity"]
 
     @patch("parse_intent._try_gemini")
     def test_high_confidence_skips_gemini(self, mock_gemini):
@@ -330,8 +333,9 @@ class TestGeminiRouting:
         assert exc_info.value.error_type == "ai_transient"
 
     @patch("parse_intent._try_gemini")
-    def test_gemini_overrides_regex_fields(self, mock_gemini):
-        """Gemini may find fields that regex missed."""
+    def test_gemini_confirms_evidenced_fields(self, mock_gemini):
+        """AI may confirm a weak purchase comment without inventing its fields."""
+        content = "Lấy B05 đen size M 2 cái"
         mock_gemini.return_value = {
             "has_intent": True,
             "confidence": "high",
@@ -340,14 +344,17 @@ class TestGeminiRouting:
             "color": "đen",
             "size": "M",
             "quantity": 2,
-            "raw": "Mua B05",
+            "raw": content,
         }
-        # "Mua B05" → regex gives low confidence (strong keyword, 1 field)
-        # → triggers Gemini → Gemini returns enriched result
-        result = parse_purchase_intent("Mua B05", use_ai=True)
+        # A weak keyword still routes matching, explicit fields through Gemini.
+        result = parse_purchase_intent(content, use_ai=True)
+        mock_gemini.assert_called_once_with(content)
         assert result["source"] == "gemini"
         assert result["product_code"] == "B05"
         assert result["quantity"] == 2
+        assert result["color"] == "đen"
+        assert result["size"] == "M"
+        assert result["decision"] == "purchase_candidate"
 
 
 # ══════════════════════════════════════════════════════════════

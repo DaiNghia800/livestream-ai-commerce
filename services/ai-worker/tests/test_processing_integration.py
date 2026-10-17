@@ -174,6 +174,7 @@ def test_business_decision_preserves_ids_without_ai(monkeypatch, content, decisi
 def test_sdk_response_passes_through_decision_gate(transport_client, payload, decision, reason):
     transport_client.return_value = response(json.dumps(payload))
     source = event()
+    source["content"] = "Lấy B05 2 cái"
     result = process_comment_event(source)
     assert result["status"] == "ok"
     assert result["intent"]["decision"] == decision
