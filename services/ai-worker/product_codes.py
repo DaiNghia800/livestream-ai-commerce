@@ -36,3 +36,18 @@ def find_product_identifiers(content: str) -> list[str]:
         if letter and digit and letter.start() < digit.start():
             identifiers.append(token.upper() if is_supported_product_code(token) else token)
     return list(dict.fromkeys(identifiers))
+
+
+def mask_product_codes(content: str) -> str:
+    """Hide supported code spans only in a normalized attribute-reading copy.
+
+    Non-word, non-whitespace markers keep separate color words from joining
+    across a hidden code. Sentence punctuation and external attributes remain.
+    """
+    def mask(match: re.Match[str]) -> str:
+        token = match.group().rstrip(".")
+        if is_supported_product_code(token):
+            return "#" * len(token) + match.group()[len(token):]
+        return match.group()
+
+    return _TOKEN.sub(mask, unicodedata.normalize("NFC", content))

@@ -16,7 +16,7 @@ import unicodedata
 
 from intent_policy import apply_decision, guard_comment
 from quantity_parser import extract_quantity
-from product_codes import find_product_identifiers, is_supported_product_code
+from product_codes import find_product_identifiers, is_supported_product_code, mask_product_codes
 
 # --- Known values (will move to database/config later) ---
 # Sorted longest-first so "xanh dương" matches before "xanh"
@@ -116,8 +116,9 @@ def _regex_parse(content: str) -> tuple[dict, str | None]:
         return _no_intent(content, source="regex"), None
 
     product_code = _extract_product_code(content)
-    color = _extract_color(lower)
-    size = _extract_size(content)
+    attribute_text = mask_product_codes(content)
+    color = _extract_color(attribute_text.lower())
+    size = _extract_size(attribute_text)
     quantity_result = extract_quantity(content, product_code)
     quantity = quantity_result.value
 
