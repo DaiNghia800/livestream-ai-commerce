@@ -40,10 +40,39 @@ export const BatchAdjustInventorySchema = z
       )
       .min(1)
       .max(200),
+    documentId: z.string().regex(/^[1-9]\d*$/).optional(),
   })
   .strict()
   .refine((input) => new Set(input.items.map((item) => item.skuId)).size === input.items.length, {
     message: "Each SKU may appear only once per batch",
+    path: ["items"],
+  });
+
+export const AdjustmentDraftQuerySchema = z.object({
+  productId: z.string().regex(/^[1-9]\d*$/),
+});
+
+export const SaveAdjustmentDraftSchema = z
+  .object({
+    productId: z.string().regex(/^[1-9]\d*$/),
+    syncLive: z.boolean().default(true),
+    items: z
+      .array(
+        z
+          .object({
+            skuId: z.string().regex(/^[1-9]\d*$/),
+            delta: z.number().int().min(-1_000_000).max(1_000_000).refine((value) => value !== 0),
+            reason: reasonSchema,
+            note: noteSchema,
+          })
+          .strict()
+      )
+      .min(1)
+      .max(200),
+  })
+  .strict()
+  .refine((input) => new Set(input.items.map((item) => item.skuId)).size === input.items.length, {
+    message: "Each SKU may appear only once per document",
     path: ["items"],
   });
 
@@ -73,6 +102,8 @@ export const AdjustmentListQuerySchema = z.object({
 export type InventoryListQuery = z.infer<typeof InventoryListQuerySchema>;
 export type AdjustInventoryInput = z.infer<typeof AdjustInventorySchema>;
 export type BatchAdjustInventoryInput = z.infer<typeof BatchAdjustInventorySchema>;
+export type AdjustmentDraftQuery = z.infer<typeof AdjustmentDraftQuerySchema>;
+export type SaveAdjustmentDraftInput = z.infer<typeof SaveAdjustmentDraftSchema>;
 export type UpdateThresholdInput = z.infer<typeof UpdateThresholdSchema>;
 export type StockHoldInput = z.infer<typeof StockHoldSchema>;
 export type AdjustmentListQuery = z.infer<typeof AdjustmentListQuerySchema>;

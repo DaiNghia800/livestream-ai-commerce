@@ -7,9 +7,13 @@ export const metadata = {
 
 export default async function ProductEditRoute({
   params,
+  searchParams,
 }: {
   params: Promise<{ productId: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { productId } = await params;
-  return <EditProductPage key={productId} productId={productId} />;
+  const { from } = await searchParams;
+  const returnTo = from === "inventory" ? "/shop/inventory" : "/shop/products";
+  return <EditProductPage key={productId} productId={productId} returnTo={returnTo} />;
 }
