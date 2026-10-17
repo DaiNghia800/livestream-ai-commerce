@@ -16,6 +16,7 @@ import unicodedata
 
 from intent_policy import apply_decision, guard_comment
 from quantity_parser import extract_quantity
+from product_codes import find_product_identifiers, is_supported_product_code
 
 # --- Known values (will move to database/config later) ---
 # Sorted longest-first so "xanh dương" matches before "xanh"
@@ -74,6 +75,10 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
     # Do not let AI reinterpret a known invalid or ambiguous numeric expression.
     if quantity_issue:
         return apply_decision(regex_result, quantity_issue=quantity_issue)
+
+    # AI must not invent or repair a code outside the supported MVP grammar.
+    if regex_result["product_code"] is None:
+        return apply_decision(regex_result)
 
     # Skip AI for confident extraction, but still check completeness.
     if regex_result["confidence"] == "high":
@@ -185,9 +190,11 @@ def _no_intent(content: str, source: str = "regex") -> dict:
 
 
 def _extract_product_code(content: str) -> str | None:
-    """Find product codes like A12, SP05, SKU-123."""
-    match = re.search(r"\b([A-Za-z]{1,4}[\-]?\d{1,5})\b", content)
-    return match.group(1).upper() if match else None
+    """Return one complete supported identifier, never a substring."""
+    identifiers = find_product_identifiers(content)
+    if len(identifiers) == 1 and is_supported_product_code(identifiers[0]):
+        return identifiers[0]
+    return None
 
 
 def _extract_color(lower: str) -> str | None:

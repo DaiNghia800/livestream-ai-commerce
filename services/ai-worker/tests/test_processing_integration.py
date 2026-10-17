@@ -289,3 +289,36 @@ def test_partial_numeric_tokens_preserve_context_without_ai(monkeypatch, content
     assert result["intent"]["decision"] == "needs_clarification"
     assert result["intent"]["reason_codes"] == ["invalid_quantity"]
     assert result["intent"]["quantity"] is None
+
+
+@pytest.mark.parametrize("content,decision,code,reason", [
+    ("Chốt SP-POLO-012 2 cái", "purchase_candidate", "SP-POLO-012", None),
+    ("Chốt AT99-DEN-HE2023 2 cái", "purchase_candidate", "AT99-DEN-HE2023", None),
+    ("Chốt SP-POLO-012 XX-POLO-012 2 cái", "needs_clarification", None, "multiple_products"),
+    ("Cho SP-POLO-012 XX-POLO-012 2 cái", "needs_clarification", None, "multiple_products"),
+    ("Chốt AO01TFORMRONG 2 cái", "needs_clarification", None, "missing_product_code"),
+    ("Chốt AO-SM-LUA 2 cái", "needs_clarification", None, "missing_product_code"),
+])
+def test_complete_product_identifiers_preserve_context_without_ai(
+    monkeypatch, content, decision, code, reason
+):
+    client = Mock(side_effect=AssertionError("AI must not replace a product identifier"))
+    monkeypatch.setattr(gemini_client, "_get_client", client)
+    source = event()
+    source["content"] = content
+
+    result = process_comment_event(source)
+
+    client.assert_not_called()
+    assert result["status"] == "ok"
+    for field in ("event_id", "comment_id", "session_id", "customer_id"):
+        assert result[field] == source[field]
+    assert result["content"] == content
+    assert result["intent"]["raw"] == content
+    assert result["intent"]["decision"] == decision
+    assert result["intent"]["product_code"] == code
+    if reason:
+        assert reason in result["intent"]["reason_codes"]
+    else:
+        assert result["intent"]["reason_codes"] == []
+        assert result["intent"]["quantity"] == 2
