@@ -53,7 +53,7 @@ class TestValidEvent:
         event = _make_valid_event()
         result = process_comment_event(event)
         assert result["status"] == "ok"
-        mock_parser.assert_called_once_with("Chốt A12 màu đen size M, 2 cái")
+        mock_parser.assert_called_once_with("Chốt A12 màu đen size M, 2 cái", use_ai=True)
 
     def test_valid_event_contains_content(self, mock_parser):
         event = _make_valid_event()
@@ -161,7 +161,7 @@ class TestContentValidation:
         result = process_comment_event(event)
         assert result["status"] == "ok"
         assert result["content"] == "Chốt A12"
-        mock_parser.assert_called_once_with("Chốt A12")
+        mock_parser.assert_called_once_with("Chốt A12", use_ai=True)
         assert result["intent"]["quantity"] is None
 
 
@@ -268,7 +268,7 @@ class TestEdgeCases:
         result = process_comment_event(event)
         assert result["status"] == "ok"
         assert result["intent"]["has_intent"] is False
-        mock_parser.assert_called_once_with("Đẹp quá chị ơi")
+        mock_parser.assert_called_once_with("Đẹp quá chị ơi", use_ai=True)
 
 class TestAIErrorHandling:
     """Tests that process_comment safely catches and structures AI errors."""

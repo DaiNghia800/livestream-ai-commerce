@@ -29,12 +29,13 @@ def _make_error(error_type: str, message: str) -> dict[str, Any]:
     return {"status": "error", "error_type": error_type, "message": message}
 
 
-def process_comment_event(event: dict[str, Any]) -> dict[str, Any]:
+def process_comment_event(event: dict[str, Any], *, use_ai: bool = True) -> dict[str, Any]:
     """
     Validate and process a single comment event.
     
     Args:
         event: A dict parsed from the comment.created contract.
+        use_ai: Allow Gemini assistance; False keeps processing fully offline.
         
     Returns:
         A dict with status, intent (if valid), and preserved event properties.
@@ -85,7 +86,7 @@ def process_comment_event(event: dict[str, Any]) -> dict[str, Any]:
 
     try:
         # Validation passed -> parse intent
-        intent = parse_purchase_intent(content)
+        intent = parse_purchase_intent(content, use_ai=use_ai)
     except AIParsingError as e:
         # Catch known AI errors and return them cleanly for SQS routing
         error_result = _make_error(e.error_type, e.message)

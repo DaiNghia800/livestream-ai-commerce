@@ -2,6 +2,7 @@
 
 import json
 import runpy
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -126,8 +127,11 @@ def test_missing_configuration_crosses_parser_and_process(monkeypatch):
 
 def test_example_script_with_real_example(monkeypatch, capsys):
     monkeypatch.chdir(ROOT)
-    runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
-    assert "[OK]" in capsys.readouterr().out
+    monkeypatch.setattr(sys, "argv", ["read_example.py"])
+    with pytest.raises(SystemExit) as caught:
+        runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
+    assert caught.value.code == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
 
 
 def test_example_script_reports_technical_error(monkeypatch, tmp_path, capsys):
@@ -136,10 +140,14 @@ def test_example_script_reports_technical_error(monkeypatch, tmp_path, capsys):
     (directory / "comment-created.v1.json").write_text(json.dumps(event()), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(gemini_client, "_client", None)
+    monkeypatch.setattr(sys, "argv", ["read_example.py", "--allow-ai", "--file",
+                                    str(directory / "comment-created.v1.json")])
     with pytest.raises(SystemExit) as caught:
         runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
     assert caught.value.code == 1
-    assert "[ERROR: ai_configuration]" in capsys.readouterr().out
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["error_type"] == "ai_configuration"
 
 
 @pytest.mark.parametrize("content,decision,reason", [
@@ -191,11 +199,16 @@ def test_example_script_displays_clarification(monkeypatch, tmp_path, capsys):
     source["content"] = "Chốt A12 đen"
     (directory / "comment-created.v1.json").write_text(json.dumps(source), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
-    runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
+    monkeypatch.setattr(sys, "argv", ["read_example.py", "--offline", "--file",
+                                    str(directory / "comment-created.v1.json")])
+    with pytest.raises(SystemExit) as caught:
+        runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
+    assert caught.value.code == 0
     output = capsys.readouterr().out
     assert "needs_clarification" in output
     assert "missing_quantity" in output
     assert "[ERROR" not in output
+    assert json.loads(output)["status"] == "ok"
 
 
 @pytest.mark.parametrize("payload", [
