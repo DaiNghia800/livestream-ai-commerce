@@ -40,6 +40,7 @@ export default function setup() {
     }
 
     const targetDb =
+      process.env.COMMERCE_TEST_DATABASE_URL ||
       process.env.COMMERCE_DATABASE_URL ||
       process.env.DATABASE_URL ||
       (process.env.CI

@@ -2,6 +2,7 @@ import { PoolClient } from "pg";
 import { pool } from "../../../shared/database/database.js";
 import {
   AuthUser,
+  ActiveUser,
   RefreshSession,
   RegisterUserInput,
   User,
@@ -9,6 +10,8 @@ import {
 
 export interface IAuthRepository {
   findActiveUserByEmail(email: string): Promise<AuthUser | null>;
+  /** Looks up a user by primary key; returns null if not found or is_active=false. */
+  findActiveUserById(id: number): Promise<ActiveUser | null>;
   registerWithSession(
     input: RegisterUserInput,
     createSession: (user: User) => RefreshSession
@@ -63,6 +66,25 @@ export class PostgresAuthRepository implements IAuthRepository {
     );
 
     return result.rows[0] ? mapAuthUser(result.rows[0]) : null;
+  }
+
+  async findActiveUserById(id: number): Promise<ActiveUser | null> {
+    const result = await pool.query(
+      `SELECT id, email, full_name AS "fullName", role, is_active AS "isActive"
+       FROM users
+       WHERE id = $1 AND is_active = TRUE`,
+      [id]
+    );
+
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    return {
+      id: Number(row.id),
+      email: String(row.email),
+      fullName: String(row.fullName),
+      role: String(row.role),
+      isActive: Boolean(row.isActive),
+    };
   }
 
   async registerWithSession(

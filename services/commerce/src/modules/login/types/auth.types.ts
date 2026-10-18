@@ -10,6 +10,15 @@ export interface AuthUser extends User {
   isActive: boolean;
 }
 
+/** Lightweight user record returned by findActiveUserById — no password hash. */
+export interface ActiveUser {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  isActive: boolean;
+}
+
 export interface AuthResponse {
   access_token: string;
   refresh_token: string;

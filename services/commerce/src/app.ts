@@ -1,7 +1,10 @@
 import cors from "cors";
 import express, { Express } from "express";
 import { config } from "./config.js";
-import { IAuthRepository } from "./modules/login/repositories/auth.repository.js";
+import {
+  IAuthRepository,
+  PostgresAuthRepository,
+} from "./modules/login/repositories/auth.repository.js";
 import { createAuthRouter } from "./modules/login/routes/auth.routes.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
@@ -19,6 +22,7 @@ import { createInventoryRouter } from "./modules/inventory/routes/inventory.rout
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 import { IIvsService } from "./shared/ivs/ivs.service.js";
+import { createAuthMiddleware } from "./shared/auth/auth.middleware.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
@@ -80,9 +84,16 @@ export function createApp(
     })
   );
 
+  // Create ONE shared authRepository so tests can inject an in-memory version
+  // and all downstream routers (auth, and future protected routes) share the same instance.
+  const authRepository: IAuthRepository =
+    customAuthRepository ?? new PostgresAuthRepository();
+  const authMiddleware = createAuthMiddleware(authRepository);
+
   // Mount API routers
   const apiRouter = express.Router();
-  apiRouter.use("/auth", createAuthRouter(customAuthRepository));
+  apiRouter.use("/auth", createAuthRouter(authRepository, authMiddleware));
+
   apiRouter.use(
     "/livestreams",
     createLivestreamRouter(

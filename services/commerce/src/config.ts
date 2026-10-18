@@ -6,6 +6,29 @@ dotenv.config();
 // 2. Also load repo root .env (for monorepo shared config)
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
+/** The default/example secret from .env.example — must never be used in production. */
+export const EXAMPLE_SECRET_KEY =
+  "change-me-use-a-long-random-string-in-production";
+
+/**
+ * Validates that the SECRET_KEY is safe for a production deployment.
+ * Returns an error message string if invalid, or null if valid.
+ * Kept as a pure function so it can be tested independently.
+ */
+export function validateProductionSecretKey(
+  secretKey: string,
+  nodeEnv: string
+): string | null {
+  if (nodeEnv !== "production") return null;
+  if (secretKey === EXAMPLE_SECRET_KEY) {
+    return "SECRET_KEY must not be the example/default value in production";
+  }
+  if (secretKey.length < 32) {
+    return "SECRET_KEY must be at least 32 characters long in production";
+  }
+  return null;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;

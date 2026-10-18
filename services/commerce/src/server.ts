@@ -1,5 +1,5 @@
 import { createApp } from "./app.js";
-import { config } from "./config.js";
+import { config, validateProductionSecretKey } from "./config.js";
 import { createEventTransport } from "./modules/order/events/event-transport.js";
 import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
 import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
@@ -10,6 +10,16 @@ import { pool, runMigrations } from "./shared/database/database.js";
 
 async function bootstrap() {
   console.log("[Commerce Service] Starting up...");
+
+  // Fail fast if SECRET_KEY is unsafe in production
+  const secretKeyError = validateProductionSecretKey(
+    config.secretKey,
+    process.env.NODE_ENV ?? "development"
+  );
+  if (secretKeyError) {
+    console.error(`[Commerce Service] Configuration error: ${secretKeyError}`);
+    process.exit(1);
+  }
 
   try {
     console.log("[Commerce Service] Running database migrations...");
