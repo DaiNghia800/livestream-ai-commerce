@@ -45,6 +45,13 @@ export class ProductNotInLivestreamError extends Error {
   }
 }
 
+export class ProductNotFoundError extends Error {
+  constructor(message = "Product not found in catalog") {
+    super(message);
+    this.name = "ProductNotFoundError";
+  }
+}
+
 export class LivestreamProductService {
   constructor(
     private readonly livestreamRepo: ILivestreamRepository,
@@ -67,6 +74,16 @@ export class LivestreamProductService {
 
     if (livestream.status === "ended" || livestream.status === "cancelled") {
       throw new InvalidLivestreamStatusError();
+    }
+
+    if (this.productRepo.productExists) {
+      const exists = await this.productRepo.productExists(
+        params.productId,
+        params.variantId
+      );
+      if (!exists) {
+        throw new ProductNotFoundError();
+      }
     }
 
     const existing = await this.productRepo.findByLivestreamAndProduct(

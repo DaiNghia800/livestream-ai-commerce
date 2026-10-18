@@ -6,10 +6,13 @@ import {
   ListStreamKeysCommand,
   DeleteChannelCommand,
   StopStreamCommand,
+  CreateRecordingConfigurationCommand,
+  ListRecordingConfigurationsCommand,
 } from "@aws-sdk/client-ivs";
 
 export interface IvsConfig {
   region?: string;
+  s3BucketName?: string;
 }
 
 export interface IvsChannelDetails {
@@ -18,6 +21,7 @@ export interface IvsChannelDetails {
   ingestEndpoint: string;
   streamKeyValue?: string;
   streamKeyArn?: string;
+  recordingConfigurationArn?: string;
 }
 
 export interface IIvsService {
@@ -25,10 +29,12 @@ export interface IIvsService {
   createChannel(channelName: string): Promise<IvsChannelDetails>;
   getStreamConfig(channelArn: string): Promise<IvsChannelDetails | null>;
   deleteChannel(channelArn: string, retryDelayMs?: number): Promise<boolean>;
+  getReplayUrl(livestreamId: string, channelArn?: string | null): string | null;
 }
 
 export class IvsService implements IIvsService {
   private client: IvsClient | null = null;
+  private cachedRecordingConfigArn: string | null = null;
 
   constructor(
     private readonly config: IvsConfig,
@@ -43,6 +49,83 @@ export class IvsService implements IIvsService {
 
   isConfigured(): boolean {
     return Boolean(this.client || this.config.region);
+  }
+
+  /**
+   * Tạo hoặc lấy cấu hình ghi hình tự động vào Amazon S3 nếu có S3_BUCKET_NAME
+   */
+  async getOrCreateRecordingConfiguration(): Promise<string | null> {
+    if (!this.client || !this.config.s3BucketName) {
+      return null;
+    }
+    if (this.cachedRecordingConfigArn) {
+      return this.cachedRecordingConfigArn;
+    }
+
+    const configName = `liveorder-dev-realtime-record-${this.config.s3BucketName}`
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, "-")
+      .slice(0, 128);
+
+    try {
+      const listRes = await this.client.send(
+        new ListRecordingConfigurationsCommand({})
+      );
+      const existing = listRes.recordingConfigurations?.find(
+        (c) =>
+          c.destinationConfiguration?.s3?.bucketName ===
+          this.config.s3BucketName
+      );
+      if (existing?.arn) {
+        this.cachedRecordingConfigArn = existing.arn;
+        return this.cachedRecordingConfigArn;
+      }
+
+      const createRes = await this.client.send(
+        new CreateRecordingConfigurationCommand({
+          name: configName,
+          destinationConfiguration: {
+            s3: {
+              bucketName: this.config.s3BucketName,
+            },
+          },
+          thumbnailConfiguration: {
+            recordingMode: "INTERVAL",
+            targetIntervalSeconds: 60,
+          },
+          recordingReconnectWindowSeconds: 60,
+          tags: {
+            Project: "LiveOrder",
+            Environment: "dev",
+            Service: "realtime",
+            Owner: "realtime",
+            ManagedBy: "manual",
+          },
+        })
+      );
+
+      if (createRes.recordingConfiguration?.arn) {
+        this.cachedRecordingConfigArn = createRes.recordingConfiguration.arn;
+        return this.cachedRecordingConfigArn;
+      }
+    } catch (err: unknown) {
+      console.warn(
+        `[IvsService] Note: S3 Auto-Record configuration check skipped (${err instanceof Error ? err.message : String(err)})`
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Trả về đường dẫn xem lại video bản ghi từ S3 (HLS master playlist)
+   */
+  getReplayUrl(livestreamId: string, _channelArn?: string | null): string | null {
+    if (this.config.s3BucketName) {
+      const region = this.config.region || "ap-southeast-1";
+      return `https://${this.config.s3BucketName}.s3.${region}.amazonaws.com/recordings/${livestreamId}/master.m3u8`;
+    }
+    // Demo / fallback working stream for preview
+    return "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
   }
 
   /**
@@ -65,17 +148,26 @@ export class IvsService implements IIvsService {
       : `liveorder-dev-realtime-${rawClean || Date.now()}`;
 
     try {
+      let recordingConfigurationArn: string | undefined = undefined;
+      if (this.config.s3BucketName) {
+        const recordingArn = await this.getOrCreateRecordingConfiguration();
+        if (recordingArn) {
+          recordingConfigurationArn = recordingArn;
+        }
+      }
+
       const command = new CreateChannelCommand({
         name: sanitizedName,
         latencyMode: "LOW",
         type: "BASIC",
         authorized: false,
+        recordingConfigurationArn,
         tags: {
           Project: "LiveOrder",
           Environment: "dev",
           Service: "realtime",
           Owner: "realtime",
-          ManagedBy: "auto",
+          ManagedBy: "manual",
         },
       });
 
@@ -97,6 +189,8 @@ export class IvsService implements IIvsService {
         ingestEndpoint,
         streamKeyValue: response.streamKey?.value,
         streamKeyArn: response.streamKey?.arn,
+        recordingConfigurationArn:
+          response.channel.recordingConfigurationArn || recordingConfigurationArn,
       };
     } catch (err: unknown) {
       if (process.env.NODE_ENV !== "production") {
@@ -256,5 +350,9 @@ export class InMemoryIvsService implements IIvsService {
 
   async deleteChannel(channelArn: string, _retryDelayMs?: number): Promise<boolean> {
     return this.channels.delete(channelArn);
+  }
+
+  getReplayUrl(livestreamId: string, _channelArn?: string | null): string | null {
+    return "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
   }
 }

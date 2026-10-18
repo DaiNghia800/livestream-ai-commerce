@@ -28,6 +28,7 @@ export interface ILivestreamProductRepository {
     dto: UpdateLivestreamProductDto
   ): Promise<LivestreamProduct | null>;
   removeProduct(livestreamId: string, productId: string): Promise<boolean>;
+  productExists?(productId: string, variantId?: string | null): Promise<boolean>;
 }
 
 export class PostgresLivestreamProductRepository
@@ -292,6 +293,39 @@ export class PostgresLivestreamProductRepository
     const result = await pool.query(query, [livestreamId, productId]);
     return (result.rowCount ?? 0) > 0;
   }
+
+  async productExists(
+    productId: string,
+    variantId?: string | null
+  ): Promise<boolean> {
+    const cleanId = productId.trim();
+    const query = `
+      SELECT 1 FROM products
+      WHERE (id::text = $1 OR code = $1)
+        AND status = 'active'
+      LIMIT 1;
+    `;
+    const result = await pool.query(query, [cleanId]);
+    if (result.rows.length === 0) {
+      return false;
+    }
+
+    if (variantId && variantId.trim()) {
+      const cleanVariantId = variantId.trim();
+      const skuQuery = `
+        SELECT 1 FROM product_skus
+        WHERE (id::text = $1 OR sku_code = $1)
+          AND status = 'active'
+        LIMIT 1;
+      `;
+      const skuResult = await pool.query(skuQuery, [cleanVariantId]);
+      if (skuResult.rows.length === 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 }
 
 export class InMemoryLivestreamProductRepository
@@ -385,5 +419,16 @@ export class InMemoryLivestreamProductRepository
   ): Promise<boolean> {
     const key = this.getKey(livestreamId, productId);
     return this.items.delete(key);
+  }
+
+  private validProductIds?: Set<string>;
+
+  setValidProductIds(ids: string[]): void {
+    this.validProductIds = new Set(ids);
+  }
+
+  async productExists(productId: string): Promise<boolean> {
+    if (!this.validProductIds) return true;
+    return this.validProductIds.has(productId);
   }
 }

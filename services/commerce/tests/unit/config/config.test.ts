@@ -79,7 +79,7 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
     for (const k of Object.keys(process.env)) {
       if (
         !giuLai.includes(k) &&
-        /^(VNPAY_|MOMO_|ZALOPAY_|MOCK_GATEWAY|PUBLIC_BASE_URL|PAYMENT_GATEWAY|HOLD_|REVIEW_QTY|MAX_HELD|RISK_SCORE|OUTBOX_|EXPIRE_|REALTIME_|API_PREFIX|PORT|AWS_REGION|S3_BUCKET)/.test(k)
+        /^(VNPAY_|MOMO_|ZALOPAY_|MOCK_GATEWAY|PUBLIC_BASE_URL|PAYMENT_GATEWAY|HOLD_|REVIEW_QTY|MAX_HELD|RISK_SCORE|OUTBOX_|EXPIRE_|REALTIME_|API_PREFIX|PORT|AWS_REGION|S3_BUCKET|SQS_)/.test(k)
       ) {
         delete process.env[k];
       }
@@ -143,5 +143,7 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
     // Không cấu hình realtime thì publisher chạy chế độ ghi log.
     expect(cfg.realtimeEventsUrl).toBeUndefined();
     expect(cfg.awsRegion).toBeUndefined();
+    expect(cfg.sqsQueueUrl).toBeUndefined();
+    expect(cfg.s3MediaBucketName).toBeUndefined();
   });
 });

@@ -72,4 +72,16 @@ export type UpdateLivestreamStatusInput = z.infer<
 
 export type GetLivestreamParamInput = z.infer<typeof GetLivestreamParamSchema>;
 
+export const CreateChatTokenRequestSchema = z
+  .object({
+    userId: z.string().trim().min(1, { message: "userId is required" }),
+    role: z.enum(["HOST", "MODERATOR", "VIEWER"]).optional().default("VIEWER"),
+    username: z.string().trim().max(100).optional(),
+    avatarUrl: z.string().url().optional(),
+  })
+  .strict();
+
+export type CreateChatTokenInput = z.infer<typeof CreateChatTokenRequestSchema>;
+
 export { isValidUuid };
+

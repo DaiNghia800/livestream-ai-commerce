@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { ChatRoom, ChatMessage } from "amazon-ivs-chat-messaging";
+import type { ChatRoom, ChatMessage, ChatEvent } from "amazon-ivs-chat-messaging";
 import { getIvsChatToken, isValidUuid } from "../api/get-livestreams";
+import { postLivestreamComment } from "../api/livestream-comments";
 import type { StudioChatMessage } from "../types/studio";
 
 export type IvsChatConnectionState =
@@ -50,6 +51,9 @@ export function useIvsChat({
   useEffect(() => {
     onMessageReceivedRef.current = onMessageReceived;
   }, [onMessageReceived]);
+
+  // TikTok-style: comments are ephemeral — no history loaded on mount.
+  // Chat only shows messages received during the current session.
 
   /**
    * Kết nối vào IVS Chat Room qua WebSocket
@@ -157,8 +161,55 @@ export function useIvsChat({
           status: msg.attributes?.orderStatus as StudioChatMessage["status"],
         };
 
-        setChatMessages((prev) => [studioMsg, ...prev]);
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === studioMsg.id)) {
+            return prev;
+          }
+          return [studioMsg, ...prev];
+        });
         onMessageReceivedRef.current?.(studioMsg);
+      });
+
+      // Bắt custom event "app:comment" được broadcast từ REST API (ví dụ: Postman hoặc API khách xem)
+      room.addListener("event", (evt: ChatEvent) => {
+        if (evt.eventName === "app:comment" && evt.attributes) {
+          const timestamp = evt.sendTime
+            ? new Date(evt.sendTime).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : new Date().toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+          const studioMsg: StudioChatMessage = {
+            id: evt.attributes.id || evt.id || `evt-${Date.now()}`,
+            userId: evt.attributes.userId || "anonymous",
+            userName:
+              evt.attributes.username ||
+              evt.attributes.userName ||
+              "Người xem",
+            userAvatar: evt.attributes.avatarUrl || undefined,
+            content: evt.attributes.content || "",
+            timestamp,
+            badge:
+              evt.attributes.role === "host"
+                ? "Chủ shop"
+                : evt.attributes.role === "moderator"
+                ? "Quản trị viên"
+                : undefined,
+            status: evt.attributes.orderStatus as StudioChatMessage["status"],
+          };
+
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === studioMsg.id)) {
+              return prev;
+            }
+            return [studioMsg, ...prev];
+          });
+          onMessageReceivedRef.current?.(studioMsg);
+        }
       });
 
       roomRef.current = room;
@@ -189,14 +240,25 @@ export function useIvsChat({
   }, []);
 
   /**
-   * Gửi tin nhắn vào IVS Chat Room
+   * Gửi tin nhắn vào IVS Chat Room & đẩy vào hàng đợi SQS (không lưu DB)
+   * TikTok-style: comments are ephemeral, only persisted via SQS for AI processing.
    */
   const sendMessage = useCallback(
     async (content: string, attributes?: Record<string, string>) => {
       const cleanContent = content.trim();
       if (!cleanContent) return;
 
-      // Nếu đang kết nối với IVS room thật
+      // 1. Đẩy vào Amazon SQS queue (comment.created) — không lưu DB
+      if (isValidUuid(livestreamId)) {
+        void postLivestreamComment(livestreamId, {
+          userId,
+          username,
+          content: cleanContent,
+          role: role === "HOST" ? "host" : role === "MODERATOR" ? "moderator" : "buyer",
+        });
+      }
+
+      // 2. Nếu đang kết nối với IVS room thật
       if (roomRef.current && connectionStateRef.current === "CONNECTED") {
         try {
           const { SendMessageRequest } = await import(
@@ -215,6 +277,7 @@ export function useIvsChat({
         id: `local-${Date.now()}`,
         userId,
         userName: username,
+        badge: role === "HOST" ? "Chủ shop" : undefined,
         content: cleanContent,
         timestamp: new Date().toLocaleTimeString("vi-VN", {
           hour: "2-digit",
@@ -225,7 +288,7 @@ export function useIvsChat({
       setChatMessages((prev) => [localMsg, ...prev]);
       onMessageReceivedRef.current?.(localMsg);
     },
-    [userId, username]
+    [livestreamId, userId, username, role]
   );
 
   useEffect(() => {
