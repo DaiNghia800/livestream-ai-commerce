@@ -32,7 +32,7 @@ class TestGeminiClientConfiguration:
 class TestGeminiClientErrorHandling:
     @pytest.fixture
     def mock_genai_client(self):
-        with patch("os.environ.get", return_value="fake_key"):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "fake_key"}):
             with patch("gemini_client.genai.Client") as mock_client:
                 mock_instance = MagicMock()
                 mock_client.return_value = mock_instance
