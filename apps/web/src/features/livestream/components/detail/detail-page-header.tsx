@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -6,14 +9,18 @@ import {
   CheckCircle2,
   Activity,
   BarChart3,
+  Play,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
+import { ReplayVideoModal } from "./replay-video-modal";
 
 interface DetailPageHeaderProps {
   session: Livestream;
 }
 
 export function DetailPageHeader({ session }: DetailPageHeaderProps) {
+  const [showReplayModal, setShowReplayModal] = useState(false);
+
   const getStatusBadge = () => {
     switch (session.status) {
       case "LIVE":
@@ -148,6 +155,14 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
         {/* ENDED: Kết thúc & tổng kết */}
         {session.status === "ENDED" && (
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowReplayModal(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
+            >
+              <Play className="h-4 w-4 fill-white text-white" aria-hidden="true" />
+              <span>Xem lại video (Replay)</span>
+            </button>
             <Link
               href={`/shop/livestream/${session.id}/report`}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary text-white hover:bg-primary-container text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
@@ -169,6 +184,14 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
           </div>
         )}
       </div>
+
+      <ReplayVideoModal
+        isOpen={showReplayModal}
+        onClose={() => setShowReplayModal(false)}
+        sessionTitle={session.title}
+        replayUrl={session.replayUrl}
+        livestreamId={session.id}
+      />
     </header>
   );
 }

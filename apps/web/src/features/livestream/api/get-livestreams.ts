@@ -20,6 +20,7 @@ export interface BackendLivestreamItem {
   status: "draft" | "scheduled" | "live" | "ended" | "cancelled";
   channelArn: string | null;
   playbackUrl: string | null;
+  replayUrl?: string | null;
   scheduledAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -180,6 +181,7 @@ export function mapBackendLivestreamToFrontend(
     description: item.description || undefined,
     channelName: item.channelArn ? "AWS IVS Channel" : "LiveOrder RTMP",
     ivsChannel: item.channelArn || "Chưa cấu hình",
+    replayUrl: item.replayUrl || undefined,
     resolution: "1080p60",
     productCount:
       item.productCount || (Array.isArray(item.products) ? item.products.length : 0),
