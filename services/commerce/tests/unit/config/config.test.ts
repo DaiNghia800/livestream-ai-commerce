@@ -145,3 +145,165 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
     expect(cfg.awsRegion).toBeUndefined();
   });
 });
+
+describe("config - cấu hình vận chuyển", () => {
+  async function reloadConfig(env: Record<string, string | undefined>) {
+    const cu = { ...process.env };
+    Object.assign(process.env, env);
+    vi.resetModules();
+    try {
+      return (await import("../../../src/config.js")).config;
+    } finally {
+      process.env = cu;
+      vi.resetModules();
+    }
+  }
+
+  /**
+   * Khai ĐỦ mọi biến của bốn hãng rồi kiểm lại từng giá trị.
+   *
+   * Không phải để chứng minh `||` hoạt động, mà để bắt lỗi chép dán:
+   * cả bốn khối cấu hình có hình dạng giống hệt nhau, nên lấy nhầm
+   * biến của hãng này gán cho hãng kia là lỗi mắt thường không thấy —
+   * và nó chỉ lộ ra khi gọi API thật rồi bị từ chối vì sai khoá.
+   */
+  it("CFG-100 - mọi biến của bốn hãng đều đọc đúng chỗ", async () => {
+    const cfg = await reloadConfig({
+      SHIPPING_CARRIER: "ghn",
+      MOCK_CARRIER_SECRET: "mock-ship",
+      SHIP_FROM_NAME: "Kho A",
+      SHIP_FROM_PHONE: "0911111111",
+      SHIP_FROM_ADDRESS: "1 Đường A",
+      SHIP_FROM_PROVINCE: "Hà Nội",
+      SHIP_FROM_WARD: "Phường B",
+      SHIP_FROM_DISTRICT: "Quận C",
+
+      GHN_TOKEN: "ghn-token",
+      GHN_SHOP_ID: "999",
+      GHN_BASE_URL: "https://dev-online-gateway.ghn.vn",
+      GHN_WEBHOOK_SECRET: "ghn-hook",
+
+      GHTK_TOKEN: "ghtk-token",
+      GHTK_PARTNER_CODE: "ghtk-partner",
+      GHTK_BASE_URL: "https://services-staging.ghtklab.com",
+      GHTK_WEBHOOK_SECRET: "ghtk-hook",
+
+      VTP_USERNAME: "vtp-user",
+      VTP_PASSWORD: "vtp-pass",
+      VTP_BASE_URL: "https://partnerdev.viettelpost.vn",
+      VTP_WAREHOUSE_ID: "77",
+      VTP_WEBHOOK_SECRET: "vtp-hook",
+
+      AHAMOVE_API_KEY: "aha-key",
+      AHAMOVE_MOBILE: "0922222222",
+      AHAMOVE_BASE_URL: "https://partner-apistg.ahamove.com",
+      AHAMOVE_WEBHOOK_SECRET: "aha-hook",
+    });
+
+    expect(cfg.defaultCarrier).toBe("ghn");
+    expect(cfg.mockCarrierSecret).toBe("mock-ship");
+
+    expect(cfg.shipFrom).toMatchObject({
+      name: "Kho A",
+      phone: "0911111111",
+      address: "1 Đường A",
+      provinceName: "Hà Nội",
+      wardName: "Phường B",
+      districtName: "Quận C",
+    });
+
+    expect(cfg.ghn).toMatchObject({
+      token: "ghn-token",
+      shopId: "999",
+      webhookSecret: "ghn-hook",
+      fromWardName: "Phường B",
+      fromDistrictName: "Quận C",
+      fromProvinceName: "Hà Nội",
+    });
+
+    expect(cfg.ghtk).toMatchObject({
+      token: "ghtk-token",
+      partnerCode: "ghtk-partner",
+      webhookSecret: "ghtk-hook",
+      fromName: "Kho A",
+      fromProvince: "Hà Nội",
+      fromDistrict: "Quận C",
+      fromWard: "Phường B",
+    });
+
+    expect(cfg.vtp).toMatchObject({
+      username: "vtp-user",
+      password: "vtp-pass",
+      senderWarehouseId: "77",
+      webhookSecret: "vtp-hook",
+      fromName: "Kho A",
+      fromAddress: "1 Đường A",
+    });
+
+    expect(cfg.ahamove).toMatchObject({
+      apiKey: "aha-key",
+      mobile: "0922222222",
+      webhookSecret: "aha-hook",
+      fromAddress: "1 Đường A",
+      fromName: "Kho A",
+      fromPhone: "0911111111",
+    });
+  });
+
+  it("CFG-102 - khoá ký webhook của Goship suy ra từ Client Secret", async () => {
+    // Cổng quản trị Goship chỉ có Event và Endpoint, không có ô khoá
+    // webhook. Bắt khai thêm một biến không tồn tại là đẩy người dùng
+    // vào chỗ tự bịa giá trị, rồi mọi gói tin bị từ chối 401.
+    const suyRa = await reloadConfig({
+      GOSHIP_CLIENT_SECRET: "secret-cua-client",
+      GOSHIP_WEBHOOK_SECRET: undefined,
+    });
+    expect(suyRa.goship.webhookSecret).toBe("secret-cua-client");
+
+    // Nhưng khai rõ thì vẫn ưu tiên, phòng khi Goship đổi cách ký.
+    const khaiRo = await reloadConfig({
+      GOSHIP_CLIENT_SECRET: "secret-cua-client",
+      GOSHIP_WEBHOOK_SECRET: "khoa-rieng",
+    });
+    expect(khaiRo.goship.webhookSecret).toBe("khoa-rieng");
+  });
+
+  it("CFG-101 - không khai gì thì về mặc định an toàn", async () => {
+    const trong: Record<string, undefined> = {};
+    for (const k of [
+      "SHIPPING_CARRIER", "MOCK_CARRIER_SECRET",
+      "SHIP_FROM_NAME", "SHIP_FROM_PHONE", "SHIP_FROM_ADDRESS",
+      "SHIP_FROM_PROVINCE", "SHIP_FROM_WARD", "SHIP_FROM_DISTRICT",
+      "GHN_TOKEN", "GHN_SHOP_ID", "GHN_BASE_URL", "GHN_WEBHOOK_SECRET",
+      "GHTK_TOKEN", "GHTK_PARTNER_CODE", "GHTK_BASE_URL", "GHTK_WEBHOOK_SECRET",
+      "VTP_USERNAME", "VTP_PASSWORD", "VTP_BASE_URL", "VTP_WAREHOUSE_ID",
+      "VTP_WEBHOOK_SECRET",
+      "AHAMOVE_API_KEY", "AHAMOVE_MOBILE", "AHAMOVE_BASE_URL",
+      "AHAMOVE_WEBHOOK_SECRET",
+      "GOSHIP_USERNAME", "GOSHIP_PASSWORD", "GOSHIP_CLIENT_ID",
+      "GOSHIP_CLIENT_SECRET", "GOSHIP_BASE_URL", "GOSHIP_WEBHOOK_SECRET",
+    ]) {
+      trong[k] = undefined;
+    }
+    const cfg = await reloadConfig(trong);
+
+    // Mặc định là hãng giả: kéo repo về là chạy được ngay.
+    expect(cfg.defaultCarrier).toBe("mock");
+    // Khoá để trống, nên adapter sẽ từ chối khởi tạo thay vì gọi API
+    // với khoá rỗng rồi nhận lỗi khó hiểu.
+    expect(cfg.ghn.token).toBe("");
+    expect(cfg.ghtk.token).toBe("");
+    expect(cfg.vtp.username).toBe("");
+    expect(cfg.ahamove.apiKey).toBe("");
+    expect(cfg.goship.clientId).toBe("");
+    // Mọi endpoint mặc định đều trỏ về môi trường THỬ.
+    for (const url of [
+      cfg.ghn.baseUrl, cfg.ghtk.baseUrl, cfg.vtp.baseUrl, cfg.ahamove.baseUrl,
+      cfg.goship.baseUrl,
+    ]) {
+      // Mỗi hãng gọi môi trường thử một kiểu: dev-, -staging,
+      // -stg, sandbox. Miễn là KHÔNG phải địa chỉ thật.
+      expect(url).toMatch(/dev|staging|stg|sandbox/);
+    }
+  });
+});
