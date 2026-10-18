@@ -130,3 +130,69 @@ finally {
 ```
 
 Model hiện cấu hình trong `gemini_client.py` là `gemini-3.8-flash`. API key, quyền model, quota, billing và chất lượng response thực tế chỉ được kiểm chứng bằng lượt live được duyệt. Chỉ dùng dữ liệu tổng hợp; không đưa key vào fixture, log, Git hay ảnh chụp màn hình. Không thêm live smoke command vào GitHub Actions hoặc pytest. Unit tests có thể kiểm tra nhánh opt-in bằng mock; subprocess integration thật chỉ chạy dry-run, với network và import Gemini bị chặn trong cả process cha lẫn child.
+
+## A7: Docker demo offline
+
+Docker Desktop cần chạy Linux Engine. Các lệnh sau chạy từ **Git root**; không cần khởi động Compose, database, AWS hoặc có API key.
+
+```powershell
+docker version
+docker build --file services/ai-worker/Dockerfile --tag livestream-ai-worker:midterm .
+```
+
+**Dockerfile** là công thức đóng gói. **Build context** là tập file được đưa cho builder: dấu `.` ở cuối lệnh chọn Git root để lấy được cả code và contracts. `services/ai-worker/Dockerfile.dockerignore` loại mọi file, chỉ cho phép đúng các module/fixture cần dùng; `.env`, `.git`, caches, virtualenv, uploads và service khác không được gửi vào context. File ignore này chỉ áp dụng cho Dockerfile AI Worker, không đổi workflow Compose của nhóm.
+
+**Image** là bản đóng gói có thể chạy lại. Base image Python 3.13 slim Bookworm được pin theo digest trong Dockerfile để cố định phiên bản; cập nhật base cần kiểm chứng lại và đổi digest chủ động. Build lần đầu có thể tải base image từ registry; không publish image và không cài thêm OS/pip packages. Luồng offline hiện chỉ cần Python standard library. Dependencies Gemini và pytest trong `requirements.txt` tiếp tục phục vụ môi trường dev/test, không được cài vào image demo.
+
+**Container** là một lần chạy image. Container này xử lý một event rồi thoát, không phải background worker. Code và fixture giữ cùng cấu trúc `/app/services/ai-worker/` và `/app/contracts/` nên đường dẫn mặc định của CLI vẫn đúng. Runtime dùng UID/GID `10001:10001`; entrypoint gọi CLI với `--offline` cố định và Python `-S` để không nạp site-packages. `--allow-ai` sẽ bị CLI từ chối; image không chứa Gemini client/SDK hoặc AWS SDK. Không thay đổi processor, business rules hay event contracts.
+
+### Chạy ba decision
+
+```powershell
+$demoArgs = @(
+    'run', '--rm',
+    '--network', 'none',
+    '--read-only',
+    '--cap-drop', 'ALL',
+    '--security-opt', 'no-new-privileges',
+    'livestream-ai-worker:midterm'
+)
+
+# Purchase candidate: default contract example
+docker @demoArgs
+$LASTEXITCODE  # Expected: 0
+
+# Clarification: ambiguous colors
+docker @demoArgs --file services/ai-worker/examples/needs-clarification.json
+$LASTEXITCODE  # Expected: 0
+
+# No purchase intent
+docker @demoArgs --file services/ai-worker/examples/no-purchase.json
+$LASTEXITCODE  # Expected: 0
+```
+
+stdout là nguyên JSON processor: kiểm tra `status`, `intent.decision`, `intent.reason_codes` cùng `event_id` và `comment_id`. `needs_clarification` là kết quả nghiệp vụ nên exit 0. Không truyền `--env-file`, API key, bind mount cả repository hoặc Docker socket vào container.
+
+`--network none` chặn kết nối ra bên ngoài, chỉ còn loopback. `--read-only` khóa ghi filesystem; `--cap-drop ALL` và `no-new-privileges` giới hạn quyền runtime. `--rm` xóa container đã thoát, giữ image để chạy lại. Không có port mapping hay named volume; các service/volume Compose hiện có không bị tác động.
+
+### Kiểm tra exit codes và offline guard
+
+```powershell
+# Invalid event: processor JSON error on stdout
+docker @demoArgs --file contracts/test-fixtures/missing-content.json
+$LASTEXITCODE  # Expected: 1
+
+# Invalid JSON: stdout empty, input diagnostic on stderr
+docker @demoArgs --file contracts/test-fixtures/bad-json.json
+$LASTEXITCODE  # Expected: 2
+
+# Offline entrypoint rejects enabling AI
+docker @demoArgs --allow-ai
+$LASTEXITCODE  # Expected: 2
+
+# Inspect configured non-root user and local image size
+docker image inspect livestream-ai-worker:midterm --format '{{.Config.User}}'
+docker image ls livestream-ai-worker:midterm
+```
+
+Các ví dụ chỉ dùng dữ liệu synthetic; JSON output chứa comment theo contract nên không dùng dữ liệu khách thật khi trình chiếu. Thời gian build, kích thước image và kết quả chạy phải đo thực tế, không suy ra từ test host. Nếu Docker daemon không truy cập được thì chưa thể kết luận Docker verification đạt. Full offline pytest vẫn chạy trong môi trường dev theo phần kiểm thử ở trên; image demo không chứa test suite. A7 không thêm Docker Hub publishing, SQS, Lambda hoặc Commerce integration.

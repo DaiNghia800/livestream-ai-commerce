@@ -1,0 +1,18 @@
+# Deny everything, then allow only the offline CLI and synthetic fixtures.
+**
+!services/ai-worker/Dockerfile
+!services/ai-worker/Dockerfile.dockerignore
+!services/ai-worker/read_example.py
+!services/ai-worker/process_comment.py
+!services/ai-worker/parse_intent.py
+!services/ai-worker/intent_policy.py
+!services/ai-worker/quantity_parser.py
+!services/ai-worker/product_codes.py
+!services/ai-worker/ai_errors.py
+!services/ai-worker/examples/needs-clarification.json
+!services/ai-worker/examples/no-purchase.json
+!contracts/examples/comment-created.v1.json
+!contracts/test-fixtures/bad-json.json
+!contracts/test-fixtures/missing-content.json
+!contracts/test-fixtures/empty-content.json
+!contracts/test-fixtures/content-not-string.json
