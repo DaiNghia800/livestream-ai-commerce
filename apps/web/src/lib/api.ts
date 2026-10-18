@@ -341,3 +341,136 @@ export const reviewQueueApi = {
       body: { reason, reviewedBy: reviewedBy ?? null },
     }),
 };
+
+// ── Vận chuyển ─────────────────────────────────────────────────────
+
+export type ShipmentStatus =
+  | "DRAFT"
+  | "REQUESTED"
+  | "REJECTED"
+  | "CREATED"
+  | "PICKED_UP"
+  | "IN_TRANSIT"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "FAILED"
+  | "RETURNING"
+  | "RETURNED"
+  | "CANCELLED";
+
+export interface ShipmentListItem {
+  id: string;
+  orderId: string;
+  orderCode: string;
+  carrier: string;
+  serviceCode: string | null;
+  /** Mã do HÃNG sinh. Rỗng tới khi hãng nhận đơn. */
+  trackingCode: string | null;
+  /** Mã của ta gửi sang hãng, dùng khớp webhook đến sớm. */
+  clientOrderCode: string;
+  status: ShipmentStatus;
+  deliveryAttempt: number;
+  codAmount: string;
+  feeQuoted: string | null;
+  /** Hãng chốt lại sau khi cân. Khác feeQuoted là shop đang chịu chênh. */
+  feeActual: string | null;
+  weightGram: number;
+  failureReason: string | null;
+  lastSyncedAt: string | null;
+  createdAt: string;
+  /** Token của link theo dõi, để shop gửi cho khách. */
+  trackingToken: string | null;
+  recipientName?: string | null;
+  orderStatus?: string;
+}
+
+export interface ShipmentEvent {
+  eventCode: string;
+  /** NULL = mã lạ chưa có trong bảng tra của ta. */
+  mappedStatus: ShipmentStatus | null;
+  occurredAt: string;
+  description: string;
+}
+
+export interface ShipmentDetail extends ShipmentListItem {
+  events: ShipmentEvent[];
+}
+
+export interface CarrierOption {
+  name: string;
+  label: string;
+  /** false = chưa khai khoá, nút phải mờ đi chứ không hiện rồi báo lỗi. */
+  ready: boolean;
+  missing: string[];
+}
+
+export interface CreateShipmentInput {
+  orderId: string;
+  carrier?: string;
+  serviceCode?: string | null;
+  weightGram: number;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  insuranceValue?: string | null;
+  note?: string | null;
+}
+
+export const shippingApi = {
+  list: (
+    filter: {
+      merchantId?: string;
+      carrier?: string;
+      status?: string;
+      limit?: number;
+    } = {},
+  ) =>
+    call<{ items: ShipmentListItem[] }>(`/shipments${queryString(filter)}`).then(
+      (r) => r.items,
+    ),
+
+  detail: (shipmentId: string) =>
+    call<ShipmentDetail>(`/shipments/${shipmentId}`),
+
+  /** Chỉ hiện hãng nào thật sự bấm được, tránh bấm rồi mới báo lỗi. */
+  carriers: () =>
+    call<{ items: CarrierOption[] }>("/shipments/carriers").then((r) => r.items),
+
+  create: (input: CreateShipmentInput) =>
+    call<ShipmentDetail>("/shipments", { method: "POST", body: input }),
+
+  cancel: (shipmentId: string) =>
+    call<ShipmentDetail>(`/shipments/${shipmentId}/cancel`, { method: "POST" }),
+
+  /** Shop bấm tay, dùng cho đơn tự giao. */
+  pushStatus: (shipmentId: string, status: ShipmentStatus, description?: string) =>
+    call<ShipmentDetail>(`/shipments/${shipmentId}/status`, {
+      method: "POST",
+      body: { status, description },
+    }),
+};
+
+/** Dữ liệu trang theo dõi công khai — đã che bớt thông tin cá nhân. */
+export interface PublicTracking {
+  trackingCode: string | null;
+  carrier: string;
+  status: ShipmentStatus;
+  lastSyncedAt: string | null;
+  createdAt: string;
+  /** "Nguyễn Thuỳ T." */
+  recipientName: string;
+  /** "0984***899" */
+  recipientPhone: string;
+  /** Chỉ phường và tỉnh, không có số nhà. */
+  area: string;
+  events: Array<{
+    mappedStatus: ShipmentStatus | null;
+    occurredAt: string;
+    description: string;
+  }>;
+}
+
+export const trackingApi = {
+  get: (token: string) =>
+    call<PublicTracking>(`/tracking/${encodeURIComponent(token)}`),
+};

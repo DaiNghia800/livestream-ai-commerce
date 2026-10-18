@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import { CancelOrderDialog } from "./cancel-order-dialog";
+import { CreateShipmentDialog } from "@/features/shipping/create-shipment-dialog";
 import { formatCountdown, formatDateTime, formatMoney } from "@/lib/format";
 import { ordersApi, paymentsApi, type OrderDetail } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -70,6 +71,7 @@ function OrderDetailView({
   onChanged: () => void;
 }) {
   const [moTay, setMoTay] = useState(false);
+  const [moVanDon, setMoVanDon] = useState(false);
 
   /*
    * Mở hộp thoại huỷ khi địa chỉ kết thúc bằng #huy-don.
@@ -107,6 +109,10 @@ function OrderDetailView({
   // Đơn huỷ và đơn hết hạn đều đã trả hàng về kho, nên cùng một
   // cảnh: muốn mua lại thì phải giữ hàng lại từ đầu.
   const taoLaiDuoc = order.status === "CANCELLED" || order.status === "EXPIRED";
+
+  // Chỉ đơn đã xác nhận mới đẩy sang hãng được: đơn nháp khách còn
+  // huỷ được, đơn hết hạn thì tồn đã trả về kho.
+  const taoVanDonDuoc = order.status === "CONFIRMED";
   const cancelOpen = moTay || (hash === "#huy-don" && cancellable);
 
   function dongHuy() {
@@ -208,6 +214,14 @@ function OrderDetailView({
             >
               <RotateCcw size={17} aria-hidden="true" />{" "}
               {busy === "reorder" ? "Đang tạo…" : "Tạo lại đơn"}
+            </Button>
+          )}
+          {taoVanDonDuoc && (
+            <Button
+              disabled={busy !== null}
+              onClick={() => setMoVanDon(true)}
+            >
+              <Truck size={17} aria-hidden="true" /> Tạo vận đơn
             </Button>
           )}
           <Button variant="secondary" onClick={moHopThoaiIn}>
@@ -467,6 +481,14 @@ function OrderDetailView({
       {/* Phiếu dựng sẵn ngay khi mở trang: dữ liệu đã có đủ, không
           cần gọi thêm API nào. Ẩn trên màn hình, chỉ hiện khi in. */}
       <PrintableOrders orders={[order]} />
+
+      <CreateShipmentDialog
+        orderId={order.id}
+        orderCode={order.orderCode}
+        open={moVanDon}
+        onClose={() => setMoVanDon(false)}
+        onCreated={(vanDon) => router.push(`/shop/shipping/${vanDon.id}`)}
+      />
 
       <CancelOrderDialog
         orderCode={order.orderCode}
