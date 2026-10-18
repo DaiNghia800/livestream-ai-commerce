@@ -480,6 +480,7 @@ describe("LivestreamService - Unit Tests", () => {
       createChannel: vi.fn(),
       getStreamConfig: vi.fn(),
       deleteChannel: vi.fn().mockResolvedValue(true),
+      getReplayUrl: vi.fn().mockReturnValue(null),
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
@@ -503,6 +504,7 @@ describe("LivestreamService - Unit Tests", () => {
       createChannel: vi.fn(),
       getStreamConfig: vi.fn(),
       deleteChannel: vi.fn().mockResolvedValue(true),
+      getReplayUrl: vi.fn().mockReturnValue(null),
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
@@ -526,6 +528,7 @@ describe("LivestreamService - Unit Tests", () => {
       createChannel: vi.fn(),
       getStreamConfig: vi.fn(),
       deleteChannel: vi.fn().mockResolvedValue(true),
+      getReplayUrl: vi.fn().mockReturnValue(null),
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
@@ -549,6 +552,7 @@ describe("LivestreamService - Unit Tests", () => {
       createChannel: vi.fn(),
       getStreamConfig: vi.fn(),
       deleteChannel: vi.fn().mockRejectedValue(new Error("IVS AWS API down")),
+      getReplayUrl: vi.fn().mockReturnValue(null),
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
@@ -556,5 +560,39 @@ describe("LivestreamService - Unit Tests", () => {
 
     expect(result).toEqual(updatedLivestream);
     expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
+  });
+
+  it("UT-LS-029 - updateLivestreamStatus saves replayUrl when status changes to ended and stream had video", async () => {
+    const livestreamWithIvs = {
+      ...createdLivestream,
+      channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/replay-channel",
+      playbackUrl: "https://playback.live-video.net/api/video/v1/channel.m3u8",
+    };
+    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    const endedLivestream = { ...livestreamWithIvs, status: "ended" as const };
+    (repository as any).updateStatus = vi.fn().mockResolvedValue(endedLivestream);
+    const withReplayLivestream = {
+      ...endedLivestream,
+      replayUrl: "https://mybucket.s3.ap-southeast-1.amazonaws.com/recordings/test/master.m3u8",
+    };
+    (repository as any).updateReplayUrl = vi.fn().mockResolvedValue(withReplayLivestream);
+
+    const mockIvs = {
+      isConfigured: () => true,
+      createChannel: vi.fn(),
+      getStreamConfig: vi.fn(),
+      deleteChannel: vi.fn().mockResolvedValue(true),
+      getReplayUrl: vi.fn().mockReturnValue("https://mybucket.s3.ap-southeast-1.amazonaws.com/recordings/test/master.m3u8"),
+    };
+
+    const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
+    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+
+    expect(mockIvs.getReplayUrl).toHaveBeenCalledWith(livestreamWithIvs.id, livestreamWithIvs.channelArn);
+    expect((repository as any).updateReplayUrl).toHaveBeenCalledWith(
+      livestreamWithIvs.id,
+      "https://mybucket.s3.ap-southeast-1.amazonaws.com/recordings/test/master.m3u8"
+    );
+    expect(result?.replayUrl).toBe("https://mybucket.s3.ap-southeast-1.amazonaws.com/recordings/test/master.m3u8");
   });
 });

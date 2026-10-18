@@ -7,6 +7,8 @@ const defaultTestDb = isCI
 
 export default defineConfig({
   test: {
+    testTimeout: 15000,
+    fileParallelism: false,
     globalSetup: ["./tests/global-setup.ts"],
 
     // Khoá GIẢ cho các cổng thanh toán, chỉ để test chạy được. Không
@@ -28,6 +30,7 @@ export default defineConfig({
     },
     coverage: {
       provider: "v8",
+      clean: true,
       include: ["src/**"],
       exclude: [
         // Điểm khởi động: chạy nó trong test nghĩa là mở cổng thật và

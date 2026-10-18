@@ -383,6 +383,54 @@ describe("LivestreamRepository - Unit Tests", () => {
       const result = await repo.updateStatus("missing-id", "live");
       expect(result).toBeNull();
     });
+
+    it("REPO-PG-013 - updateReplayUrl updates and returns mapped Livestream", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Spring Mega Sale",
+        description: null,
+        coverImageKey: null,
+        status: "ended",
+        channelArn: null,
+        playbackUrl: null,
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: "https://s3.example.com/recordings/replay.m3u8",
+        scheduledAt: null,
+        startedAt: now,
+        endedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateReplayUrl(
+        mockRow.id,
+        "https://s3.example.com/recordings/replay.m3u8"
+      );
+
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.replayUrl).toBe("https://s3.example.com/recordings/replay.m3u8");
+      expect(result?.id).toBe(mockRow.id);
+    });
+
+    it("REPO-PG-014 - updateReplayUrl returns null when livestream not found", async () => {
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [],
+      } as any);
+
+      const result = await repo.updateReplayUrl(
+        "missing-id",
+        "https://s3.example.com/recordings/replay.m3u8"
+      );
+
+      expect(result).toBeNull();
+    });
   });
 
   describe("InMemoryLivestreamRepository", () => {
@@ -599,6 +647,68 @@ describe("LivestreamRepository - Unit Tests", () => {
       expect(found?.playbackUrl).toBe(
         "https://playback.live-video.net/mem-ch.m3u8"
       );
+    });
+
+    it("REPO-MEM-007 - updateReplayUrl updates replayUrl or returns null if not found", async () => {
+      const created = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Session for replay",
+        status: "ended",
+      });
+
+      const updated = await repo.updateReplayUrl(
+        created.id,
+        "https://s3.example.com/replay.m3u8"
+      );
+      expect(updated?.replayUrl).toBe("https://s3.example.com/replay.m3u8");
+
+      const notFound = await repo.updateReplayUrl(
+        "missing-id",
+        "https://s3.example.com/replay.m3u8"
+      );
+      expect(notFound).toBeNull();
+    });
+
+    it("REPO-MEM-008 - updateIvsChatRoom updates chatRoomArn/chatRoomId or returns null if not found", async () => {
+      const created = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Session for chat",
+        status: "scheduled",
+      });
+
+      const updated = await repo.updateIvsChatRoom(
+        created.id,
+        "arn:aws:ivschat:room/123",
+        "room-123"
+      );
+      expect(updated?.chatRoomArn).toBe("arn:aws:ivschat:room/123");
+      expect(updated?.chatRoomId).toBe("room-123");
+
+      const notFound = await repo.updateIvsChatRoom(
+        "missing-id",
+        "arn:aws:ivschat:room/123",
+        "room-123"
+      );
+      expect(notFound).toBeNull();
+    });
+
+    it("REPO-MEM-009 - updateStatus updates status and timestamps or returns null if not found", async () => {
+      const created = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Session for status change",
+        status: "scheduled",
+      });
+
+      const live = await repo.updateStatus(created.id, "live");
+      expect(live?.status).toBe("live");
+      expect(live?.startedAt).toBeDefined();
+
+      const ended = await repo.updateStatus(created.id, "ended");
+      expect(ended?.status).toBe("ended");
+      expect(ended?.endedAt).toBeDefined();
+
+      const notFound = await repo.updateStatus("missing-id", "live");
+      expect(notFound).toBeNull();
     });
   });
 });
