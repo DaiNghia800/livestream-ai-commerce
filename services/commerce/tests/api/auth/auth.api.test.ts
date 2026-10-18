@@ -25,6 +25,7 @@ import {
 
 class InMemoryAuthRepository implements IAuthRepository {
   private readonly users = new Map<string, AuthUser & { id: number }>();
+  private readonly shops = new Map<number, Shop>();
   readonly sessions: RefreshSession[] = [];
   private nextId = 1;
 
@@ -41,27 +42,43 @@ class InMemoryAuthRepository implements IAuthRepository {
     return null;
   }
 
+  async findShopByOwnerUserId(userId: number): Promise<Shop | null> {
+    return this.shops.get(userId) ?? null;
+  }
+
   async registerWithSession(
     input: RegisterUserInput,
     createSession: (user: User) => RefreshSession
-  ): Promise<{ user: User; refreshToken: string }> {
+  ): Promise<{ user: User; refreshToken: string; shop?: Shop }> {
     if (this.users.has(input.email)) {
       throw Object.assign(new Error("duplicate email"), { code: "23505" });
     }
 
+    const role = input.role || "customer";
     const user: AuthUser & { id: number } = {
       id: this.nextId++,
       email: input.email,
       fullName: input.fullName,
-      role: "shop_owner",
+      role,
       passwordHash: input.passwordHash,
       isActive: true,
     };
+
+    let shop: Shop | undefined;
+    if (role === "shop_owner") {
+      shop = {
+        id: this.shops.size + 1,
+        merchantId: `a0000000-0000-0000-0000-00000000000${this.shops.size + 1}`,
+        name: input.shopName || input.fullName,
+      };
+      this.shops.set(user.id, shop);
+    }
+
     const session = createSession(user);
     this.users.set(user.email, user);
     this.sessions.push(session);
 
-    return { user, refreshToken: session.refreshToken };
+    return { user, refreshToken: session.refreshToken, shop };
   }
 
   async createSession(_userId: number, session: RefreshSession): Promise<void> {
@@ -89,6 +106,7 @@ describe("Auth API", () => {
         full_name: "Nguyễn Văn A",
         email: "OWNER@example.com",
         password: "password123",
+        role: "shop_owner",
       });
 
     expect(registration.status).toBe(201);
@@ -185,7 +203,7 @@ describe("Auth API", () => {
     // Register to get a valid token
     const reg = await request(app)
       .post("/api/auth/register")
-      .send({ full_name: "Test User", email: "test@example.com", password: "password123" });
+      .send({ full_name: "Test User", email: "test@example.com", password: "password123", role: "shop_owner" });
     expect(reg.status).toBe(201);
 
     const me = await request(app)
@@ -296,5 +314,91 @@ describe("Auth API", () => {
       .get("/api/auth/me")
       .set("Authorization", bearerFor({ userId: 1, role: "shop_owner" }));
     expect(res.status).toBe(200);
+  });
+
+  // ── T2: Roles, shop creation, and registration role selection ─────────────
+
+  it("AUTH-015 - rejects registration with role=admin with 400", async () => {
+    const app = createApp(undefined, undefined, undefined, undefined, new InMemoryAuthRepository());
+    const res = await request(app)
+      .post("/api/auth/register")
+      .send({
+        full_name: "Test Admin",
+        email: "admin@test.com",
+        password: "password123",
+        role: "admin",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toContain("Vai trò phải là customer hoặc shop_owner");
+  });
+
+  it("AUTH-016 - registration without role defaults to customer and has no shop", async () => {
+    const repo = new InMemoryAuthRepository();
+    const app = createApp(undefined, undefined, undefined, undefined, repo);
+    const reg = await request(app)
+      .post("/api/auth/register")
+      .send({
+        full_name: "Customer User",
+        email: "customer@test.com",
+        password: "password123",
+      });
+
+    expect(reg.status).toBe(201);
+    expect(reg.body.user.role).toBe("customer");
+
+    const me = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${reg.body.access_token}`);
+    expect(me.status).toBe(200);
+    expect(me.body.role).toBe("customer");
+    expect(me.body.shop).toBeUndefined();
+  });
+
+  it("AUTH-017 - registration as shop_owner creates a shop and /auth/me returns it", async () => {
+    const repo = new InMemoryAuthRepository();
+    const app = createApp(undefined, undefined, undefined, undefined, repo);
+    const reg = await request(app)
+      .post("/api/auth/register")
+      .send({
+        full_name: "Boutique Owner",
+        email: "boutique@test.com",
+        password: "password123",
+        role: "shop_owner",
+        shop_name: "Boutique Hà Nội",
+      });
+
+    expect(reg.status).toBe(201);
+    expect(reg.body.user.role).toBe("shop_owner");
+
+    const me = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${reg.body.access_token}`);
+    expect(me.status).toBe(200);
+    expect(me.body.role).toBe("shop_owner");
+    expect(me.body.shop).toBeDefined();
+    expect(me.body.shop.name).toBe("Boutique Hà Nội");
+    expect(me.body.shop.id).toEqual(expect.any(Number));
+    expect(me.body.shop.merchant_id).toEqual(expect.any(String));
+  });
+
+  it("AUTH-018 - registration as shop_owner defaults shop_name to full_name when not provided", async () => {
+    const repo = new InMemoryAuthRepository();
+    const app = createApp(undefined, undefined, undefined, undefined, repo);
+    const reg = await request(app)
+      .post("/api/auth/register")
+      .send({
+        full_name: "Văn Hùng",
+        email: "hung@test.com",
+        password: "password123",
+        role: "shop_owner",
+      });
+
+    expect(reg.status).toBe(201);
+    const me = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${reg.body.access_token}`);
+    expect(me.status).toBe(200);
+    expect(me.body.shop.name).toBe("Văn Hùng");
   });
 });

@@ -5,6 +5,7 @@ import {
   ActiveUser,
   RefreshSession,
   RegisterUserInput,
+  Shop,
   User,
 } from "../types/auth.types.js";
 
@@ -12,10 +13,11 @@ export interface IAuthRepository {
   findActiveUserByEmail(email: string): Promise<AuthUser | null>;
   /** Looks up a user by primary key; returns null if not found or is_active=false. */
   findActiveUserById(id: number): Promise<ActiveUser | null>;
+  findShopByOwnerUserId(userId: number): Promise<Shop | null>;
   registerWithSession(
     input: RegisterUserInput,
     createSession: (user: User) => RefreshSession
-  ): Promise<{ user: User; refreshToken: string }>;
+  ): Promise<{ user: User; refreshToken: string; shop?: Shop }>;
   createSession(userId: number, session: RefreshSession): Promise<void>;
 }
 
@@ -87,25 +89,61 @@ export class PostgresAuthRepository implements IAuthRepository {
     };
   }
 
+  async findShopByOwnerUserId(userId: number): Promise<Shop | null> {
+    const result = await pool.query(
+      `SELECT id, merchant_id AS "merchantId", name
+       FROM shops
+       WHERE owner_user_id = $1`,
+      [userId]
+    );
+
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    return {
+      id: Number(row.id),
+      merchantId: String(row.merchantId),
+      name: String(row.name),
+    };
+  }
+
   async registerWithSession(
     input: RegisterUserInput,
     createSession: (user: User) => RefreshSession
-  ): Promise<{ user: User; refreshToken: string }> {
+  ): Promise<{ user: User; refreshToken: string; shop?: Shop }> {
     const client = await pool.connect();
+    const role = input.role || "customer";
     try {
       await client.query("BEGIN");
       const result = await client.query(
         `INSERT INTO users (email, password_hash, full_name, role)
-         VALUES ($1, $2, $3, 'shop_owner')
+         VALUES ($1, $2, $3, $4)
          RETURNING id, email, full_name AS "fullName", role`,
-        [input.email, input.passwordHash, input.fullName]
+        [input.email, input.passwordHash, input.fullName, role]
       );
       const user = mapUser(result.rows[0]);
+
+      let shop: Shop | undefined;
+      if (role === "shop_owner") {
+        const shopName = input.shopName?.trim() || input.fullName;
+        const shopResult = await client.query(
+          `INSERT INTO shops (owner_user_id, name)
+           VALUES ($1, $2)
+           RETURNING id, merchant_id AS "merchantId", name`,
+          [user.id, shopName]
+        );
+        const shopRow = shopResult.rows[0];
+        shop = {
+          id: Number(shopRow.id),
+          merchantId: String(shopRow.merchantId),
+          name: String(shopRow.name),
+        };
+      }
+
       const session = createSession(user);
       await insertSession(client, user.id, session);
       await client.query("COMMIT");
 
-      return { user, refreshToken: session.refreshToken };
+      return { user, refreshToken: session.refreshToken, shop };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

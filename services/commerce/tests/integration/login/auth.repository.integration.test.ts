@@ -47,4 +47,34 @@ describe("PostgresAuthRepository - PostgreSQL integration", () => {
       )
     ).rejects.toThrow();
   });
+
+  it("creates a shop when role is shop_owner and finds it by owner_user_id", async () => {
+    const ownerEmail = `owner-${randomUUID()}@example.com`;
+    try {
+      const { user, shop } = await repository.registerWithSession(
+        {
+          email: ownerEmail,
+          passwordHash: "hash",
+          fullName: "Owner Test",
+          role: "shop_owner",
+          shopName: "Cửa hàng của tôi",
+        },
+        () => session()
+      );
+
+      expect(user.role).toBe("shop_owner");
+      expect(shop).toBeDefined();
+      expect(shop?.name).toBe("Cửa hàng của tôi");
+      expect(shop?.merchantId).toBeDefined();
+
+      const foundShop = await repository.findShopByOwnerUserId(user.id);
+      expect(foundShop).toMatchObject({
+        id: shop?.id,
+        merchantId: shop?.merchantId,
+        name: "Cửa hàng của tôi",
+      });
+    } finally {
+      await pool.query("DELETE FROM users WHERE email = $1", [ownerEmail]);
+    }
+  });
 });

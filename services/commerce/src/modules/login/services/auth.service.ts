@@ -49,6 +49,8 @@ export class AuthService {
           email: input.email.toLowerCase(),
           passwordHash,
           fullName: input.full_name,
+          role: input.role,
+          shopName: input.shop_name,
         },
         (user) => createSession(user, metadata)
       );

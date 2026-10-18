@@ -30,6 +30,7 @@ const TABLES = [
   "products",
   "livestream_products",
   "livestreams",
+  "shops",
 ].join(", ");
 
 export default function setup() {

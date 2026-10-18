@@ -27,11 +27,24 @@ export function createAuthRouter(
         res.status(401).json({ error: "Unauthorized", message: "User not found" });
         return;
       }
+      let shop: { id: number; merchant_id: string; name: string } | undefined;
+      if (user.role === "shop_owner") {
+        const userShop = await repository.findShopByOwnerUserId(user.id);
+        if (userShop) {
+          shop = {
+            id: userShop.id,
+            merchant_id: userShop.merchantId,
+            name: userShop.name,
+          };
+        }
+      }
+
       res.json({
         id: user.id,
         email: user.email,
         full_name: user.fullName,
         role: user.role,
+        ...(shop ? { shop } : {}),
       });
     });
   }

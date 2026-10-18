@@ -12,6 +12,8 @@
     "smoke": "tsx scripts/smoke.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "seed:product-catalog": "tsx scripts/seed-product-catalog.ts",
+    "create-admin": "tsx scripts/create-admin.ts",
+    "create-shop-owner": "tsx scripts/create-shop-owner.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

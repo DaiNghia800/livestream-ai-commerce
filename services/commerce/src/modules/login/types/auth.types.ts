@@ -31,6 +31,12 @@ export interface AuthResponse {
   };
 }
 
+export interface Shop {
+  id: number;
+  merchantId: string;
+  name: string;
+}
+
 export interface RequestMetadata {
   userAgent: string | null;
   ipAddress: string | null;
@@ -40,6 +46,8 @@ export interface RegisterUserInput {
   email: string;
   passwordHash: string;
   fullName: string;
+  role: "customer" | "shop_owner";
+  shopName?: string;
 }
 
 export interface RefreshSession {

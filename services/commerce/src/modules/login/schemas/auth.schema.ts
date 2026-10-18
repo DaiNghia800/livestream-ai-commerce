@@ -8,6 +8,16 @@ export const RegisterRequestSchema = z.object({
     .max(150, "Họ tên tối đa 150 ký tự"),
   email: z.string().trim().email("Email không hợp lệ").max(255),
   password: z.string().min(8, "Mật khẩu tối thiểu 8 ký tự").max(128),
+  role: z
+    .enum(["customer", "shop_owner"], {
+      errorMap: () => ({ message: "Vai trò phải là customer hoặc shop_owner" }),
+    })
+    .default("customer"),
+  shop_name: z
+    .string()
+    .trim()
+    .max(200, "Tên cửa hàng tối đa 200 ký tự")
+    .optional(),
 });
 
 export const LoginRequestSchema = z.object({
