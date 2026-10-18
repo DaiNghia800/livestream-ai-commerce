@@ -93,7 +93,9 @@ export type OrderStatus =
   | "PENDING_CONFIRMATION"
   | "CONFIRMED"
   | "PROCESSING"
+  | "SHIPPING"
   | "COMPLETED"
+  | "RETURNED"
   | "EXPIRED"
   | "CANCELLED";
 
@@ -149,6 +151,8 @@ export interface OrderDetail {
   codBlocked: boolean;
   livestreamId: string | null;
   createdAt: string;
+  activeShipmentId: string | null;
+  addressNormalized: boolean;
   items: OrderItemLine[];
   history: OrderStatusChange[];
   payment: PaymentSummary | null;
@@ -227,6 +231,19 @@ function queryString(params: Record<string, string | number | undefined>) {
 }
 
 export const ordersApi = {
+  confirmPreview: (token: string) =>
+    call<CustomerOrder>(`/orders/confirm/${encodeURIComponent(token)}`),
+
+  confirm: (token: string, details: {
+    recipientName: string;
+    recipientPhone: string;
+    shippingAddress: string;
+    note?: string;
+  }) => call<CustomerOrder>(`/orders/confirm/${encodeURIComponent(token)}`, {
+    method: "POST",
+    body: details,
+  }),
+
   list: (filter: {
     merchantId?: string;
     status?: string;
@@ -282,9 +299,33 @@ export const ordersApi = {
     call<OrderDetail>(`/orders/${orderId}/complete`, { method: "POST" }),
 };
 
+export interface CustomerOrder {
+  id: string;
+  orderCode: string;
+  status: OrderStatus;
+  totalAmount: string;
+  heldUntil: string | null;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  shippingAddress: string | null;
+  addressNormalized: boolean;
+  items: Array<{
+    id: string;
+    skuId: string;
+    skuCode?: string;
+    productName?: string;
+    quantity: number;
+    requestedQty: number;
+    isPartial: boolean;
+    unitPrice: string;
+  }>;
+}
+
 // ── Thanh toán ──────────────────────────────────────────────────────
 
 export const paymentsApi = {
+  byTxnRef: (txnRef: string) =>
+    call<Payment>(`/payments/by-ref/${encodeURIComponent(txnRef)}`),
   list: (filter: { status?: string; limit?: number } = {}) =>
     call<{ items: Payment[] }>(`/payments${queryString(filter)}`).then(
       (r) => r.items,

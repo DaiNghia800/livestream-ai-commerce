@@ -23,6 +23,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run start -- --port 3100",
+    cwd: __dirname,
     url: "http://localhost:3100",
     reuseExistingServer: false,
     env: {

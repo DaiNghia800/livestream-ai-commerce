@@ -92,11 +92,11 @@ export function StudioLeftSidebar({
 
   return (
     <aside
-      className={`w-64 xl:w-72 2xl:w-80 shrink-0 bg-[#101522] border-r border-slate-800/80 flex flex-col select-none text-slate-200 transition-all duration-300 overflow-hidden ${className}`}
+      className={`w-64 xl:w-72 2xl:w-80 shrink-0 bg-[#151F31] border-r border-slate-800 flex flex-col select-none text-slate-200 transition-all duration-300 overflow-hidden ${className}`}
       aria-label="Thanh công cụ nguồn phát và cảnh TikTok Studio"
     >
       {/* 1. Header Sidebar */}
-      <div className="h-10 px-3 bg-[#141C2E] border-b border-slate-800/80 flex items-center justify-between shrink-0">
+      <div className="h-10 px-3 bg-[#0B1220] border-b border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <Layers className="h-4 w-4 text-cyan-400 shrink-0" aria-hidden="true" />
           <span className="text-xs font-bold text-white tracking-wide uppercase truncate">
@@ -126,13 +126,13 @@ export function StudioLeftSidebar({
             <span className="text-[10px] text-cyan-400 font-medium">TikTok Live</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-900/90 rounded-lg border border-slate-800">
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#0B1220]/70 rounded-lg border border-slate-800">
             <button
               type="button"
               onClick={() => onChangeAspectRatio("16:9")}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-semibold text-[11px] transition cursor-pointer ${
                 aspectRatio === "16:9"
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-xs"
+                  ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-xs"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
               }`}
             >
@@ -145,7 +145,7 @@ export function StudioLeftSidebar({
               onClick={() => onChangeAspectRatio("9:16")}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-semibold text-[11px] transition cursor-pointer ${
                 aspectRatio === "9:16"
-                  ? "bg-[#FE2C55]/20 text-rose-300 border border-[#FE2C55]/40 shadow-xs"
+                  ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-xs"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
               }`}
             >
@@ -161,18 +161,18 @@ export function StudioLeftSidebar({
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               Nguồn đầu vào (A/V)
             </span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60 font-semibold">
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
               HD 1080p
             </span>
           </div>
 
           {/* Unified Compact Camera & Microphone Control Box */}
-          <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+          <div className="p-2 rounded-xl bg-[#0B1220]/70 border border-slate-800 space-y-1.5">
             {/* Camera Row */}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-[11px]">
                 <div className="flex items-center gap-1.5 font-semibold text-slate-200">
-                  <Video className="h-3.5 w-3.5 text-cyan-400 shrink-0" aria-hidden="true" />
+                  <Video className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                   <span>Camera</span>
                   {cameraStatus === "active" ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Camera đang hoạt động" />
@@ -192,7 +192,7 @@ export function StudioLeftSidebar({
                   onClick={onToggleMirrorVideo}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${
                     isMirrorVideo
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                      ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"
                   }`}
                   title="Lật gương camera để chữ không bị ngược"
@@ -204,10 +204,11 @@ export function StudioLeftSidebar({
               </div>
 
               <select
+                id="studio-camera-select"
                 value={selectedCameraId}
                 onChange={(e) => onCameraChange?.(e.target.value)}
                 disabled={isEnded || videoDevices.length === 0}
-                className="studio-select w-full bg-slate-950 border border-slate-800 rounded-md text-[11px] text-slate-200 focus:outline-hidden focus:border-cyan-500 cursor-pointer disabled:opacity-50"
+                className="studio-select w-full bg-[#151F31] border border-slate-800 rounded-md text-[11px] text-slate-200 focus:outline-hidden focus:border-cyan-500 cursor-pointer disabled:opacity-50"
               >
                 {videoDevices.length === 0 ? (
                   <option value="">Camera mặc định thiết bị</option>
@@ -225,17 +226,18 @@ export function StudioLeftSidebar({
             <div className="border-t border-slate-800/60 pt-1.5 space-y-1">
               <div className="flex items-center justify-between text-[11px]">
                 <div className="flex items-center gap-1.5 font-semibold text-slate-200">
-                  <Mic className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+                  <Mic className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                   <span>Microphone</span>
                 </div>
                 <span className="text-[9px] text-slate-400 font-medium">48 kHz Stereo</span>
               </div>
 
               <select
+                id="studio-mic-select"
                 value={selectedMicId}
                 onChange={(e) => onMicChange?.(e.target.value)}
                 disabled={isEnded || audioDevices.length === 0}
-                className="studio-select w-full bg-slate-950 border border-slate-800 rounded-md text-[11px] text-slate-200 focus:outline-hidden focus:border-emerald-500 cursor-pointer disabled:opacity-50"
+                className="studio-select w-full bg-[#151F31] border border-slate-800 rounded-md text-[11px] text-slate-200 focus:outline-hidden focus:border-cyan-500 cursor-pointer disabled:opacity-50"
               >
                 {audioDevices.length === 0 ? (
                   <option value="">Micro mặc định</option>
@@ -257,17 +259,17 @@ export function StudioLeftSidebar({
             disabled={isEnded}
             className={`w-full p-2.5 rounded-xl border flex items-center justify-between font-semibold transition cursor-pointer active:scale-98 disabled:opacity-40 ${
               isScreenSharing
-                ? "bg-indigo-950/80 border-indigo-600 text-indigo-300"
-                : "bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700"
+                ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300"
+                : "bg-[#0B1220]/70 border-slate-800 text-slate-300 hover:border-slate-700"
             }`}
           >
             <span className="flex items-center gap-2">
-              <ScreenShare className="h-4 w-4 text-indigo-400" aria-hidden="true" />
+              <ScreenShare className={`h-4 w-4 ${isScreenSharing ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
               <span>Chia sẻ màn hình PC</span>
             </span>
             <span
               className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                isScreenSharing ? "bg-indigo-700 text-white" : "bg-slate-800 text-slate-400"
+                isScreenSharing ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400"
               }`}
             >
               {isScreenSharing ? "ĐANG CHIA SẺ" : "BẬT"}
@@ -281,14 +283,14 @@ export function StudioLeftSidebar({
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               Khung an toàn &amp; Tiện ích
             </span>
-            <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+            <Sparkles className="h-3.5 w-3.5 text-slate-400" />
           </div>
 
           {/* Safezone TikTok Grid Toggle */}
-          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+          <div className="p-2.5 rounded-xl bg-[#0B1220]/70 border border-slate-800 flex items-center justify-between">
             <div className="min-w-0 pr-2">
               <p className="font-semibold text-slate-200 text-[11px] flex items-center gap-1.5">
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                <ShieldAlert className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                 <span>Khung Safezone TikTok</span>
               </p>
               <p className="text-[10px] text-slate-400 mt-0.5">
@@ -299,7 +301,7 @@ export function StudioLeftSidebar({
               type="button"
               onClick={onToggleSafezone}
               className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                showSafezone ? "bg-[#FE2C55]" : "bg-slate-700"
+                showSafezone ? "bg-cyan-600" : "bg-slate-700"
               }`}
               title="Bật/Tắt đường căn lề Safezone"
               aria-label="Bật/Tắt đường căn lề Safezone"
@@ -313,10 +315,10 @@ export function StudioLeftSidebar({
           </div>
 
           {/* Flash Sale Banner Ticker */}
-          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+          <div className="p-2.5 rounded-xl bg-[#0B1220]/70 border border-slate-800 flex items-center justify-between">
             <div className="min-w-0 pr-2">
               <p className="font-semibold text-slate-200 text-[11px] flex items-center gap-1.5">
-                <Flame className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                <Flame className="h-3.5 w-3.5 text-amber-400 shrink-0" />
                 <span>Ticker Flash Sale</span>
               </p>
               <p className="text-[10px] text-slate-400 mt-0.5">
@@ -327,7 +329,7 @@ export function StudioLeftSidebar({
               type="button"
               onClick={() => setFlashSaleEnabled((p) => !p)}
               className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                flashSaleEnabled ? "bg-orange-500" : "bg-slate-700"
+                flashSaleEnabled ? "bg-cyan-600" : "bg-slate-700"
               }`}
               title="Bật/Tắt đồng hồ Flash Sale"
               aria-label="Bật/Tắt đồng hồ Flash Sale"
@@ -342,13 +344,13 @@ export function StudioLeftSidebar({
         </div>
 
         {/* Section D: Ghi chú mẹo Studio */}
-        <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[10px] text-slate-400 space-y-1">
+        <div className="p-2.5 rounded-xl bg-[#0B1220]/70 border border-slate-800/80 text-[10px] text-slate-400 space-y-1">
           <p className="font-bold text-slate-300 flex items-center gap-1">
-            <Info className="h-3 w-3 text-cyan-400" />
+            <Info className="h-3 w-3 text-slate-400" />
             <span>Mẹo phát sóng TikTok Studio:</span>
           </p>
           <p className="leading-relaxed">
-            Đóng các sidebar bằng phím tắt <kbd className="px-1 py-0.5 bg-slate-800 rounded font-mono text-white">[</kbd> hoặc <kbd className="px-1 py-0.5 bg-slate-800 rounded font-mono text-white">]</kbd> để mở rộng khung phát sóng to cực đại khi livestream.
+            Đóng các sidebar bằng phím tắt <kbd className="px-1 py-0.5 bg-slate-800 rounded font-mono text-slate-200">[</kbd> hoặc <kbd className="px-1 py-0.5 bg-slate-800 rounded font-mono text-slate-200">]</kbd> để mở rộng khung phát sóng to cực đại khi livestream.
           </p>
         </div>
       </div>

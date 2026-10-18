@@ -26,6 +26,7 @@ const MA_HTTP: Record<string, number> = {
   ORDER_NOT_READY: 409,
   SHIPMENT_ALREADY_EXISTS: 409,
   CANNOT_CANCEL_SHIPMENT: 409,
+  INVALID_MANUAL_SHIPMENT_STATUS: 409,
   ADDRESS_NOT_NORMALIZED: 422,
   COD_NOT_ALLOWED: 422,
 };
@@ -48,7 +49,7 @@ export class ShipmentController {
         insuranceValue: input.insuranceValue,
         note: input.note,
       });
-      res.status(201).json(vanDon);
+      res.status(vanDon.status === "REQUESTED" ? 202 : 201).json(vanDon);
     } catch (err) {
       this.xuLyLoi(err, res, "tạo vận đơn");
     }

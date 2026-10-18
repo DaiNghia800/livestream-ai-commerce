@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { LivestreamController } from "../controllers/livestream.controller.js";
 import { LivestreamProductController } from "../controllers/livestream-product.controller.js";
+import { LivestreamCommentController } from "../controllers/livestream-comment.controller.js";
 import { requireMerchantHeader } from "../../../shared/middleware/merchant.middleware.js";
 import {
   ILivestreamRepository,
@@ -10,29 +11,68 @@ import {
   ILivestreamProductRepository,
   PostgresLivestreamProductRepository,
 } from "../repositories/livestream-product.repository.js";
+import {
+  ILivestreamCommentRepository,
+  PostgresLivestreamCommentRepository,
+} from "../repositories/livestream-comment.repository.js";
 import { LivestreamService } from "../services/livestream.service.js";
 import { LivestreamProductService } from "../services/livestream-product.service.js";
+import { LivestreamCommentService } from "../services/livestream-comment.service.js";
 
 import { IIvsService, IvsService } from "../../../shared/ivs/ivs.service.js";
+import {
+  IIvsChatService,
+  IvsChatService,
+} from "../../../shared/ivs/ivs-chat.service.js";
+import {
+  ISqsService,
+  SqsService,
+} from "../../../shared/queue/sqs.service.js";
 import { config } from "../../../config.js";
 
 export function createLivestreamRouter(
   customRepository?: ILivestreamRepository,
   customProductRepository?: ILivestreamProductRepository,
-  customIvsService?: IIvsService
+  customIvsService?: IIvsService,
+  customIvsChatService?: IIvsChatService,
+  customCommentRepository?: ILivestreamCommentRepository,
+  customSqsService?: ISqsService
 ): Router {
   const router = Router();
   const repo = customRepository || new PostgresLivestreamRepository();
   const productRepo =
     customProductRepository || new PostgresLivestreamProductRepository();
+  const commentRepo =
+    customCommentRepository || new PostgresLivestreamCommentRepository();
   const ivs =
     customIvsService ||
-    new IvsService({ region: config.awsIvsRegion || "ap-northeast-1" });
-  const service = new LivestreamService(repo, productRepo, ivs);
+    new IvsService({
+      region: config.awsIvsRegion || "ap-northeast-1",
+      s3BucketName: config.s3MediaBucketName || config.s3BucketName,
+    });
+  const ivsChat =
+    customIvsChatService ||
+    new IvsChatService({ region: config.awsIvsRegion || "ap-northeast-1" });
+  const sqs =
+    customSqsService ||
+    new SqsService({
+      queueUrl: config.sqsQueueUrl,
+      region: config.awsRegion || "ap-southeast-1",
+    });
+
+  const service = new LivestreamService(repo, productRepo, ivs, ivsChat);
   const controller = new LivestreamController(service);
 
   const productService = new LivestreamProductService(repo, productRepo);
   const productController = new LivestreamProductController(productService);
+
+  const commentService = new LivestreamCommentService(
+    repo,
+    commentRepo,
+    sqs,
+    ivsChat
+  );
+  const commentController = new LivestreamCommentController(commentService);
 
   // Livestream session
   router.post("/", requireMerchantHeader, controller.create);
@@ -40,6 +80,14 @@ export function createLivestreamRouter(
   router.get("/:id", controller.getById);
   router.patch("/:id/status", requireMerchantHeader, controller.updateStatus);
   router.get("/:id/stream-config", requireMerchantHeader, controller.getStreamConfig);
+
+  // IVS Chat endpoints (Public & Host)
+  router.get("/:id/chat-config", controller.getChatConfig);
+  router.post("/:id/chat-token", controller.createChatToken);
+
+  // Livestream comments (History & Queue Producer)
+  router.get("/:id/comments", commentController.getComments);
+  router.post("/:id/comments", commentController.createComment);
 
   // Livestream products
   router.post("/:id/products", requireMerchantHeader, productController.addProduct);

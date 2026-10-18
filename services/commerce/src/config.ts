@@ -16,6 +16,8 @@ export interface AppConfig {
   awsRegion?: string;
   awsIvsRegion?: string;
   s3BucketName?: string;
+  s3MediaBucketName?: string;
+  sqsQueueUrl?: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
   holdConfirmSeconds: number;
@@ -68,6 +70,9 @@ export interface AppConfig {
     callbackUrl: string;
   };
   mockGatewaySecret: string;
+  allowMockPayment: boolean;
+  /** Bí mật chung cho webhook chuyển khoản đã xác minh từ ngân hàng. */
+  bankWebhookSecret: string;
 
   // ── Vận chuyển — TOÀN BỘ là môi trường thử ──────────────────────
   /** Hãng dùng khi màn hình không nêu rõ. */
@@ -164,6 +169,11 @@ export const config: AppConfig = {
       ? process.env.AWS_REGION
       : "ap-northeast-1"),
   s3BucketName: process.env.S3_BUCKET_NAME || undefined,
+  s3MediaBucketName:
+    process.env.S3_MEDIA_BUCKET_NAME ||
+    process.env.S3_BUCKET_NAME ||
+    undefined,
+  sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
   // 5 phút khi vừa chốt, 15 phút sau khi khách mở link xác nhận,
   // trần cứng 30 phút để không gia hạn vô hạn.
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),
@@ -240,6 +250,9 @@ export const config: AppConfig = {
   },
 
   mockGatewaySecret: process.env.MOCK_GATEWAY_SECRET || "sandbox-only-secret",
+  allowMockPayment:
+    process.env.NODE_ENV !== "production" || process.env.ENABLE_MOCK_PAYMENT === "true",
+  bankWebhookSecret: process.env.BANK_WEBHOOK_SECRET || "",
 
   // Mặc định là hãng giả chạy ngay trong máy: kéo repo về là chạy
   // được trọn luồng vận chuyển mà không cần đăng ký tài khoản thử ở

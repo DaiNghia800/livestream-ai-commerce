@@ -1,5 +1,6 @@
 export interface StudioProductItem {
   id: string;
+  liveProductId?: string;
   name: string;
   sku: string;
   price: number;
@@ -21,6 +22,7 @@ export type StudioChatMessageStatus =
 
 export interface StudioChatMessage {
   id: string;
+  userId?: string;
   userName: string;
   userAvatar?: string;
   content: string;
@@ -32,6 +34,7 @@ export interface StudioChatMessage {
   orderCreated?: boolean;
   orderId?: string;
   reviewReason?: string;
+  badge?: string;
 }
 
 export interface StudioSessionState {

@@ -206,6 +206,7 @@ export async function markShipmentCreated(
             tracking_code  = $2,
             fee_quoted     = COALESCE($3::numeric, fee_quoted),
             service_code   = COALESCE($4::varchar, service_code),
+            failure_reason = NULL,
             last_synced_at = NOW(),
             updated_at     = NOW()
       WHERE id = $1 AND status = 'REQUESTED'`,
@@ -227,6 +228,18 @@ export async function markShipmentRejected(
   );
 }
 
+export async function markShipmentUncertain(
+  client: PoolClient,
+  shipmentId: string,
+  reason: string
+): Promise<void> {
+  await client.query(
+    `UPDATE shipments SET failure_reason = $2, updated_at = NOW()
+      WHERE id = $1 AND status = 'REQUESTED'`,
+    [shipmentId, reason]
+  );
+}
+
 export async function markShipmentCancelled(
   client: PoolClient,
   shipmentId: string
@@ -236,7 +249,7 @@ export async function markShipmentCancelled(
   const r = await client.query(
     `UPDATE shipments
         SET status = 'CANCELLED', updated_at = NOW()
-      WHERE id = $1 AND status IN ('DRAFT', 'REQUESTED', 'CREATED')`,
+      WHERE id = $1 AND status IN ('DRAFT', 'CREATED')`,
     [shipmentId]
   );
   return (r.rowCount ?? 0) > 0;
@@ -500,6 +513,29 @@ export async function markOrderProcessing(
   return false;
 }
 
+/** Huỷ vận đơn trước khi lấy hàng thì cho phép đẩy lại bằng vận đơn mới. */
+export async function markOrderReadyForReshipment(
+  client: PoolClient,
+  orderId: string
+): Promise<boolean> {
+  const r = await client.query(
+    `UPDATE orders o SET status = 'CONFIRMED', updated_at = NOW()
+      WHERE o.id = $1 AND o.status = 'PROCESSING'
+        AND NOT EXISTS (
+          SELECT 1 FROM shipments s WHERE s.order_id = o.id
+            AND s.status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
+        )`,
+    [orderId]
+  );
+  if ((r.rowCount ?? 0) === 0) return false;
+  await client.query(
+    `INSERT INTO order_status_history (order_id, from_status, to_status, note)
+     VALUES ($1, 'PROCESSING', 'CONFIRMED', 'Đã huỷ vận đơn trước khi lấy hàng')`,
+    [orderId]
+  );
+  return true;
+}
+
 /**
  * Đẩy đơn sang trạng thái tiếp theo khi vận đơn báo mốc lớn.
  *
@@ -745,6 +781,7 @@ export async function adoptOrphan(
     `UPDATE shipments
         SET status = 'CREATED',
             tracking_code = $2,
+            failure_reason = NULL,
             last_synced_at = NOW(),
             updated_at = NOW()
       WHERE id = $1 AND status = 'REQUESTED'`,

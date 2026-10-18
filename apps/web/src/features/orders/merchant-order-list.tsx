@@ -94,7 +94,7 @@ function danhSachTrang(
  * Khai chung với trang chi tiết để hai nơi không lệch nhau — danh
  * sách cho bấm mà chi tiết lại chặn thì người dùng bấm vào ngõ cụt.
  */
-export const KHONG_HUY_DUOC = ["COMPLETED", "CANCELLED", "EXPIRED"];
+export const KHONG_HUY_DUOC = ["SHIPPING", "COMPLETED", "RETURNED", "CANCELLED", "EXPIRED"];
 
 /** Giây còn lại của lượt giữ hàng, tính từ mốc backend trả về. */
 function secondsLeft(heldUntil: string | null, now: number): number | null {

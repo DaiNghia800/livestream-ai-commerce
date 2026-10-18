@@ -178,7 +178,7 @@ export function MerchantShipmentList() {
         </div>
         <div className={styles.headActions}>
           <Button variant="secondary" onClick={xuatCsv} disabled={!daLoc.length}>
-            <Download size={16} /> Xuất Excel
+            <Download size={16} /> Xuất CSV
           </Button>
           <Button variant="secondary" onClick={reload}>
             <RefreshCw size={16} /> Làm mới

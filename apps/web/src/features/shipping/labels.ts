@@ -56,7 +56,7 @@ export const DA_KET_THUC = ["DELIVERED", "RETURNED", "CANCELLED", "REJECTED"];
  * Sau khi hãng lấy hàng thì kiện đã nằm trong tay họ; đánh dấu huỷ ở
  * giao diện là mất dấu một kiện hàng thật.
  */
-export const HUY_DUOC = ["DRAFT", "REQUESTED", "CREATED"];
+export const HUY_DUOC = ["DRAFT", "CREATED"];
 
 /**
  * Hãng CON chạy bên dưới Goship.

@@ -105,14 +105,14 @@ function OrderDetailView({
       ? null
       : Math.max(0, Math.round((new Date(order.heldUntil).getTime() - now) / 1000));
 
-  const cancellable = !KHONG_HUY_DUOC.includes(order.status);
+  const cancellable = !KHONG_HUY_DUOC.includes(order.status) && !order.activeShipmentId;
   // Đơn huỷ và đơn hết hạn đều đã trả hàng về kho, nên cùng một
   // cảnh: muốn mua lại thì phải giữ hàng lại từ đầu.
   const taoLaiDuoc = order.status === "CANCELLED" || order.status === "EXPIRED";
 
   // Chỉ đơn đã xác nhận mới đẩy sang hãng được: đơn nháp khách còn
   // huỷ được, đơn hết hạn thì tồn đã trả về kho.
-  const taoVanDonDuoc = order.status === "CONFIRMED";
+  const taoVanDonDuoc = order.status === "CONFIRMED" && !order.activeShipmentId;
   const cancelOpen = moTay || (hash === "#huy-don" && cancellable);
 
   function dongHuy() {
@@ -176,13 +176,17 @@ function OrderDetailView({
               {busy === "processing" ? "Đang lưu…" : "Bắt đầu đóng gói"}
             </Button>
           )}
-          {order.status === "PROCESSING" && (
+          {order.status === "PROCESSING" && !order.activeShipmentId && (
             <Button
               disabled={busy !== null}
               onClick={() => run("complete", () => ordersApi.complete(order.id))}
             >
               <Truck size={17} aria-hidden="true" />{" "}
-              {busy === "complete" ? "Đang lưu…" : "Xác nhận đã giao"}
+              {busy === "complete"
+                ? "Đang lưu…"
+                : order.payment?.method === "COD"
+                  ? "Đã giao và đã nhận tiền"
+                  : "Xác nhận đã giao"}
             </Button>
           )}
           {/* Ẩn hẳn thay vì làm mờ: đơn đã giao, đã huỷ hoặc đã hết hạn
@@ -298,6 +302,29 @@ function OrderDetailView({
           <p>
             Hệ thống đánh dấu dựa trên lịch sử chốt đơn rồi bỏ. Đơn cần được
             chuyển khoản trước hoặc đặt cọc.
+          </p>
+        </div>
+      )}
+
+      {order.activeShipmentId && (
+        <div className="notice notice-info">
+          <h3>Đơn đang có vận đơn</h3>
+          <p>
+            Trạng thái giao hàng được cập nhật qua vận đơn. Muốn huỷ đơn,
+            hãy huỷ vận đơn trước khi hãng lấy hàng. {" "}
+            <Link className="link-inline" href={`/shop/shipping/${order.activeShipmentId}`}>
+              Xem vận đơn
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {order.status === "CONFIRMED" && !order.addressNormalized && (
+        <div className="notice notice-warning" role="status">
+          <h3>Địa chỉ giao hàng chưa chuẩn hoá</h3>
+          <p>
+            Kiểm tra lại tỉnh, phường/xã và số nhà trước khi tạo vận đơn.
+            Hệ thống sẽ báo lỗi nếu chưa xác định được địa chỉ chính xác.
           </p>
         </div>
       )}

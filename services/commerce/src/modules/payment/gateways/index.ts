@@ -10,6 +10,7 @@ import { config } from "../../../config.js";
 import { MockGateway } from "./mock.gateway.js";
 import { MomoGateway } from "./momo.gateway.js";
 import type { PaymentGateway } from "./payment-gateway.js";
+import { GatewayNotConfiguredError } from "./payment-gateway.js";
 import { VnpayGateway } from "./vnpay.gateway.js";
 import { ZalopayGateway } from "./zalopay.gateway.js";
 
@@ -41,6 +42,9 @@ export function getGateway(name: string = config.defaultGateway): PaymentGateway
   let gateway: PaymentGateway;
   switch (name) {
     case "mock":
+      if (!config.allowMockPayment) {
+        throw new GatewayNotConfiguredError("mock", ["ENABLE_MOCK_PAYMENT=true"]);
+      }
       gateway = new MockGateway({
         baseUrl: config.publicBaseUrl,
         secret: config.mockGatewaySecret,

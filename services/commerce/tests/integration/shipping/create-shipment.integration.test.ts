@@ -11,13 +11,15 @@
  *   - Đơn chưa xác nhận hoặc địa chỉ chưa chuẩn thì không đẩy đi được.
  */
 
+import crypto from "crypto";
 import pg from "pg";
 import request from "supertest";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { config } from "../../../src/config.js";
 import { getCarrier, resetCarrierCache } from "../../../src/modules/shipping/carriers/index.js";
 import type { MockCarrier } from "../../../src/modules/shipping/carriers/mock.carrier.js";
+import { SyncShipmentsJob } from "../../../src/modules/shipping/jobs/sync-shipments.job.js";
 import { createSkuWithStock } from "../../helpers/catalog.helper.js";
 
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
@@ -119,6 +121,31 @@ function taoVanDon(orderId: string, them: Record<string, unknown> = {}) {
 }
 
 describe("POST /api/shipments", () => {
+  it("khách xác nhận địa chỉ rõ ràng rồi shop tạo được vận đơn qua API thật", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const draft = await request(app).post("/api/orders/draft")
+      .set("Idempotency-Key", crypto.randomUUID())
+      .send({
+        customerId: crypto.randomUUID(),
+        merchantId: crypto.randomUUID(),
+        source: "BUTTON",
+        lines: [{ skuId: sku, quantity: 1 }],
+      });
+    expect(draft.status).toBe(201);
+    const confirmed = await request(app)
+      .post(`/api/orders/confirm/${draft.body.confirmToken}`)
+      .send({
+        recipientName: "Nguyễn An",
+        recipientPhone: "0901234567",
+        shippingAddress: "128/4 Nguyễn Thị Minh Khai, Phường Bến Thành, TP. Hồ Chí Minh",
+      });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.addressNormalized).toBe(true);
+    const shipment = await taoVanDon(draft.body.id);
+    expect(shipment.status).toBe(201);
+    expect(shipment.body.status).toBe("CREATED");
+  });
+
   it("đơn đã xác nhận thì tạo được vận đơn và đơn sang PROCESSING", async () => {
     const { orderId } = await taoDon();
     const res = await taoVanDon(orderId);
@@ -164,6 +191,39 @@ describe("POST /api/shipments", () => {
       [orderId]
     );
     expect(Number(dem.rows[0].n)).toBe(1);
+  });
+
+  it("mất kết nối sau khi hãng tạo đơn vẫn giữ REQUESTED và job nhận lại đúng vận đơn", async () => {
+    const { orderId } = await taoDon();
+    const mock = getCarrier("mock") as MockCarrier;
+    const original = mock.createShipment.bind(mock);
+    const spy = vi.spyOn(mock, "createShipment").mockImplementation(async (input) => {
+      await original(input);
+      throw new Error("connection lost after carrier accepted");
+    });
+    let res;
+    try {
+      res = await taoVanDon(orderId);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe("REQUESTED");
+    expect((await taoVanDon(orderId)).status).toBe(409);
+    expect((await request(app).post(`/api/shipments/${res.body.id}/cancel`)).status).toBe(409);
+    await pool.query(
+      `UPDATE shipments SET created_at = NOW() - interval '6 minutes' WHERE id = $1`,
+      [res.body.id]
+    );
+    const result = await new SyncShipmentsJob(pool, { orphanMinutes: 5 }).runOnce();
+    expect(result.adopted).toBeGreaterThanOrEqual(1);
+    const detail = await request(app).get(`/api/shipments/${res.body.id}`);
+    expect(detail.body.status).toBe("CREATED");
+    expect(detail.body.trackingCode).toMatch(/^MOCK/);
+    expect(detail.body.trackingToken).toBeTruthy();
+    const order = await pool.query(`SELECT status FROM orders WHERE id = $1`, [orderId]);
+    expect(order.rows[0].status).toBe("PROCESSING");
   });
 
   it("đơn chưa xác nhận thì không đẩy đi được", async () => {
@@ -294,17 +354,14 @@ describe("Huỷ vận đơn", () => {
     const tao = await taoVanDon(orderId);
     await request(app).post(`/api/shipments/${tao.body.id}/cancel`);
 
-    // Đơn đã sang PROCESSING nên phải đưa về CONFIRMED mới tạo lại
-    // được — đúng luồng shop sẽ làm.
-    await pool.query(`UPDATE orders SET status='CONFIRMED' WHERE id=$1`, [
-      orderId,
-    ]);
+    const order = await pool.query(`SELECT status FROM orders WHERE id=$1`, [orderId]);
+    expect(order.rows[0].status).toBe("CONFIRMED");
     expect((await taoVanDon(orderId)).status).toBe(201);
   });
 
   it("KHÔNG huỷ được sau khi hãng đã lấy hàng", async () => {
     const { orderId } = await taoDon();
-    const tao = await taoVanDon(orderId);
+    const tao = await taoVanDon(orderId, { carrier: "self" });
 
     await request(app)
       .post(`/api/shipments/${tao.body.id}/status`)
@@ -342,6 +399,9 @@ describe("Bấm tay trạng thái (đơn tự giao)", () => {
 
     await request(app)
       .post(`/api/shipments/${tao.body.id}/status`)
+      .send({ status: "PICKED_UP" });
+    await request(app)
+      .post(`/api/shipments/${tao.body.id}/status`)
       .send({ status: "DELIVERED" });
 
     const lui = await request(app)
@@ -350,6 +410,70 @@ describe("Bấm tay trạng thái (đơn tự giao)", () => {
 
     // Gọi vẫn thành công nhưng trạng thái GIỮ NGUYÊN, không lùi
     expect(lui.body.status).toBe("DELIVERED");
+  });
+
+  it("mốc tự giao cập nhật đơn và tồn kho trong cùng giao dịch", async () => {
+    const { orderId } = await taoDon();
+    const item = await pool.query<{ id: string; sku_id: string }>(
+      `SELECT id, sku_id FROM order_items WHERE order_id = $1`, [orderId]
+    );
+    const { id: itemId, sku_id: skuId } = item.rows[0];
+    await pool.query(`UPDATE inventory SET held_quantity = held_quantity + 2 WHERE sku_id = $1`, [skuId]);
+    await pool.query(
+      `INSERT INTO reservations (order_id, order_item_id, sku_id, quantity, status)
+       VALUES ($1, $2, $3, 2, 'HOLDING')`,
+      [orderId, itemId, skuId]
+    );
+    const tao = await taoVanDon(orderId, { carrier: "self" });
+    const endpoint = `/api/shipments/${tao.body.id}/status`;
+
+    const skip = await request(app).post(endpoint).send({ status: "DELIVERED" });
+    expect(skip.status).toBe(409);
+    expect((await pool.query(`SELECT status FROM orders WHERE id = $1`, [orderId])).rows[0].status).toBe("PROCESSING");
+
+    const pickup = await request(app).post(endpoint).send({ status: "PICKED_UP" });
+    expect(pickup.status).toBe(200);
+    expect((await pool.query(`SELECT status FROM orders WHERE id = $1`, [orderId])).rows[0].status).toBe("SHIPPING");
+    const afterPickup = await pool.query(`SELECT on_hand_quantity, held_quantity FROM inventory WHERE sku_id = $1`, [skuId]);
+    expect(Number(afterPickup.rows[0].on_hand_quantity)).toBe(48);
+    expect(Number(afterPickup.rows[0].held_quantity)).toBe(0);
+
+    const delivered = await request(app).post(endpoint).send({ status: "DELIVERED" });
+    expect(delivered.status).toBe(200);
+    expect((await pool.query(`SELECT status FROM orders WHERE id = $1`, [orderId])).rows[0].status).toBe("COMPLETED");
+  });
+
+  it("API không cho bấm tay mốc của hãng thật", async () => {
+    const { orderId } = await taoDon();
+    const tao = await taoVanDon(orderId);
+    const res = await request(app)
+      .post(`/api/shipments/${tao.body.id}/status`)
+      .send({ status: "PICKED_UP" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("INVALID_MANUAL_SHIPMENT_STATUS");
+  });
+
+  it("hàng tự giao hoàn về được nhập lại kho và đơn sang RETURNED", async () => {
+    const { orderId } = await taoDon();
+    const item = await pool.query<{ id: string; sku_id: string }>(
+      `SELECT id, sku_id FROM order_items WHERE order_id = $1`, [orderId]
+    );
+    const { id: itemId, sku_id: skuId } = item.rows[0];
+    await pool.query(`UPDATE inventory SET held_quantity = held_quantity + 2 WHERE sku_id = $1`, [skuId]);
+    await pool.query(
+      `INSERT INTO reservations (order_id, order_item_id, sku_id, quantity, status)
+       VALUES ($1, $2, $3, 2, 'HOLDING')`,
+      [orderId, itemId, skuId]
+    );
+    const tao = await taoVanDon(orderId, { carrier: "self" });
+    const endpoint = `/api/shipments/${tao.body.id}/status`;
+    await request(app).post(endpoint).send({ status: "PICKED_UP" });
+    const returned = await request(app).post(endpoint).send({ status: "RETURNED" });
+    expect(returned.status).toBe(200);
+    expect((await pool.query(`SELECT status FROM orders WHERE id = $1`, [orderId])).rows[0].status).toBe("RETURNED");
+    const stock = await pool.query(`SELECT on_hand_quantity, held_quantity FROM inventory WHERE sku_id = $1`, [skuId]);
+    expect(Number(stock.rows[0].on_hand_quantity)).toBe(50);
+    expect(Number(stock.rows[0].held_quantity)).toBe(0);
   });
 
   it("chỉ nhận những mốc người giao hàng thật sự biết", async () => {

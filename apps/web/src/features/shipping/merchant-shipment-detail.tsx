@@ -64,6 +64,13 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
   const vd = data;
   const huyDuoc = HUY_DUOC.includes(vd.status);
   const tuGiao = vd.carrier === "self";
+  const mocCoTheBam = vd.status === "CREATED"
+    ? MOC_BAM_TAY.filter((m) => m === "PICKED_UP")
+    : vd.status === "PICKED_UP" || vd.status === "OUT_FOR_DELIVERY"
+      ? MOC_BAM_TAY.filter((m) => m === "OUT_FOR_DELIVERY" || m === "DELIVERED" || m === "FAILED" || m === "RETURNED")
+      : vd.status === "FAILED"
+        ? MOC_BAM_TAY.filter((m) => m === "OUT_FOR_DELIVERY" || m === "RETURNED")
+        : [];
   const nhan = shipmentStatuses[vd.status] ?? {
     label: vd.status,
     tone: "neutral" as const,
@@ -144,12 +151,12 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
         <div className={`${styles.notice} ${styles.noticeBad}`}>
           <AlertTriangle size={16} />
           <span>
-            <strong>Hãng báo:</strong> {vd.failureReason}
+            <strong>{vd.status === "REQUESTED" ? "Chờ xác minh:" : "Hãng báo:"}</strong> {vd.failureReason}
           </span>
         </div>
       )}
 
-      {!huyDuoc && vd.status !== "DELIVERED" && vd.status !== "RETURNED" && (
+      {!huyDuoc && vd.status !== "DELIVERED" && vd.status !== "RETURNED" && vd.status !== "REQUESTED" && (
         <div className={`${styles.notice} ${styles.noticeInfo}`}>
           <Package size={16} />
           <span>
@@ -258,13 +265,13 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
               </ol>
             )}
 
-            {tuGiao && (
+            {tuGiao && mocCoTheBam.length > 0 && (
               <>
                 <p className={styles.mocMoTa} style={{ marginTop: 16 }}>
                   Đơn tự giao không có hãng nào báo về, trạng thái do shop bấm.
                 </p>
                 <div className={styles.manual}>
-                  {MOC_BAM_TAY.map((m) => (
+                  {mocCoTheBam.map((m) => (
                     <Button
                       key={m}
                       variant="secondary"

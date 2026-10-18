@@ -2,19 +2,36 @@ import ExcelJS from "exceljs";
 import { CreateProductSchema } from "../schemas/product.schema.js";
 import type { ProductExportFilters } from "../repositories/product.repository.js";
 import type { IProductRepository } from "../repositories/product.repository.js";
+import type { Product } from "../types/product.types.js";
 
 const MAX_IMPORT_ROWS = 10_000;
-const COLUMNS = [
-  "code",
-  "name",
-  "description",
-  "categoryId",
-  "status",
-  "skuCode",
-  "variantName",
-  "price",
-  "imageUrl",
-] as const;
+const HEADER_ALIASES: Record<string, string> = {
+  "mã chốt đơn chính": "code",
+  code: "code",
+  "tên sản phẩm": "name",
+  name: "name",
+  "mô tả": "description",
+  description: "description",
+  "mã danh mục": "categoryId",
+  categoryid: "categoryId",
+  "trạng thái": "status",
+  status: "status",
+  "mã sku": "skuCode",
+  skucode: "skuCode",
+  "phân loại": "variantName",
+  variantname: "variantName",
+  "giá flash live (vnd)": "price",
+  price: "price",
+  "đường dẫn hình ảnh": "imageUrl",
+  imageurl: "imageUrl",
+};
+
+export class NoProductsToExportError extends Error {
+  constructor() {
+    super("Cửa hàng chưa có sản phẩm để xuất.");
+    this.name = "NoProductsToExportError";
+  }
+}
 
 export class InvalidProductWorkbookError extends Error {
   constructor(message: string) {
@@ -27,22 +44,56 @@ function cellText(cell: ExcelJS.Cell): string {
   return cell.text.trim();
 }
 
+function importStatus(value: string): string {
+  const normalized = value.toLocaleLowerCase("vi");
+  const statuses: Record<string, string> = {
+    "đang bán": "active",
+    "đã lưu trữ": "archived",
+    "ngừng bán": "discontinued",
+  };
+  return statuses[normalized] ?? value;
+}
+
+function exportStatus(status: Product["status"]): string {
+  const statuses: Record<Product["status"], string> = {
+    active: "Đang bán",
+    archived: "Đã lưu trữ",
+    discontinued: "Ngừng bán",
+  };
+  return statuses[status];
+}
+
 function createWorksheet(workbook: ExcelJS.Workbook): ExcelJS.Worksheet {
   const worksheet = workbook.addWorksheet("Products");
   worksheet.columns = [
-    { header: "code", key: "code", width: 18 },
-    { header: "name", key: "name", width: 32 },
-    { header: "description", key: "description", width: 40 },
-    { header: "categoryId", key: "categoryId", width: 14 },
-    { header: "status", key: "status", width: 16 },
-    { header: "skuCode", key: "skuCode", width: 22 },
-    { header: "variantName", key: "variantName", width: 24 },
-    { header: "price", key: "price", width: 14 },
-    { header: "imageUrl", key: "imageUrl", width: 48 },
+    { header: "Mã chốt đơn chính", key: "code", width: 22 },
+    { header: "Tên sản phẩm", key: "name", width: 36 },
+    { header: "Mô tả", key: "description", width: 40 },
+    { header: "Mã danh mục", key: "categoryId", width: 16 },
+    { header: "Trạng thái", key: "status", width: 18 },
+    { header: "Mã SKU", key: "skuCode", width: 24 },
+    { header: "Phân loại", key: "variantName", width: 38 },
+    { header: "Giá Flash Live (VND)", key: "price", width: 22 },
+    { header: "Đường dẫn hình ảnh", key: "imageUrl", width: 64 },
   ];
-  worksheet.views = [{ state: "frozen", ySplit: 1 }];
-  worksheet.autoFilter = { from: "A1", to: "I1" };
-  worksheet.getRow(1).font = { bold: true };
+  worksheet.views = [{ state: "frozen", xSplit: 2, ySplit: 1, showGridLines: false, zoomScale: 90 }];
+  worksheet.getRow(1).height = 30;
+  worksheet.getRow(1).eachCell((cell) => {
+    cell.font = { name: "Aptos", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF3346A8" } };
+    cell.alignment = { vertical: "middle", horizontal: "left" };
+    cell.border = {
+      bottom: { style: "medium", color: { argb: "FF26378C" } },
+    };
+  });
+  for (const key of ["description", "variantName", "imageUrl"]) {
+    const column = worksheet.getColumn(key);
+    column.alignment = { vertical: "top", horizontal: "left", wrapText: true };
+  }
+  worksheet.getColumn("categoryId").alignment = { vertical: "middle", horizontal: "center" };
+  worksheet.getColumn("status").alignment = { vertical: "middle", horizontal: "center" };
+  worksheet.getColumn("price").alignment = { vertical: "middle", horizontal: "right" };
+  worksheet.getColumn("price").numFmt = "#,##0";
   return worksheet;
 }
 
@@ -51,6 +102,7 @@ export class ProductSpreadsheetService {
 
   async export(shopId: number, filters: ProductExportFilters): Promise<Buffer> {
     const products = await this.repository.listForExport(shopId, filters);
+    if (products.length === 0) throw new NoProductsToExportError();
     const workbook = new ExcelJS.Workbook();
     const worksheet = createWorksheet(workbook);
 
@@ -60,20 +112,32 @@ export class ProductSpreadsheetService {
         .sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary) || left.sortOrder - right.sortOrder);
       const skus = product.skus.length ? product.skus : [null];
       for (const sku of skus) {
-        worksheet.addRow({
+        const row = worksheet.addRow({
           code: product.code,
           name: product.name,
           description: product.description ?? "",
           categoryId: product.categoryId ?? "",
-          status: product.status,
+          status: exportStatus(product.status),
           skuCode: sku?.skuCode ?? "",
           variantName: sku?.variantName ?? "",
           price: sku ? Number(sku.price) : "",
           imageUrl: images[0]?.url ?? "",
         });
+        row.height = 42;
+        row.eachCell((cell) => {
+          cell.font = { name: "Aptos", size: 10, color: { argb: "FF202534" } };
+          cell.alignment = { vertical: "middle", ...cell.alignment };
+          cell.border = {
+            bottom: { style: "hair", color: { argb: "FFD9DEEA" } },
+          };
+          if (row.number % 2 === 1) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F6FB" } };
+          }
+        });
       }
     }
 
+    worksheet.autoFilter = { from: "A1", to: `I${Math.max(1, worksheet.rowCount)}` };
     const data = await workbook.xlsx.writeBuffer();
     return Buffer.from(data);
   }
@@ -96,8 +160,8 @@ export class ProductSpreadsheetService {
 
     const headers = new Map<string, number>();
     worksheet.getRow(1).eachCell((cell, column) => {
-      const header = cellText(cell).toLowerCase();
-      if (header) headers.set(header, column);
+      const header = HEADER_ALIASES[cellText(cell).toLocaleLowerCase("vi")];
+      if (header) headers.set(header.toLowerCase(), column);
     });
     const missingHeaders = ["code", "name", "skucode", "variantname", "price"]
       .filter((header) => !headers.has(header));
@@ -152,7 +216,7 @@ export class ProductSpreadsheetService {
         throw new InvalidProductWorkbookError(`Dòng ${rowNumber}: categoryId phải là số nguyên dương.`);
       }
 
-      const status = value("status") || "active";
+      const status = importStatus(value("status") || "active");
       const description = value("description") || null;
       const existing = grouped.get(code);
       if (existing) {

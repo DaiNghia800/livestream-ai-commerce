@@ -32,6 +32,7 @@ import {
   AddressNotNormalizedError,
   CannotCancelShipmentError,
   CodNotAllowedError,
+  InvalidManualShipmentStatusError,
   OrderNotReadyForShipmentError,
   ShipmentAlreadyExistsError,
   ShipmentNotFoundError,
@@ -45,13 +46,16 @@ import {
   listEvents,
   listShipments,
   markOrderProcessing,
+  markOrderReadyForReshipment,
   markShipmentCancelled,
   markShipmentCreated,
   markShipmentRejected,
+  markShipmentUncertain,
   setTrackingToken,
   type LocVanDon,
   type VanDon,
 } from "../repositories/shipment.repository.js";
+import { apDungMocLon } from "./apply-shipment-status.js";
 
 /**
  * Link theo dõi sống bao nhiêu ngày kể từ lúc tạo vận đơn.
@@ -194,16 +198,24 @@ export class ShipmentService {
         items,
       });
     } catch (err) {
-      // Hãng từ chối: ghi lại NGUYÊN VĂN lý do rồi mới ném tiếp. Dịch
-      // lại hay rút gọn là mất đúng thông tin cần để gọi hỏi họ.
-      const lyDo =
-        err instanceof CarrierRejectedError
-          ? err.reason
-          : err instanceof Error
-            ? err.message
-            : "Lỗi không rõ";
-      await this.ghiTuChoi(shipmentId, lyDo);
-      throw err;
+      if (err instanceof CarrierRejectedError) {
+        // Hãng xác nhận từ chối: an toàn để giải phóng đơn.
+        await this.ghiTuChoi(shipmentId, err.reason);
+        throw err;
+      }
+      // Mất mạng/timeout không chứng minh hãng chưa tạo đơn. Giữ
+      // REQUESTED để job hỏi bằng client_order_code, tránh tạo đôi.
+      const pending = await this.pool.connect();
+      try {
+        await markShipmentUncertain(
+          pending,
+          shipmentId,
+          "Mất kết nối khi tạo vận đơn. Đang xác minh với hãng; không tạo lại."
+        );
+      } finally {
+        pending.release();
+      }
+      return this.getShipment(shipmentId);
     }
 
     // ── Giai đoạn 3: lưu kết quả ────────────────────────────────────
@@ -291,21 +303,29 @@ export class ShipmentService {
         }
       }
 
-      const huyDuoc = await markShipmentCancelled(client, shipmentId);
-      if (!huyDuoc) {
-        throw new CannotCancelShipmentError(vanDon.status);
+      await client.query("BEGIN");
+      try {
+        const huyDuoc = await markShipmentCancelled(client, shipmentId);
+        if (!huyDuoc) {
+          throw new CannotCancelShipmentError(vanDon.status);
+        }
+
+        await insertEvent(client, {
+          shipmentId,
+          eventCode: "cancelled",
+          mappedStatus: "CANCELLED",
+          occurredAt: new Date(),
+          description: "Shop huỷ vận đơn",
+          rawPayload: null,
+        });
+        await markOrderReadyForReshipment(client, vanDon.orderId);
+        const cancelled = (await findShipmentById(client, shipmentId)) as VanDon;
+        await client.query("COMMIT");
+        return cancelled;
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
       }
-
-      await insertEvent(client, {
-        shipmentId,
-        eventCode: "cancelled",
-        mappedStatus: "CANCELLED",
-        occurredAt: new Date(),
-        description: "Shop huỷ vận đơn",
-        rawPayload: null,
-      });
-
-      return (await findShipmentById(client, shipmentId)) as VanDon;
     } finally {
       client.release();
     }
@@ -371,6 +391,13 @@ export class ShipmentService {
         throw new ShipmentNotFoundError(shipmentId);
       }
 
+      if (vanDon.carrier !== "self") {
+        throw new InvalidManualShipmentStatusError("Chỉ vận đơn shop tự giao mới được cập nhật trạng thái bằng tay.");
+      }
+      if (vanDon.status === "CREATED" && to !== "PICKED_UP") {
+        throw new InvalidManualShipmentStatusError("Cần ghi nhận đã lấy hàng trước khi cập nhật các mốc giao tiếp theo.");
+      }
+
       const now = new Date();
 
       // Mốc nào cũng ghi vào nhật ký, kể cả mốc không hợp lệ: đó vẫn
@@ -391,13 +418,16 @@ export class ShipmentService {
       // PICKED_UP thì `from` vẫn khớp và trạng thái tụt ngược. Phép
       // so thứ hạng dưới đây mới là thứ chặn chuyện đó.
       if (canAdvance(vanDon.status, to)) {
-        await advanceStatus(client, {
+        const changed = await advanceStatus(client, {
           shipmentId,
           from: vanDon.status,
           to,
           occurredAt: now,
           tangLanGiao: vanDon.status === "FAILED",
         });
+        if (changed) {
+          await apDungMocLon(client, vanDon, to, description);
+        }
       }
 
       const sau = (await findShipmentById(client, shipmentId)) as VanDon;

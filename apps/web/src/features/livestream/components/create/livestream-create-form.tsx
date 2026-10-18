@@ -196,7 +196,7 @@ export function LivestreamCreateForm() {
           const p = products[i];
           try {
             await addLivestreamProduct(createdSession.id, {
-              productId: p.id,
+              productId: p.liveProductId ?? p.id,
               displayOrder: i,
               isFeatured: i === 0,
             });

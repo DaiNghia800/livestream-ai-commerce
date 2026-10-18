@@ -22,6 +22,9 @@ import { createInventoryRouter } from "./modules/inventory/routes/inventory.rout
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 import { IIvsService } from "./shared/ivs/ivs.service.js";
+import { IIvsChatService } from "./shared/ivs/ivs-chat.service.js";
+import { ILivestreamCommentRepository } from "./modules/livestream/repositories/livestream-comment.repository.js";
+import { ISqsService } from "./shared/queue/sqs.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
@@ -31,7 +34,10 @@ export function createApp(
   customAuthRepository?: IAuthRepository,
   customLocalProductImageStorage?: LocalProductImageStorageService,
   customInventoryRepository?: IInventoryRepository,
-  customIvsService?: IIvsService
+  customIvsService?: IIvsService,
+  customIvsChatService?: IIvsChatService,
+  customCommentRepository?: ILivestreamCommentRepository,
+  customSqsService?: ISqsService
 ): Express {
 
   const app = express();
@@ -107,7 +113,10 @@ export function createApp(
     createLivestreamRouter(
       customRepository,
       customLivestreamProductRepository,
-      customIvsService
+      customIvsService,
+      customIvsChatService,
+      customCommentRepository,
+      customSqsService
     )
   );
   apiRouter.use("/orders", createOrderRouter());

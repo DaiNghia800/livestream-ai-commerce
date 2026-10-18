@@ -33,6 +33,14 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
     const productId1 = "88888888-8888-4888-8888-888888888881";
     const productId2 = "88888888-8888-4888-8888-888888888882";
 
+    // 0. Ensure test products exist in catalog
+    await pool.query(
+      `INSERT INTO products (shop_id, code, name)
+       VALUES (1, $1, 'Test Product 1'), (1, $2, 'Test Product 2')
+       ON CONFLICT (code) DO NOTHING;`,
+      [productId1, productId2]
+    );
+
     // 1. Create a live session in PostgreSQL
     const lsRes = await request(liveApp)
       .post("/api/livestreams")

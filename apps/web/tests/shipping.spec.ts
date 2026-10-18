@@ -125,6 +125,15 @@ test("đơn tự giao mới có nút bấm tay trạng thái", async ({ page }) 
   await expect(
     page.getByRole("button", { name: "Đã lấy hàng" }),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Giao thành công" })).toBeHidden();
+});
+
+test("vận đơn đang chờ hãng xác minh không cho huỷ", async ({ page }) => {
+  await stubApi(page, {
+    shipmentDetail: { ...SHIP_TU_GIAO, status: "REQUESTED", events: [] },
+  });
+  await page.goto("/shop/shipping/ship-4");
+  await expect(page.getByRole("button", { name: "Huỷ vận đơn" })).toBeHidden();
 });
 
 test("đơn đi hãng thật KHÔNG có nút bấm tay", async ({ page }) => {

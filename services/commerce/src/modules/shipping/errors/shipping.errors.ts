@@ -79,3 +79,11 @@ export class CannotCancelShipmentError extends DomainError {
     );
   }
 }
+
+/** Chỉ đơn tự giao mới được cập nhật tay và phải ghi nhận lấy hàng trước. */
+export class InvalidManualShipmentStatusError extends DomainError {
+  readonly code = "INVALID_MANUAL_SHIPMENT_STATUS";
+  constructor(message: string) {
+    super(message);
+  }
+}

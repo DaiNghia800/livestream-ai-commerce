@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -27,21 +28,16 @@ import {
 const GATEWAYS = ["mock", "vnpay", "momo", "zalopay"] as const;
 
 export function MerchantPaymentDetail({ txnRef }: { txnRef: string }) {
-  // Danh sách có sẵn bộ lọc nhưng không tra được theo txnRef, nên tải
-  // một lô rồi tìm tại chỗ. Số khoản thu một phiên là hàng trăm, chưa
-  // đáng để thêm một endpoint riêng.
   const { data, loading, error, reload } = useApi(
-    () => paymentsApi.list({ limit: 200 }),
-    [],
-  );
-
-  const payment = useMemo(
-    () => (data ?? []).find((p) => p.txnRef === txnRef || p.id === txnRef) ?? null,
-    [data, txnRef],
+    () => paymentsApi.byTxnRef(txnRef),
+    [txnRef],
   );
 
   if (loading) return <LoadingState />;
   if (error) {
+    if (error.status === 404) {
+      return <EmptyState title={`Không tìm thấy giao dịch ${txnRef}`} description="Kiểm tra lại mã giao dịch." />;
+    }
     return (
       <ErrorState
         action={
@@ -52,16 +48,9 @@ export function MerchantPaymentDetail({ txnRef }: { txnRef: string }) {
       />
     );
   }
-  if (!payment) {
-    return (
-      <EmptyState
-        title={`Không tìm thấy giao dịch ${txnRef}`}
-        description="Nội dung chuyển khoản có thể đã gõ sai, hoặc khoản thu đã bị xóa."
-      />
-    );
-  }
+  if (!data) return null;
 
-  return <PaymentDetailView payment={payment} onChanged={reload} />;
+  return <PaymentDetailView payment={data} onChanged={reload} />;
 }
 
 function PaymentDetailView({
@@ -76,6 +65,8 @@ function PaymentDetailView({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payUrl, setPayUrl] = useState<string | null>(null);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundAcknowledged, setRefundAcknowledged] = useState(false);
 
   const status = paymentStatuses[payment.status] ?? {
     label: payment.status,
@@ -88,15 +79,17 @@ function PaymentDetailView({
 
   const conThieu = Number(payment.amount) - Number(payment.paidAmount);
 
-  async function run(ten: string, fn: () => Promise<unknown>) {
+  async function run(ten: string, fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(ten);
     setError(null);
     setMessage(null);
     try {
       await fn();
       onChanged();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -314,23 +307,16 @@ function PaymentDetailView({
             <Card>
               <h2>Hoàn tiền</h2>
               <p className="muted">
-                Hoàn toàn bộ số đã nhận. Khoản thu chuyển sang trạng thái đã
-                hoàn và không nhận thêm tiền được nữa.
+                Chỉ ghi nhận tại đây sau khi đã chuyển trả toàn bộ số tiền
+                bằng ngân hàng hoặc ví và kiểm tra giao dịch thành công.
+                Thao tác này không tự chuyển tiền cho khách.
               </p>
               <Button
                 variant="danger"
                 disabled={busy !== null}
-                onClick={() =>
-                  run("refund", () =>
-                    paymentsApi.refund(
-                      payment.orderId,
-                      payment.paidAmount,
-                      payment.reconcile === "OVERPAID" ? "OVERPAID" : "OTHER",
-                    ),
-                  )
-                }
+                onClick={() => setRefundOpen(true)}
               >
-                {busy === "refund" ? "Đang hoàn…" : "Hoàn tiền cho khách"}
+                Ghi nhận đã hoàn bên ngoài
               </Button>
             </Card>
           )}
@@ -347,6 +333,37 @@ function PaymentDetailView({
           </Card>
         </div>
       </div>
+
+      <Dialog
+        open={refundOpen}
+        onClose={() => { if (!busy) { setRefundOpen(false); setRefundAcknowledged(false); } }}
+        title="Xác nhận tiền đã hoàn"
+        footer={
+          <div className="dialog-footer">
+            <Button variant="secondary" disabled={busy !== null} onClick={() => { setRefundOpen(false); setRefundAcknowledged(false); }}>Quay lại</Button>
+            <Button
+              variant="danger"
+              disabled={busy !== null || !refundAcknowledged}
+              onClick={async () => {
+                const ok = await run("refund", () => paymentsApi.refund(
+                  payment.orderId,
+                  payment.paidAmount,
+                  payment.reconcile === "OVERPAID" ? "OVERPAID" : "OTHER",
+                ));
+                if (ok) { setRefundOpen(false); setRefundAcknowledged(false); }
+              }}
+            >
+              {busy === "refund" ? "Đang ghi nhận…" : "Xác nhận đã hoàn"}
+            </Button>
+          </div>
+        }
+      >
+        <p>Bạn đã chuyển trả <strong>{formatMoney(Number(payment.paidAmount))}</strong> cho khách bằng kênh ngoài hệ thống. Bước này chỉ ghi nhận sổ sách và không tự chuyển tiền.</p>
+        <label className="field">
+          <input type="checkbox" checked={refundAcknowledged} onChange={(e) => setRefundAcknowledged(e.target.checked)} />
+          Tôi đã kiểm tra giao dịch hoàn tiền thành công
+        </label>
+      </Dialog>
     </>
   );
 }

@@ -154,6 +154,21 @@ describe("Livestream Products API Tests", () => {
       expect(res.body.error).toBe("NotFoundError");
     });
 
+    it("TC-LP-008b - Product not found in catalog -> HTTP 404", async () => {
+      productRepo.productExists = vi.fn().mockResolvedValue(false);
+
+      const res = await request(app)
+        .post(`/api/livestreams/${activeLivestreamId}/products`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({
+          productId: "9999999",
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("NotFoundError");
+      expect(res.body.message).toBe("Product not found in catalog");
+    });
+
     it("TC-LP-009 - Merchant does not own livestream -> HTTP 403", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)

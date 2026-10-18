@@ -17,6 +17,7 @@ const ProductSkuInputSchema = z
 const ProductImageInputSchema = z
   .object({
     url: z.string().url(),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
     isPrimary: z.boolean().default(false),
     sortOrder: z.number().int().nonnegative().default(0),
   })
@@ -60,6 +61,17 @@ export const CreateProductSchema = z
   })
   .refine((input) => input.images.filter((image) => image.isPrimary).length <= 1, {
     message: "Only one product image can be primary",
+    path: ["images"],
+  })
+  .refine((input) => {
+    const hashes = input.images.flatMap((image) => image.contentHash ? [image.contentHash.toLowerCase()] : []);
+    return new Set(hashes).size === hashes.length;
+  }, {
+    message: "Product images must not contain duplicates",
+    path: ["images"],
+  })
+  .refine((input) => new Set(input.images.map((image) => image.url)).size === input.images.length, {
+    message: "Product images must not contain duplicates",
     path: ["images"],
   });
 

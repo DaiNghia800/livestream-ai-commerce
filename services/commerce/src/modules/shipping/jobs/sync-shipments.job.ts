@@ -18,6 +18,7 @@
  */
 
 import type { Pool, PoolClient } from "pg";
+import crypto from "crypto";
 import {
   STATUS_RANK,
   canAdvance,
@@ -31,6 +32,8 @@ import {
   findStuckRequested,
   insertEvent,
   markShipmentRejected,
+  markOrderProcessing,
+  setTrackingToken,
   touchSynced,
   type VanDon,
 } from "../repositories/shipment.repository.js";
@@ -264,6 +267,13 @@ export class SyncShipmentsJob {
           try {
             await client2.query("BEGIN");
             if (await adoptOrphan(client2, v.id, maHang)) {
+              await setTrackingToken(
+                client2,
+                v.id,
+                crypto.randomBytes(24).toString("base64url"),
+                30
+              );
+              await markOrderProcessing(client2, v.orderId);
               await insertEvent(client2, {
                 shipmentId: v.id,
                 eventCode: "adopted",

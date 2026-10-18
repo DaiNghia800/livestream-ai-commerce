@@ -7,11 +7,14 @@ export type LivestreamStatus =
 
 export interface Livestream {
     id: string;
+    merchantId?: string;
     title: string;
     status: LivestreamStatus;
     thumbnail?: string;
     hostName?: string;
     ivsChannel?: string;
+    chatRoomArn?: string;
+    replayUrl?: string;
     resolution?: string;
     channelName?: string;
     scheduledAt?: string;
@@ -41,6 +44,7 @@ export interface Livestream {
 
 export interface LiveProductItem {
     id: string; // Mã chốt đơn / Product code (e.g. AO01, DM02)
+    liveProductId?: string;
     sku: string;
     name: string;
     price: number;

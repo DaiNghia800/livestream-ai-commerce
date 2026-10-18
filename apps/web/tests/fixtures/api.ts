@@ -76,6 +76,8 @@ export const ORDER_DETAIL = {
   codBlocked: false,
   livestreamId: null,
   createdAt: "2026-10-10T19:40:00+07:00",
+  activeShipmentId: null,
+  addressNormalized: true,
   items: [
     {
       id: "item-1",
@@ -379,6 +381,12 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
         ? payments.filter((p) => (p as { status: string }).status === status)
         : payments;
       return json(route, { items: rows });
+    }
+
+    if (path.startsWith("/payments/by-ref/")) {
+      const ref = decodeURIComponent(path.slice("/payments/by-ref/".length));
+      const payment = payments.find((p) => (p as { txnRef?: string }).txnRef === ref);
+      return payment ? json(route, payment) : json(route, { message: "Không tìm thấy giao dịch" }, 404);
     }
 
     // Phải xét TRƯỚC "/shipments/:id", nếu không "carriers" bị nuốt

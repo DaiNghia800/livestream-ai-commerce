@@ -90,7 +90,6 @@ export const DEAD_STATUSES: ShipmentStatus[] = [
  */
 export const CANCELLABLE_STATUSES: ShipmentStatus[] = [
   "DRAFT",
-  "REQUESTED",
   "CREATED",
 ];
 

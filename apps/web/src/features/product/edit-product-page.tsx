@@ -6,16 +6,23 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  Bot,
   Check,
+  ChevronDown,
   ChevronRight,
+  CreditCard,
+  Eye,
+  History,
   ImagePlus,
   Info,
+  Layers,
   LoaderCircle,
-  Package,
   Plus,
+  Radio,
   Save,
   Star,
   Trash2,
+  ToggleRight,
   Upload,
   X,
 } from "lucide-react";
@@ -23,9 +30,10 @@ import { Card } from "@/components/ui/card";
 import styles from "./product.module.css";
 import {
   createProductImage,
-  createProductSku,
   discontinueProductSku,
   getProduct,
+  getProductEditHistory,
+  getImageContentHash,
   getProductCategories,
   ProductApiError,
   removeProductImage,
@@ -34,6 +42,7 @@ import {
   updateProductSku,
   uploadProductImage,
   type BackendProduct,
+  type ProductEditHistoryEntry,
   type ProductCategory,
   type ProductInput,
   type ProductSkuInput,
@@ -41,17 +50,20 @@ import {
 
 interface EditProductPageProps {
   productId: string;
+  returnTo?: "/shop/products" | "/shop/inventory";
 }
 
 type ProductStatus = BackendProduct["status"];
 
 interface EditableSku {
-  id: string | null;
+  id: string;
   skuCode: string;
   variantName: string;
   price: string;
   aiCode: string;
   stock: number;
+  availableStock: number;
+  reservedStock: number;
   status: ProductStatus;
 }
 
@@ -64,7 +76,7 @@ const buttonClass =
 const statusLabels: Record<ProductStatus, string> = {
   active: "Đang bán",
   archived: "Đã lưu trữ",
-  discontinued: "Ngừng kinh doanh",
+  discontinued: "Ngừng bán",
 };
 
 function toEditableSkus(product: BackendProduct): EditableSku[] {
@@ -72,11 +84,29 @@ function toEditableSkus(product: BackendProduct): EditableSku[] {
     id: sku.id,
     skuCode: sku.skuCode,
     variantName: sku.variantName,
-    price: sku.price,
+    price: formatStoredPrice(sku.price),
     aiCode: sku.aiCode ?? "",
-    stock: sku.stock,
+    stock: sku.stock ?? (sku.availableStock ?? 0) + (sku.reservedStock ?? 0),
+    availableStock: sku.availableStock ?? 0,
+    reservedStock: sku.reservedStock ?? 0,
     status: sku.status,
   }));
+}
+
+function formatPriceInput(value: number | string) {
+  const digits = String(value).replace(/\D/g, "");
+  return digits ? Number(digits).toLocaleString("vi-VN") : "";
+}
+
+function formatStoredPrice(value: string | null | undefined) {
+  if (value === null || value === undefined || value === "") return "";
+  const amount = Number(value);
+  return Number.isFinite(amount) ? formatPriceInput(Math.round(amount)) : "";
+}
+
+function parsePriceInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits ? Number(digits) : 0;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -88,7 +118,38 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Đã xảy ra lỗi không xác định.";
 }
 
-export function EditProductPage({ productId }: EditProductPageProps) {
+const historyFieldLabels: Record<string, string> = {
+  name: "Tên sản phẩm",
+  code: "Mã sản phẩm",
+  description: "Mô tả",
+  brand: "Thương hiệu",
+  listPrice: "Giá niêm yết",
+  stockWarning: "Ngưỡng cảnh báo",
+  status: "Trạng thái sản phẩm",
+  categoryId: "Mã danh mục",
+  holdInventory: "Tự động giữ tồn kho",
+  "sku.skuCode": "Mã SKU",
+  "sku.variantName": "Phân loại",
+  "sku.aiCode": "Mã phụ AI",
+  "sku.price": "Giá Flash Live",
+  "sku.status": "Trạng thái SKU",
+};
+
+function formatHistoryValue(field: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (field === "status" || field === "sku.status") {
+    return statusLabels[value as ProductStatus] ?? String(value);
+  }
+  if (field === "holdInventory" && typeof value === "boolean") {
+    return value ? "Bật" : "Tắt";
+  }
+  if ((field === "listPrice" || field === "sku.price") && Number.isFinite(Number(value))) {
+    return formatPriceInput(Math.round(Number(value)));
+  }
+  return typeof value === "string" || typeof value === "number" ? String(value) : JSON.stringify(value);
+}
+
+export function EditProductPage({ productId, returnTo = "/shop/products" }: EditProductPageProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [product, setProduct] = useState<BackendProduct | null>(null);
@@ -100,12 +161,7 @@ export function EditProductPage({ productId }: EditProductPageProps) {
   const [brand, setBrand] = useState("");
   const [listPrice, setListPrice] = useState("");
   const [stockWarning, setStockWarning] = useState(0);
-  const [triggerCode, setTriggerCode] = useState("");
   const [holdInventory, setHoldInventory] = useState(true);
-  const [shippingWeightGrams, setShippingWeightGrams] = useState<number | "">("");
-  const [packageLengthCm, setPackageLengthCm] = useState<number | "">("");
-  const [packageWidthCm, setPackageWidthCm] = useState<number | "">("");
-  const [packageHeightCm, setPackageHeightCm] = useState<number | "">("");
   const [status, setStatus] = useState<ProductStatus>("active");
   const [skus, setSkus] = useState<EditableSku[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,6 +169,27 @@ export function EditProductPage({ productId }: EditProductPageProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [historyEntries, setHistoryEntries] = useState<ProductEditHistoryEntry[]>([]);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+
+  const toggleHistory = async () => {
+    const shouldExpand = !historyExpanded;
+    setHistoryExpanded(shouldExpand);
+    if (!shouldExpand || historyLoaded || historyLoading) return;
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      setHistoryEntries(await getProductEditHistory(productId));
+      setHistoryLoaded(true);
+    } catch (historyLoadError) {
+      setHistoryError(getErrorMessage(historyLoadError));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const applyProduct = useCallback((loadedProduct: BackendProduct) => {
     setProduct(loadedProduct);
@@ -121,13 +198,9 @@ export function EditProductPage({ productId }: EditProductPageProps) {
     setCategoryId(loadedProduct.categoryId === null ? "" : String(loadedProduct.categoryId));
     setDescription(loadedProduct.description ?? "");
     setBrand(loadedProduct.brand ?? "");
-    setListPrice(loadedProduct.listPrice ?? "");
+    setListPrice(formatStoredPrice(loadedProduct.listPrice));
     setStockWarning(loadedProduct.stockWarning);
-    setTriggerCode(loadedProduct.triggerCode ?? "");
-    setShippingWeightGrams(loadedProduct.shippingWeightGrams ?? "");
-    setPackageLengthCm(loadedProduct.packageLengthCm ? Number(loadedProduct.packageLengthCm) : "");
-    setPackageWidthCm(loadedProduct.packageWidthCm ? Number(loadedProduct.packageWidthCm) : "");
-    setPackageHeightCm(loadedProduct.packageHeightCm ? Number(loadedProduct.packageHeightCm) : "");
+    setHoldInventory(loadedProduct.holdInventory ?? true);
     setStatus(loadedProduct.status);
     setSkus(toEditableSkus(loadedProduct));
   }, []);
@@ -152,16 +225,17 @@ export function EditProductPage({ productId }: EditProductPageProps) {
   const updateSkuField = (index: number, field: keyof EditableSku, value: string | number) => {
     setSkus((current) =>
       current.map((sku, skuIndex) =>
-        skuIndex === index ? { ...sku, [field]: field === "status" ? value as ProductStatus : field === "stock" ? Number(value) : value } : sku
+        skuIndex === index
+          ? {
+              ...sku,
+              [field]: field === "status" ? value as ProductStatus : field === "stock" ? Number(value) : value,
+              ...(field === "stock"
+                ? { availableStock: Math.max(Number(value) - sku.reservedStock, 0) }
+                : {}),
+            }
+          : sku
       )
     );
-  };
-
-  const addSku = () => {
-    setSkus((current) => [
-      ...current,
-      { id: null, skuCode: "", variantName: "", price: "0", aiCode: "", stock: 0, status: "active" },
-    ]);
   };
 
   const saveChanges = async () => {
@@ -182,12 +256,11 @@ export function EditProductPage({ productId }: EditProductPageProps) {
       setError("Mã SKU không được trùng nhau.");
       return;
     }
-    if (activeSkus.some((sku) => !Number.isFinite(Number(sku.price)) || Number(sku.price) < 0)) {
+    if (activeSkus.some((sku) => !Number.isFinite(parsePriceInput(sku.price)) || parsePriceInput(sku.price) < 0)) {
       setError("Giá SKU phải là số lớn hơn hoặc bằng 0.");
       return;
     }
-
-    const parsedListPrice = listPrice ? Number(String(listPrice).replace(/[^\d.]/g, "")) : null;
+    const parsedListPrice = listPrice ? parsePriceInput(listPrice) : null;
     const productInput: ProductInput = {
       name: name.trim(),
       code: code.trim(),
@@ -196,11 +269,12 @@ export function EditProductPage({ productId }: EditProductPageProps) {
       brand: brand.trim() || null,
       listPrice: parsedListPrice && parsedListPrice > 0 ? parsedListPrice : null,
       stockWarning: stockWarning >= 0 ? stockWarning : 0,
-      triggerCode: triggerCode.trim() || null,
-      shippingWeightGrams: shippingWeightGrams !== "" && Number(shippingWeightGrams) > 0 ? Math.round(Number(shippingWeightGrams)) : null,
-      packageLengthCm: packageLengthCm !== "" && Number(packageLengthCm) > 0 ? Number(packageLengthCm) : null,
-      packageWidthCm: packageWidthCm !== "" && Number(packageWidthCm) > 0 ? Number(packageWidthCm) : null,
-      packageHeightCm: packageHeightCm !== "" && Number(packageHeightCm) > 0 ? Number(packageHeightCm) : null,
+      triggerCode: code.trim() || null,
+      shippingWeightGrams: product.shippingWeightGrams && product.shippingWeightGrams > 0 ? Math.round(product.shippingWeightGrams) : null,
+      packageLengthCm: product.packageLengthCm && Number(product.packageLengthCm) > 0 ? Number(product.packageLengthCm) : null,
+      packageWidthCm: product.packageWidthCm && Number(product.packageWidthCm) > 0 ? Number(product.packageWidthCm) : null,
+      packageHeightCm: product.packageHeightCm && Number(product.packageHeightCm) > 0 ? Number(product.packageHeightCm) : null,
+      holdInventory,
       status,
     };
     setSaving(true);
@@ -210,20 +284,18 @@ export function EditProductPage({ productId }: EditProductPageProps) {
         const input: ProductSkuInput = {
           skuCode: sku.skuCode.trim(),
           variantName: sku.variantName.trim(),
-          price: Number(sku.price),
+          price: parsePriceInput(sku.price),
           aiCode: sku.aiCode.trim() || null,
           stock: sku.stock,
           status: sku.status,
         };
-        if (!sku.id) {
-          if (sku.status !== "discontinued") await createProductSku(productId, input);
-        } else if (sku.status === "discontinued" && product.skus.find((item) => item.id === sku.id)?.status !== "discontinued") {
+        if (sku.status === "discontinued" && product.skus.find((item) => item.id === sku.id)?.status !== "discontinued") {
           await discontinueProductSku(productId, sku.id);
         } else if (sku.status !== "discontinued") {
           await updateProductSku(productId, sku.id, input);
         }
       }));
-      router.push("/shop/products");
+      router.push(returnTo);
     } catch (saveError) {
       setError(`Không thể lưu đầy đủ thay đổi: ${getErrorMessage(saveError)}. Tải lại dữ liệu để kiểm tra trạng thái đã cập nhật.`);
     } finally {
@@ -234,10 +306,6 @@ export function EditProductPage({ productId }: EditProductPageProps) {
   const handleImageUpload = async (files: FileList | null) => {
     if (!files || !product) return;
     const selected = Array.from(files);
-    if (selected.length + product.images.length > 8) {
-      setError("Mỗi sản phẩm có thể có tối đa 8 ảnh.");
-      return;
-    }
     const invalidFile = selected.find((file) =>
       !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024
     );
@@ -246,16 +314,52 @@ export function EditProductPage({ productId }: EditProductPageProps) {
       return;
     }
 
+    let fingerprinted: { file: File; contentHash: string }[];
+    try {
+      fingerprinted = await Promise.all(
+        selected.map(async (file) => ({ file, contentHash: await getImageContentHash(file) }))
+      );
+    } catch (hashError) {
+      setError(
+        hashError instanceof Error
+          ? `Không thể kiểm tra ảnh: ${hashError.message}`
+          : "Không thể kiểm tra ảnh đã chọn."
+      );
+      return;
+    }
+    const seen = new Set(product.images.map((image) => image.contentHash).filter(
+      (hash): hash is string => Boolean(hash)
+    ));
+    let duplicateFound = false;
+    const unique = fingerprinted.filter(({ contentHash }) => {
+      if (seen.has(contentHash)) {
+        duplicateFound = true;
+        return false;
+      }
+      seen.add(contentHash);
+      return true;
+    });
+    if (product.images.length + unique.length > 8) {
+      setError("Mỗi sản phẩm có thể có tối đa 8 ảnh.");
+      return;
+    }
+    if (duplicateFound && unique.length === 0) {
+      setError("Ảnh sản phẩm không được trùng nhau.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setUploading(true);
-    setError("");
+    setError(duplicateFound ? "Ảnh sản phẩm không được trùng nhau." : "");
     try {
       let primaryImageAdded = product.images.length > 0;
       let nextSortOrder = product.images.length;
-      for (const file of selected) {
+      for (const { file, contentHash } of unique) {
         const imageUrl = await uploadProductImage(file);
         const isPrimary = !primaryImageAdded;
         const image = await createProductImage(productId, {
           url: imageUrl,
+          contentHash,
           isPrimary,
           sortOrder: nextSortOrder,
         });
@@ -318,9 +422,19 @@ export function EditProductPage({ productId }: EditProductPageProps) {
     );
   }
 
+  const activeSkus = skus.filter((sku) => sku.status === "active");
+  const totalStock = activeSkus.reduce((total, sku) => total + sku.stock, 0);
+  const availableStock = activeSkus.reduce((total, sku) => total + sku.availableStock, 0);
+  const reservedStock = activeSkus.reduce((total, sku) => total + sku.reservedStock, 0);
+  const activeSkuPrices = activeSkus.map((sku) => parsePriceInput(sku.price));
+  const livePrice =
+    activeSkuPrices.length > 0 && activeSkuPrices.every((price) => price === activeSkuPrices[0])
+      ? formatPriceInput(activeSkuPrices[0])
+      : "";
+
   return (
     <div className="min-w-0">
-      <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-outline-variant bg-surface-container-lowest/95 px-4 py-4 shadow-sm backdrop-blur md:-mx-8 md:px-8">
+      <div className="sticky top-16 z-20 -mx-4 mb-6 border-b border-outline-variant bg-surface-container-lowest/95 px-4 py-4 shadow-sm backdrop-blur md:-mx-6 md:px-6">
         <div className="mx-auto flex max-w-[1440px] flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div className="min-w-0">
             <nav aria-label="Breadcrumb" className="mb-1 flex flex-wrap items-center gap-1.5 text-label-sm text-on-surface-variant">
@@ -332,7 +446,14 @@ export function EditProductPage({ productId }: EditProductPageProps) {
             </nav>
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface">Chỉnh sửa sản phẩm</h1>
-              <span className="rounded-full border border-outline-variant bg-surface-container-low px-2.5 py-0.5 text-label-sm font-semibold text-on-surface-variant">
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-label-sm font-semibold ${
+                status === "active"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : status === "archived"
+                    ? "border-outline-variant bg-surface-container-low text-on-surface-variant"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${status === "active" ? "bg-emerald-600" : status === "archived" ? "bg-outline" : "bg-amber-600"}`} />
                 {statusLabels[status]}
               </span>
             </div>
@@ -341,11 +462,17 @@ export function EditProductPage({ productId }: EditProductPageProps) {
             <button
               className={`${buttonClass} border border-outline-variant bg-white text-on-surface hover:bg-surface-container-low`}
               type="button"
-              onClick={() => router.push("/shop/products")}
+              onClick={() => router.push(returnTo)}
               disabled={saving || uploading}
             >
               <X size={16} aria-hidden="true" /> Hủy
             </button>
+            <Link
+              className={`${buttonClass} border border-primary/20 bg-surface-container-low text-primary hover:bg-surface-container`}
+              href="/shop/livestream"
+            >
+              <Eye size={16} aria-hidden="true" /> Xem trên Livestream
+            </Link>
             <button
               className={`${buttonClass} bg-primary-container text-on-primary shadow-sm hover:bg-primary`}
               type="button"
@@ -359,13 +486,17 @@ export function EditProductPage({ productId }: EditProductPageProps) {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-5 xl:grid-cols-12">
-        <div className="flex min-w-0 flex-col gap-5 xl:col-span-8">
-          {/* 1. Thông tin sản phẩm */}
+      <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-6 xl:grid-cols-12">
+        <div className="flex min-w-0 flex-col gap-6 xl:col-span-8">
           <Card className="!p-4 md:!p-6">
-            <div className="mb-5 flex items-center gap-2 border-b border-outline-variant pb-4">
-              <Info size={20} className="text-primary" aria-hidden="true" />
-              <h2 className="font-title-sm text-title-sm font-semibold">1. Thông tin sản phẩm</h2>
+            <div className="mb-5 flex items-center justify-between gap-3 border-b border-outline-variant pb-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <Info size={20} className="block w-5 shrink-0 -translate-y-1.5 text-primary" aria-hidden="true" />
+                <h2 className="font-title-sm text-title-sm font-semibold">Thông tin chung</h2>
+              </div>
+              <span className="rounded bg-surface-container-low px-2 py-0.5 text-label-sm text-on-surface-variant">
+                Mã chốt đơn: {code}
+              </span>
             </div>
             <div className="space-y-4">
               <div>
@@ -377,11 +508,7 @@ export function EditProductPage({ productId }: EditProductPageProps) {
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className={labelClass} htmlFor="product-code">Mã sản phẩm <span className="text-error">*</span></label>
-                  <input id="product-code" className={inputClass} disabled={saving || uploading} maxLength={50} value={code} onChange={(event) => setCode(event.target.value)} />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="product-category">Danh mục</label>
+                  <label className={labelClass} htmlFor="product-category">Danh mục hàng hóa <span className="text-error">*</span></label>
                   <select id="product-category" className={inputClass} disabled={saving || uploading} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
                     <option value="">Chưa phân loại</option>
                     {categories.map((category) => (
@@ -392,12 +519,8 @@ export function EditProductPage({ productId }: EditProductPageProps) {
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className={labelClass} htmlFor="product-brand">Thương hiệu</label>
+                  <label className={labelClass} htmlFor="product-brand">Thương hiệu / Nhãn hiệu</label>
                   <input id="product-brand" className={inputClass} disabled={saving || uploading} maxLength={150} placeholder="Nhập thương hiệu hoặc OEM..." value={brand} onChange={(event) => setBrand(event.target.value)} />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="product-list-price">Giá niêm yết (VND)</label>
-                  <input id="product-list-price" className={inputClass} disabled={saving || uploading} type="number" min="0" placeholder="0" value={listPrice} onChange={(event) => setListPrice(event.target.value)} />
                 </div>
               </div>
               <div>
@@ -414,37 +537,116 @@ export function EditProductPage({ productId }: EditProductPageProps) {
             </div>
           </Card>
 
-          {/* 2. Mã chốt đơn AI */}
           <Card className="!p-4 md:!p-6">
-            <div className="mb-5 flex items-center gap-2 border-b border-outline-variant pb-4">
-              <span className="material-symbols-outlined text-primary" style={{ fontSize: "20px" }}>smart_toy</span>
-              <h2 className="font-title-sm text-title-sm font-semibold">2. Mã chốt đơn AI &amp; Tồn kho</h2>
+            <div className="mb-5 flex items-center justify-between gap-3 border-b border-outline-variant pb-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <CreditCard size={20} className="block w-5 shrink-0 -translate-y-1.5 text-primary" aria-hidden="true" />
+                <h2 className="font-title-sm text-title-sm font-semibold">Giá bán &amp; Tồn kho WMS</h2>
+              </div>
+              {product.isPinned && (
+                <span className="inline-flex items-center gap-1 rounded bg-secondary-fixed px-2.5 py-1 text-label-sm font-semibold text-on-secondary-fixed">
+                  <Radio size={14} aria-hidden="true" /> Đang áp dụng phiên Live
+                </span>
+              )}
             </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelClass} htmlFor="trigger-code">Mã chốt đơn AI (Trigger Code)</label>
-                  <div className="flex h-9 items-center rounded-lg border border-outline-variant bg-surface-container-lowest transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-                    <span className="select-none px-2.5 text-label-md font-bold text-primary">#</span>
-                    <input
-                      id="trigger-code"
-                      className={`${styles.editTriggerCodeInput} flex-1 bg-transparent text-body-md text-on-surface outline-none`}
-                      disabled={saving || uploading}
-                      maxLength={50}
-                      placeholder="VD: AO01"
-                      value={triggerCode}
-                      onChange={(event) => setTriggerCode(event.target.value.toUpperCase())}
-                    />
-                  </div>
-                  <p className="mt-1 text-label-sm text-on-surface-variant">AI tự nhận diện comment chứa mã này để chốt đơn</p>
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-outline-variant/60 bg-surface-container-low p-4">
+                <label className="mb-1 block text-label-md text-on-surface-variant" htmlFor="product-list-price">Giá niêm yết (VND)</label>
+                <input
+                  id="product-list-price"
+                  className={`${inputClass} bg-white font-semibold`}
+                  disabled={saving || uploading}
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={listPrice}
+                  onChange={(event) => setListPrice(formatPriceInput(event.target.value))}
+                />
+              </div>
+              <div className="rounded-lg border border-primary/30 bg-primary-fixed/20 p-4">
+                <label className="mb-1 block text-label-md font-semibold text-primary" htmlFor="product-live-price">Giá Flash Live (VND) <span className="text-error">*</span></label>
+                <input
+                  id="product-live-price"
+                  aria-label="Giá Flash Live (VND) *"
+                  className={`${inputClass} bg-white font-mono font-semibold`}
+                  disabled={saving || uploading || activeSkus.length === 0}
+                  inputMode="numeric"
+                  placeholder={livePrice ? undefined : "Giá giữa các SKU khác nhau"}
+                  value={livePrice}
+                  onChange={(event) => {
+                    const nextPrice = formatPriceInput(event.target.value);
+                    setSkus((current) => current.map((sku) =>
+                      sku.status === "active" ? { ...sku, price: nextPrice } : sku
+                    ));
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { label: "Tổng tồn kho nhập", value: totalStock, sub: `Phân bổ ${activeSkus.length} biến thể`, style: "border-outline-variant bg-white text-on-surface-variant" },
+                { label: "Tồn khả dụng", value: availableStock, sub: "Sẵn sàng chốt đơn", style: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+                { label: "Đang giữ", value: reservedStock, sub: "Đang giữ trong giỏ", style: "border-amber-200 bg-amber-50 text-amber-900" },
+                { label: "Ngưỡng cảnh báo", value: stockWarning, sub: "Thông báo khi tồn thấp", style: "border-error-container bg-error-container/40 text-on-error-container" },
+              ].map((metric) => (
+                <div className={`rounded-lg border p-3.5 ${metric.style}`} key={metric.label}>
+                  <span className="mb-1 block text-label-sm">{metric.label}</span>
+                  <span className="font-metric-num text-metric-num">{metric.value}</span>
+                  <span className="mt-1 block text-[11px]">{metric.sub}</span>
                 </div>
-                <div>
-                  <label className={labelClass} htmlFor="stock-warning">Ngưỡng cảnh báo tồn kho</label>
-                  <input id="stock-warning" className={inputClass} disabled={saving || uploading} type="number" min="0" value={stockWarning} onChange={(event) => setStockWarning(Number(event.target.value))} />
-                  <p className="mt-1 text-label-sm text-on-surface-variant">Thông báo khi tồn kho thấp hơn mức này</p>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="!p-4 md:!p-6">
+            <div className="mb-5 flex items-center justify-between gap-3 border-b border-outline-variant pb-4">
+              <div className="flex min-w-0 items-stretch gap-2">
+                <span className="flex w-5 shrink-0 items-center justify-center">
+                  <Bot size={20} className="block text-secondary" aria-hidden="true" />
+                </span>
+                <div className="flex min-w-0 flex-col justify-center">
+                  <h2 className="m-0 font-title-sm text-title-sm font-semibold leading-6">Thiết lập Mã Chốt Đơn AI</h2>
+                  <p className="m-0 text-body-sm leading-5 text-on-surface-variant">Mã kích hoạt nhận diện bình luận livestream</p>
                 </div>
               </div>
-              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-outline-variant p-3 transition-colors hover:bg-surface-container-low">
+              <span className={`rounded-full px-2.5 py-1 text-label-sm font-semibold ${code.trim() ? "bg-emerald-100 text-emerald-800" : "bg-surface-container-low text-on-surface-variant"}`}>
+                {code.trim() ? "Đã thiết lập" : "Chưa thiết lập"}
+              </span>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className={labelClass} htmlFor="product-code">Mã chốt đơn chính (Keyword Code) <span className="text-error">*</span></label>
+                  <p id="product-code" className="font-mono font-semibold text-on-surface" aria-label="Mã chốt đơn chính (Keyword Code) *" title={code}>{code}</p>
+                  <p className="mt-1 text-label-sm text-on-surface-variant">Mã này được dùng để AI nhận diện bình luận chốt đơn.</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelClass}>Trạng thái nhận diện</label>
+                  <div className="box-border flex h-10 min-h-10 items-center justify-between rounded-lg border border-outline-variant/60 bg-surface-container-low px-3.5">
+                    <span className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+                      <Check size={16} className="text-primary" aria-hidden="true" />
+                      Mã chốt đơn chính sẽ được dùng bởi bộ nhận diện hiện tại
+                    </span>
+                    <span className="text-label-sm font-semibold text-primary">{code.trim() ? "Đã cấu hình" : "Chờ cấu hình"}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <p className={labelClass}>Ví dụ cú pháp bình luận</p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {[
+                    { title: "Mã + số lượng", example: `${code || "MÃ SP"} 2 cái`, detail: "Khớp mã chốt đơn chính và số lượng" },
+                    { title: "Khẩu ngữ mua hàng", example: `Lấy 1 cái ${code || "MÃ SP"} nha`, detail: "Nhận diện câu mua hàng tự nhiên" },
+                    { title: "Đầy đủ tham số", example: `${code || "MÃ SP"} phân loại số điện thoại`, detail: "Đối chiếu SKU và thông tin khách" },
+                  ].map((sample) => (
+                    <div className="rounded-lg border border-outline-variant/60 bg-surface-container-low p-3" key={sample.title}>
+                      <span className="mb-1 block text-label-sm font-semibold text-primary">{sample.title}</span>
+                      <p className="rounded border border-outline-variant/40 bg-white p-2 font-mono text-xs text-on-surface">“{sample.example}”</p>
+                      <span className="mt-1.5 block text-[11px] text-on-surface-variant">{sample.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-outline-variant/80 bg-surface-container-low p-3.5 transition-colors hover:bg-surface-container">
                 <input
                   aria-label="Tự động giữ tồn kho 15 phút"
                   className={`${styles.editInlineCheckbox} accent-primary`}
@@ -455,144 +657,121 @@ export function EditProductPage({ productId }: EditProductPageProps) {
                 />
                 <span className="min-w-0 flex-1">
                   <strong className="text-label-md">Tự động giữ tồn kho 15 phút</strong>
-                  <span className="mt-0.5 block text-[11px] leading-snug text-on-surface-variant">
-                    Giữ hàng 15 phút sau khi khách chốt đơn qua comment livestream, tự động hủy nếu không thanh toán.
-                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-on-surface-variant">Giữ hàng khi nhận bình luận hợp lệ để khách hoàn tất thông tin đặt hàng.</span>
                 </span>
+                <span className="text-label-sm font-semibold text-secondary">Khuyến nghị</span>
               </label>
             </div>
           </Card>
 
-          {/* 3. Vận chuyển */}
           <Card className="!p-4 md:!p-6">
-            <div className="mb-5 flex items-center gap-2 border-b border-outline-variant pb-4">
-              <span className="material-symbols-outlined text-primary" style={{ fontSize: "20px" }}>local_shipping</span>
-              <h2 className="font-title-sm text-title-sm font-semibold">3. Thuộc tính vận chuyển</h2>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass} htmlFor="shipping-weight">Trọng lượng đóng gói (Gram)</label>
-                <input
-                  id="shipping-weight"
-                  className={inputClass}
-                  disabled={saving || uploading}
-                  type="number"
-                  min="0"
-                  placeholder="VD: 280"
-                  value={shippingWeightGrams}
-                  onChange={(event) => setShippingWeightGrams(event.target.value === "" ? "" : Number(event.target.value))}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Kích thước bưu kiện (Dài × Rộng × Cao, cm)</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { label: "Dài", value: packageLengthCm, setter: setPackageLengthCm },
-                    { label: "Rộng", value: packageWidthCm, setter: setPackageWidthCm },
-                    { label: "Cao", value: packageHeightCm, setter: setPackageHeightCm },
-                  ] as const).map(({ label, value, setter }) => (
-                    <div key={label} className="relative">
-                      <input
-                        aria-label={`Kích thước ${label.toLowerCase()} (cm)`}
-                        className={`${inputClass} text-center`}
-                        disabled={saving || uploading}
-                        type="number"
-                        min="0"
-                        placeholder={label}
-                        value={value}
-                        onChange={(event) => setter(event.target.value === "" ? "" : Number(event.target.value))}
-                      />
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-on-surface-variant">cm</span>
-                    </div>
-                  ))}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-4">
+              <div className="flex min-w-0 items-stretch gap-2">
+                <span className="flex w-5 shrink-0 items-center justify-center">
+                  <Layers size={20} className="block text-primary" aria-hidden="true" />
+                </span>
+                <div className="flex min-w-0 flex-col justify-center">
+                  <h2 className="m-0 font-title-sm text-title-sm font-semibold leading-6">Bảng cấu hình biến thể &amp; SKU riêng</h2>
+                  <p className="m-0 text-body-sm leading-5 text-on-surface-variant">{activeSkus.length} SKU đang hoạt động, đồng bộ với kho và livestream.</p>
                 </div>
               </div>
             </div>
-          </Card>
-
-          {/* 4. Bảng cấu hình biến thể & SKU riêng */}
-          <Card className="!p-4 md:!p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-4">
-              <div>
-                <h2 className="font-title-sm text-title-sm font-semibold">4. Bảng cấu hình biến thể &amp; SKU riêng</h2>
-                <p className="mt-1 text-body-sm text-on-surface-variant">Giá được đồng bộ trực tiếp theo từng SKU.</p>
-              </div>
-              <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary-fixed px-3 text-label-md font-semibold text-on-primary-fixed hover:bg-primary-fixed-dim"
-                type="button"
-                onClick={addSku}
-                disabled={saving}
-              >
-                <Plus size={15} aria-hidden="true" /> Thêm SKU
-              </button>
+            <div className="overflow-x-auto rounded-lg border border-outline-variant">
+              <table className="w-full min-w-[1050px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-outline-variant bg-surface-container-low text-[11px] uppercase tracking-wider text-outline">
+                    <th className="whitespace-nowrap px-3 py-2.5">Phân loại</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Mã SKU</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Mã phụ AI</th>
+                    <th className="w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right">Tổng tồn</th>
+                    <th className="w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right">Khả dụng</th>
+                    <th className="w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right">Đang giữ</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Ngưỡng cảnh báo</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Giá Flash Live (VND)</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center">Trạng thái</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/60 text-body-sm">
+                  {skus.length === 0 ? (
+                    <tr>
+                      <td className="bg-surface-container-low p-4 text-body-sm text-on-surface-variant" colSpan={6}>
+                        Sản phẩm chưa có biến thể nào.
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <input
+                          id="stock-warning"
+                          aria-label="Ngưỡng cảnh báo SKU chưa có"
+                          className={`${styles.editSkuTableControl} ${styles.editStockWarningInput} h-9 rounded-md border border-outline-variant bg-white px-2 text-right font-medium text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-container-low`}
+                          disabled={saving || uploading}
+                          type="number"
+                          min="0"
+                          title="Ngưỡng cảnh báo. Thông báo khi tồn kho thấp hơn mức này."
+                          value={stockWarning}
+                          onChange={(event) => setStockWarning(Number(event.target.value))}
+                        />
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                  ) : skus.map((sku, index) => (
+                    <tr className="transition-colors hover:bg-surface-container-low/60" key={sku.id ?? `new-${index}`}>
+                      <td className="min-w-40 px-3 py-3">
+                        <span aria-label={`Phân loại SKU ${index + 1}`} className="block max-w-32 truncate whitespace-nowrap font-semibold text-on-surface" title={sku.variantName}>{sku.variantName}</span>
+                      </td>
+                      <td className="min-w-36 px-3 py-3">
+                        <span aria-label={`Mã SKU ${index + 1}`} className="block max-w-36 truncate whitespace-nowrap font-mono text-xs text-on-surface-variant" title={sku.skuCode}>{sku.skuCode}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span aria-label={`Mã phụ AI ${index + 1}`} className={`${styles.editSkuAiCodeInput} block truncate whitespace-nowrap font-mono text-xs font-bold text-primary`} title={sku.aiCode || undefined}>{sku.aiCode || "—"}</span>
+                      </td>
+                      <td className="w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-nowrap px-3 py-3 text-right font-medium text-on-surface">{sku.stock}</td>
+                      <td className="w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-nowrap px-3 py-3 text-right font-semibold text-emerald-700">{sku.availableStock}</td>
+                      <td className="w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-nowrap px-3 py-3 text-right text-amber-700">{sku.reservedStock}</td>
+                      <td className="px-3 py-3 text-right">
+                        <input
+                          aria-label={`Ngưỡng cảnh báo SKU ${index + 1}`}
+                          className={`${styles.editSkuTableControl} ${styles.editStockWarningInput} h-9 rounded-md border border-outline-variant bg-white px-2 text-right font-medium text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-container-low`}
+                          disabled={saving || uploading}
+                          type="number"
+                          min="0"
+                          title={`Ngưỡng cảnh báo: ${stockWarning}. Thông báo khi tồn kho thấp hơn mức này.`}
+                          value={stockWarning}
+                          onChange={(event) => setStockWarning(Number(event.target.value))}
+                        />
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span aria-label={`Giá Flash Live SKU ${index + 1}`} className="block truncate whitespace-nowrap text-right font-bold text-on-surface" title={sku.price}>{sku.price}</span>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <select aria-label={`Trạng thái SKU ${index + 1}`} className={`${styles.editSkuTableControl} ${styles.editSkuStatusSelect} h-8 truncate whitespace-nowrap rounded-full border border-outline-variant bg-white px-2 text-[11px] font-semibold text-on-surface`} disabled={saving || uploading || status === "discontinued"} title={status === "discontinued" ? "Sản phẩm đang ngừng bán; trạng thái riêng của SKU sẽ được giữ lại." : statusLabels[sku.status]} value={status === "discontinued" ? "discontinued" : sku.status} onChange={(event) => updateSkuField(index, "status", event.target.value)}>
+                          <option value="active">Đang bán</option>
+                          <option value="archived">Đã lưu trữ</option>
+                          <option value="discontinued">Ngừng bán</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <button
+                          aria-label={`Ngừng bán SKU ${sku.skuCode}`}
+                          className="rounded p-1 text-on-surface-variant transition-colors hover:bg-rose-50 hover:text-rose-700"
+                          type="button"
+                          disabled={saving || uploading}
+                          onClick={() => updateSkuField(index, "status", "discontinued")}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {skus.length === 0 ? (
-              <p className="rounded-lg bg-surface-container-low p-4 text-body-sm text-on-surface-variant">Sản phẩm chưa có SKU nào.</p>
-            ) : (
-              <div className="space-y-3">
-                {skus.map((sku, index) => (
-                  <div className="grid grid-cols-1 gap-3 rounded-lg border border-outline-variant p-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_0.7fr_0.7fr_0.8fr_auto]" key={sku.id ?? `new-${index}`}>
-                    <div>
-                      <label className={labelClass} htmlFor={`sku-code-${index}`}>Mã SKU</label>
-                      <input id={`sku-code-${index}`} className={inputClass} disabled={saving || uploading} maxLength={50} value={sku.skuCode} onChange={(event) => updateSkuField(index, "skuCode", event.target.value)} />
-                    </div>
-                    <div>
-                      <label className={labelClass} htmlFor={`sku-variant-${index}`}>Phân loại</label>
-                      <input id={`sku-variant-${index}`} className={inputClass} disabled={saving || uploading} maxLength={150} value={sku.variantName} onChange={(event) => updateSkuField(index, "variantName", event.target.value)} />
-                    </div>
-                    <div>
-                      <label className={labelClass} htmlFor={`sku-price-${index}`}>Giá (VND)</label>
-                      <input id={`sku-price-${index}`} className={inputClass} disabled={saving || uploading} min="0" type="number" value={sku.price} onChange={(event) => updateSkuField(index, "price", event.target.value)} />
-                    </div>
-                    <div>
-                      <label className={labelClass} htmlFor={`sku-aicode-${index}`}>Mã AI</label>
-                      <input id={`sku-aicode-${index}`} className={inputClass} disabled={saving || uploading} maxLength={50} placeholder="VD: AO01TM" value={sku.aiCode} onChange={(event) => updateSkuField(index, "aiCode", event.target.value)} />
-                    </div>
-                    <div>
-                      <label className={labelClass} htmlFor={`sku-stock-${index}`}>Tồn kho</label>
-                      <input id={`sku-stock-${index}`} className={inputClass} disabled={saving || uploading} type="number" min="0" value={sku.stock} onChange={(event) => updateSkuField(index, "stock", Number(event.target.value))} />
-                    </div>
-                    <div>
-                      <label className={labelClass} htmlFor={`sku-status-${index}`}>Trạng thái SKU</label>
-                      <select id={`sku-status-${index}`} className={inputClass} disabled={saving || uploading} value={sku.status} onChange={(event) => updateSkuField(index, "status", event.target.value)}>
-                        <option value="active">Đang bán</option>
-                        <option value="archived">Lưu trữ</option>
-                        <option value="discontinued">Ngừng kinh doanh</option>
-                      </select>
-                    </div>
-                    {sku.id && sku.status !== "discontinued" && (
-                      <button
-                        aria-label={`Ngừng kinh doanh SKU ${sku.skuCode}`}
-                        className="inline-flex h-10 items-center justify-center self-end rounded-lg border border-rose-200 px-3 text-rose-700 hover:bg-rose-50"
-                        type="button"
-                        disabled={saving || uploading}
-                        onClick={() => updateSkuField(index, "status", "discontinued")}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </button>
-                    )}
-                    {!sku.id && (
-                      <button
-                        aria-label={`Xóa SKU mới ${index + 1}`}
-                        className="inline-flex h-10 items-center justify-center self-end rounded-lg border border-rose-200 px-3 text-rose-700 hover:bg-rose-50"
-                        type="button"
-                        disabled={saving || uploading}
-                        onClick={() => setSkus((current) => current.filter((_, i) => i !== index))}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </Card>
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-5 xl:col-span-4">
+        <aside className="flex min-w-0 flex-col gap-6 xl:col-span-4">
           <Card className="!p-4 md:!p-5">
             <h2 className="mb-3 flex items-center gap-2 font-title-sm text-title-sm font-semibold">
-              <Package size={18} className="text-primary" aria-hidden="true" /> Trạng thái bán hàng
+              <ToggleRight size={20} className="block w-5 shrink-0 text-primary" aria-hidden="true" /> Trạng thái bán hàng
             </h2>
             <div className="space-y-2">
               {(["active", "archived", "discontinued"] as const).map((value) => (
@@ -604,7 +783,11 @@ export function EditProductPage({ productId }: EditProductPageProps) {
                   <span className="min-w-0 flex-1">
                     <strong className="text-label-md">{statusLabels[value]}</strong>
                     <span className="mt-0.5 block text-[11px] leading-snug text-on-surface-variant">
-                      {value === "active" ? "Sản phẩm có thể được hiển thị và bán." : value === "archived" ? "Ẩn khỏi danh sách sản phẩm đang bán." : "Đánh dấu sản phẩm không còn kinh doanh."}
+                      {value === "active"
+                        ? "Hiển thị trong giỏ livestream và cho phép chốt đơn."
+                        : value === "archived"
+                          ? "Sản phẩm hết tồn hoặc đã được lưu trữ."
+                          : "Khóa mã chốt đơn và ẩn khỏi catalog."}
                     </span>
                   </span>
                 </label>
@@ -615,23 +798,23 @@ export function EditProductPage({ productId }: EditProductPageProps) {
           <Card className="!p-4 md:!p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 font-title-sm text-title-sm font-semibold">
-                <ImagePlus size={18} className="text-primary" aria-hidden="true" /> Hình ảnh ({product.images.length}/8)
+                <ImagePlus size={20} className="block w-5 shrink-0 text-primary" aria-hidden="true" /> Hình ảnh sản phẩm ({product.images.length}/8)
               </h2>
-              <span className="text-label-sm text-on-surface-variant">JPEG, PNG, WebP · tối đa 5MB</span>
+              <span className="text-label-sm text-on-surface-variant">Tối đa 5MB / ảnh</span>
             </div>
             {product.images.length > 0 && (
-              <div className="mb-3 grid grid-cols-2 gap-2.5">
+              <div className="mb-3 grid grid-cols-3 gap-2.5">
                 {product.images.map((image) => (
                   <div className="group relative aspect-square overflow-hidden rounded-lg border border-outline-variant bg-surface-container" key={image.id}>
                     <Image fill unoptimized sizes="(max-width: 1280px) 45vw, 15vw" className="object-cover" src={image.url} alt={`Ảnh sản phẩm ${product.name}`} />
                     {image.isPrimary && <span className="absolute bottom-1 left-1 inline-flex items-center gap-1 rounded bg-inverse-surface/85 px-1.5 py-1 text-[10px] font-semibold text-white"><Star size={11} fill="currentColor" /> Ảnh đại diện</span>}
-                    <div className="absolute right-1 top-1 flex gap-1">
+                    <div className="absolute inset-0 flex items-center justify-center gap-1 bg-inverse-surface/40 opacity-0 transition-opacity group-hover:opacity-100">
                       {!image.isPrimary && (
-                        <button aria-label="Đặt làm ảnh đại diện" className="rounded bg-white/95 p-1.5 text-primary shadow hover:bg-white" type="button" disabled={saving || uploading} onClick={() => void setPrimaryImage(image.id)}>
+                        <button aria-label="Đặt làm ảnh đại diện" className="rounded bg-white p-1.5 text-primary shadow hover:bg-slate-100" type="button" disabled={saving || uploading} onClick={() => void setPrimaryImage(image.id)}>
                           <Star size={14} aria-hidden="true" />
                         </button>
                       )}
-                      <button aria-label="Xóa ảnh" className="rounded bg-white/95 p-1.5 text-error shadow hover:bg-white" type="button" disabled={saving || uploading} onClick={() => void deleteImage(image.id)}>
+                      <button aria-label="Xóa ảnh" className="rounded bg-white p-1.5 text-error shadow hover:bg-slate-100" type="button" disabled={saving || uploading} onClick={() => void deleteImage(image.id)}>
                         <Trash2 size={14} aria-hidden="true" />
                       </button>
                     </div>
@@ -641,14 +824,14 @@ export function EditProductPage({ productId }: EditProductPageProps) {
             )}
             {product.images.length < 8 && (
               <button
-                className="flex min-h-24 w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-outline-variant bg-surface-container-low px-4 py-4 text-center hover:border-primary hover:bg-primary-fixed/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex min-h-24 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-outline-variant px-4 py-4 text-center transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || saving}
               >
-                {uploading ? <LoaderCircle className="mb-1 animate-spin text-primary" size={20} aria-hidden="true" /> : <Upload className="mb-1 text-primary" size={20} aria-hidden="true" />}
-                <span className="text-label-md font-semibold">{uploading ? "Đang tải ảnh..." : "Tải ảnh lên"}</span>
-                <span className="mt-0.5 text-label-sm text-on-surface-variant">Chọn một hoặc nhiều ảnh sản phẩm</span>
+                {uploading ? <LoaderCircle className="mb-1 animate-spin text-primary" size={25} aria-hidden="true" /> : <Upload className="mb-1 text-primary" size={25} aria-hidden="true" />}
+                <span className="text-label-md font-semibold">{uploading ? "Đang tải ảnh..." : "Tải thêm hình ảnh hoặc kéo thả"}</span>
+                <span className="mt-0.5 text-[11px] text-on-surface-variant">JPG, PNG, WEBP (khuyên dùng tỷ lệ 1:1)</span>
               </button>
             )}
             <input
@@ -666,12 +849,58 @@ export function EditProductPage({ productId }: EditProductPageProps) {
           </Card>
 
           <Card className="!p-4 md:!p-5">
-            <h2 className="mb-2 font-title-sm text-title-sm font-semibold">Thông tin hệ thống</h2>
+            <h2 className="mb-3 flex items-center gap-2 font-title-sm text-title-sm font-semibold">
+              <History size={20} className="block w-5 shrink-0 text-primary" aria-hidden="true" />
+              Lịch sử chỉnh sửa &amp; thông tin hệ thống
+            </h2>
             <dl className="space-y-2 text-body-sm">
-              <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Mã sản phẩm</dt><dd className="font-mono font-semibold">{product.id}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Mã chốt đơn chính</dt><dd className="font-mono font-semibold">{code}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Ngày tạo</dt><dd>{new Date(product.createdAt).toLocaleDateString("vi-VN")}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Cập nhật lần cuối</dt><dd>{new Date(product.updatedAt).toLocaleDateString("vi-VN")}</dd></div>
             </dl>
+            <button
+              aria-expanded={historyExpanded}
+              className="mt-4 inline-flex items-center gap-1.5 text-label-md font-semibold text-primary hover:underline disabled:cursor-wait disabled:opacity-60"
+              type="button"
+              disabled={historyLoading}
+              onClick={() => void toggleHistory()}
+            >
+              {historyExpanded ? <ChevronDown size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+              {historyLoading ? "Đang tải lịch sử..." : "Xem chi tiết lịch sử"}
+            </button>
+            {historyExpanded && (
+              <div className="mt-3 border-t border-outline-variant pt-3" aria-live="polite">
+                {historyError ? (
+                  <p className="text-body-sm text-error" role="alert">{historyError}</p>
+                ) : historyLoading ? (
+                  <p className="text-body-sm text-on-surface-variant">Đang tải lịch sử chỉnh sửa...</p>
+                ) : historyEntries.length === 0 ? (
+                  <p className="text-body-sm text-on-surface-variant">Chưa có lịch sử chỉnh sửa được ghi nhận.</p>
+                ) : (
+                  <ol className="space-y-4">
+                    {historyEntries.map((entry) => (
+                      <li className="border-l-2 border-primary/30 pl-3" key={entry.id}>
+                        <p className="text-label-md font-semibold text-on-surface">{entry.summary}</p>
+                        <time className="mt-0.5 block text-label-sm text-on-surface-variant" dateTime={entry.createdAt}>
+                          {new Date(entry.createdAt).toLocaleString("vi-VN")}
+                        </time>
+                        <ul className="mt-2 space-y-1.5 text-body-sm">
+                          {Object.entries(entry.changes).map(([field, change]) => (
+                            <li className="break-words" key={field}>
+                              <span className="font-medium">{historyFieldLabels[field] ?? field}</span>
+                              {": "}
+                              <span>{formatHistoryValue(field, change.from)}</span>
+                              {" → "}
+                              <span>{formatHistoryValue(field, change.to)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
           </Card>
         </aside>
       </div>

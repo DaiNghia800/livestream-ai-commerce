@@ -1,5 +1,7 @@
 # Thiết kế: Vận chuyển & Vận đơn
 
+> Trạng thái nghiệm thu hiện tại và các khoảng trống production: [Rà soát 19/10/2026](../../audit-orders-payments-shipping-2026-10-19.md). Các dấu ✅ bên dưới thể hiện đã triển khai trong repo/sandbox, không đồng nghĩa đã nghiệm thu với mọi hãng và tiền thật.
+
 > Nối tiếp [Đơn nháp & Giữ hàng](../draft-order-reservation/README.md). Đọc mục 7 của tài liệu đó trước — bộ bẫy BẪY-01…12 ở đấy vẫn còn hiệu lực, tài liệu này chỉ thêm bẫy mới.
 > Use case gốc: `docs/detailed_use_case/UCCT - Tạo vận đơn.png` và `UCCT - Theo dõi đơn hàng.png`
 
