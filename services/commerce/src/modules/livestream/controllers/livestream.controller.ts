@@ -16,7 +16,7 @@ export class LivestreamController {
       // 1. Validate payload with strict Zod schema
       const validatedInput = CreateLivestreamRequestSchema.parse(req.body);
 
-      // 2. Merchant ID is guaranteed by requireMerchantHeader middleware
+      // 2. Merchant ID is resolved from the authenticated shop owner.
       const merchantId = req.merchantId!;
 
       // 3. Create livestream via business service
@@ -109,7 +109,49 @@ export class LivestreamController {
         return;
       }
 
-      res.status(200).json(livestream);
+      const {
+        id: publicId,
+        title,
+        description,
+        coverImageKey,
+        status,
+        playbackUrl,
+        scheduledAt,
+        startedAt,
+        endedAt,
+        createdAt,
+        updatedAt,
+        products,
+      } = livestream;
+      res.status(200).json({
+        id: publicId,
+        title,
+        description,
+        coverImageKey,
+        status,
+        playbackUrl,
+        scheduledAt,
+        startedAt,
+        endedAt,
+        createdAt,
+        updatedAt,
+        products: products.map((product) => ({
+          id: product.id,
+          livestreamId: product.livestreamId,
+          productId: product.productId,
+          variantId: product.variantId,
+          displayOrder: product.displayOrder,
+          isFeatured: product.isFeatured,
+          createdAt: product.createdAt,
+          productName: product.productName,
+          productCode: product.productCode,
+          productDescription: product.productDescription,
+          skuCode: product.skuCode,
+          variantName: product.variantName,
+          price: product.price,
+          imageUrl: product.imageUrl,
+        })),
+      });
     } catch (err) {
       if (err instanceof ZodError) {
         res.status(400).json({
@@ -135,7 +177,8 @@ export class LivestreamController {
 
       const updated = await this.livestreamService.updateLivestreamStatus(
         id,
-        status
+        status,
+        req.merchantId!
       );
       if (!updated) {
         res.status(404).json({
@@ -179,7 +222,8 @@ export class LivestreamController {
     try {
       const { id } = GetLivestreamParamSchema.parse(req.params);
       const config = await this.livestreamService.getOrCreateIvsStreamConfig(
-        id
+        id,
+        req.merchantId!
       );
 
       if (!config) {
@@ -220,4 +264,3 @@ export class LivestreamController {
     }
   };
 }
-

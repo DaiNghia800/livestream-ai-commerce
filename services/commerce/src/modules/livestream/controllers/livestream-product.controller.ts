@@ -8,7 +8,6 @@ import {
 import {
   LivestreamProductService,
   LivestreamNotFoundError,
-  ForbiddenMerchantError,
   InvalidLivestreamStatusError,
   DuplicateProductError,
   ProductNotInLivestreamError,
@@ -141,14 +140,6 @@ export class LivestreamProductController {
     if (err instanceof ProductNotInLivestreamError) {
       res.status(404).json({
         error: "NotFoundError",
-        message: err.message,
-      });
-      return;
-    }
-
-    if (err instanceof ForbiddenMerchantError) {
-      res.status(403).json({
-        error: "ForbiddenError",
         message: err.message,
       });
       return;

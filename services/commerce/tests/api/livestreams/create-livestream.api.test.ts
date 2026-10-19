@@ -1,6 +1,7 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import {
     InMemoryLivestreamRepository,
 } from "../../../src/modules/livestream/repositories/livestream.repository.js";
@@ -27,7 +28,13 @@ describe("POST /api/livestreams - API/Component Tests", () => {
         // Tạo repository mới cho mỗi test để tránh dữ liệu test trước
         // ảnh hưởng đến test sau.
         mockRepo = new InMemoryLivestreamRepository();
-        app = createApp(mockRepo);
+        app = createApp(
+            mockRepo,
+            undefined,
+            undefined,
+            undefined,
+            createShopTestAuthRepository()
+        );
     });
 
     // =========================================================
@@ -37,7 +44,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-001 - Create livestream with valid title -> HTTP 201", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live Sale",
             });
@@ -49,7 +56,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-002 - Missing title -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 description: "Không có title",
             });
@@ -65,7 +72,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it('TC-CL-003 - Empty title "" -> HTTP 400', async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "",
             });
@@ -77,7 +84,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-004 - Whitespace-only title -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "     ",
             });
@@ -89,7 +96,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-005 - Trim leading and trailing whitespace from title", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "   Live Sale   ",
             });
@@ -108,7 +115,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title,
             });
@@ -123,7 +130,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title,
             });
@@ -136,7 +143,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-008 - Title with 256 characters -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "A".repeat(256),
             });
@@ -152,7 +159,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-009 - Omit description -> HTTP 201 and description is null", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live without description",
             });
@@ -166,7 +173,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live Sale",
                 description,
@@ -183,7 +190,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-011 - Omit scheduledAt -> HTTP 201 and scheduledAt is null", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live without schedule",
             });
@@ -197,7 +204,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Scheduled Live",
                 scheduledAt,
@@ -210,7 +217,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-013 - Invalid scheduledAt -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Scheduled Live",
                 scheduledAt: "abc",
@@ -227,7 +234,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it('TC-CL-014 - New livestream has default status "draft"', async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Draft Livestream",
             });
@@ -239,7 +246,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it('TC-CL-014B - Explicit status "scheduled" creates scheduled livestream', async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Scheduled Livestream",
                 status: "scheduled",
@@ -256,7 +263,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-015 - Valid Merchant UUID -> livestream belongs to merchant", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Merchant Live",
             });
@@ -265,31 +272,27 @@ describe("POST /api/livestreams - API/Component Tests", () => {
         expect(res.body.merchantId).toBe(VALID_MERCHANT_ID);
     });
 
-    it("TC-CL-016 - Invalid Merchant UUID -> HTTP 400", async () => {
+    it("TC-CL-016 - Ignores a spoofed merchant header", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", "abc")
+            .set({ ...authHeaderFor(7), "X-Merchant-Id": "abc" })
             .send({
                 title: "Invalid Merchant",
             });
 
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe("BadRequest");
-        expect(res.body.message).toContain("Must be a valid UUID");
+        expect(res.status).toBe(201);
+        expect(res.body.merchantId).toBe(VALID_MERCHANT_ID);
     });
 
-    it("TC-CL-017 - Missing X-Merchant-Id -> HTTP 400", async () => {
+    it("TC-CL-017 - Missing bearer token -> HTTP 401", async () => {
         const res = await request(app)
             .post("/api/livestreams")
             .send({
                 title: "Missing Merchant",
             });
 
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe("BadRequest");
-        expect(res.body.message).toContain(
-            "X-Merchant-Id header is required",
-        );
+        expect(res.status).toBe(401);
+        expect(res.body.error).toBe("Unauthorized");
     });
 
     // =========================================================
@@ -299,7 +302,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-018 - Client provides status -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Hack Status",
                 status: "live",
@@ -312,7 +315,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-019 - Client provides id -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 id: "550e8400-e29b-41d4-a716-446655440000",
                 title: "Custom ID",
@@ -325,7 +328,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-020 - Client provides merchantId in body -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Merchant ID Injection",
                 merchantId: "550e8400-e29b-41d4-a716-446655440000",
@@ -344,7 +347,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Full Livestream Response",
                 description: "Test response",
@@ -384,7 +387,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 id: rejectedId,
                 title: "",
@@ -409,7 +412,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
 
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Internal Error Live",
             });
@@ -427,7 +430,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
         const coverKey = "livestreams/covers/a1b2c3d4-e5f6-47a8-b9c0-123456789abc.webp";
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live With Cover Key",
                 coverImageKey: coverKey,
@@ -443,7 +446,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-026 - Create livestream with coverImageKey null -> HTTP 201 with coverImageKey null", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live Without Cover Null",
                 coverImageKey: null,
@@ -456,7 +459,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-027 - Create livestream omitting coverImageKey -> HTTP 201 with coverImageKey null", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live Without Cover Omitted",
             });
@@ -468,7 +471,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-028 - Reject coverImageKey exceeding 1024 characters -> HTTP 400", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .send({
                 title: "Live With Huge Key",
                 coverImageKey: "a".repeat(1025),
@@ -482,7 +485,7 @@ describe("POST /api/livestreams - API/Component Tests", () => {
     it("TC-CL-029 - Reject malformed JSON body -> HTTP 400 BadRequest", async () => {
         const res = await request(app)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", VALID_MERCHANT_ID)
+            .set(authHeaderFor(7))
             .set("Content-Type", "application/json")
             .send('{"title": "Unclosed JSON');
 

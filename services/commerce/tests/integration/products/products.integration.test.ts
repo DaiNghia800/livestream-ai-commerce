@@ -4,12 +4,35 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { PostgresProductRepository } from "../../../src/modules/product/repositories/product.repository.js";
 import { pool, runMigrations } from "../../../src/shared/database/database.js";
+import {
+  authHeaderFor,
+  createShopTestAuthRepository,
+} from "../../helpers/auth.helper.js";
 
 describe("Products API - PostgreSQL integration", () => {
   const shopId = 2147483000;
+  const otherShopId = shopId + 1;
+  const merchantId = "a0000000-0000-0000-0000-000000000021";
   const code = `IT-${randomUUID()}`;
   const skuCode = `SKU-${randomUUID()}`;
-  const app = createApp(undefined, undefined, undefined, new PostgresProductRepository());
+  const authRepository = createShopTestAuthRepository([
+    { userId: 21, shop: { id: shopId, merchantId, name: "Integration shop" } },
+    {
+      userId: 22,
+      shop: {
+        id: otherShopId,
+        merchantId: "a0000000-0000-0000-0000-000000000022",
+        name: "Other integration shop",
+      },
+    },
+  ]);
+  const app = createApp(
+    undefined,
+    undefined,
+    undefined,
+    new PostgresProductRepository(),
+    authRepository
+  );
   let productId: string | undefined;
 
   beforeAll(async () => {
@@ -26,7 +49,7 @@ describe("Products API - PostgreSQL integration", () => {
   it("migrates catalog tables and supports product, SKU and archive operations", async () => {
     const create = await request(app)
       .post("/api/products")
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({
         code,
         name: "Integration product",
@@ -59,7 +82,7 @@ describe("Products API - PostgreSQL integration", () => {
 
     const updateMetadata = await request(app)
       .patch(`/api/products/${productId}`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({ brand: "Updated integration brand", listPrice: 175000, stockWarning: 21 });
     expect(updateMetadata.status).toBe(200);
     expect(updateMetadata.body.brand).toBe("Updated integration brand");
@@ -68,14 +91,14 @@ describe("Products API - PostgreSQL integration", () => {
 
     const updateAiCode = await request(app)
       .patch(`/api/products/${productId}/skus/${create.body.skus[0].id}`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({ aiCode: "UPDATED-AI" });
     expect(updateAiCode.status).toBe(200);
     expect(updateAiCode.body.aiCode).toBe("UPDATED-AI");
 
     const reloaded = await request(app)
       .get(`/api/products/${productId}`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(reloaded.body.stockWarning).toBe(21);
     expect(reloaded.body.brand).toBe("Updated integration brand");
     expect(reloaded.body.listPrice).toBe("175000.00");
@@ -83,7 +106,7 @@ describe("Products API - PostgreSQL integration", () => {
 
     const history = await request(app)
       .get(`/api/products/${productId}/history`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(history.status).toBe(200);
     expect(history.body.data).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -102,32 +125,32 @@ describe("Products API - PostgreSQL integration", () => {
 
     const duplicateSku = await request(app)
       .post(`/api/products/${productId}/skus`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({ skuCode, variantName: "Duplicate", price: 125000 });
     expect(duplicateSku.status).toBe(409);
 
     const hiddenFromOtherShop = await request(app)
       .get(`/api/products/${productId}`)
-      .set("X-Shop-Id", String(shopId + 1));
+      .set(authHeaderFor(22));
     expect(hiddenFromOtherShop.status).toBe(404);
 
     const list = await request(app)
       .get(`/api/products?q=${encodeURIComponent(skuCode)}&page=1&pageSize=10`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(list.status).toBe(200);
     expect(list.body.total).toBe(1);
     expect(list.body.data[0].id).toBe(productId);
 
     const update = await request(app)
       .patch(`/api/products/${productId}`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({ name: "Updated integration product" });
     expect(update.status).toBe(200);
     expect(update.body.name).toBe("Updated integration product");
 
     const addImage = await request(app)
       .post(`/api/products/${productId}/images`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({
         url: "https://example.com/product-second.jpg",
         contentHash: "b".repeat(64),
@@ -139,36 +162,36 @@ describe("Products API - PostgreSQL integration", () => {
 
     const duplicateImage = await request(app)
       .post(`/api/products/${productId}/images`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({ url: "https://example.com/product-copy.jpg", contentHash: "b".repeat(64) });
     expect(duplicateImage.status).toBe(409);
 
     const selectImage = await request(app)
       .patch(`/api/products/${productId}/images/${addImage.body.id}`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(21))
       .send({ isPrimary: true });
     expect(selectImage.status).toBe(200);
     expect(selectImage.body.isPrimary).toBe(true);
 
     const deletePrimary = await request(app)
       .delete(`/api/products/${productId}/images/${addImage.body.id}`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(deletePrimary.status).toBe(200);
     const afterImageDelete = await request(app)
       .get(`/api/products/${productId}`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(afterImageDelete.body.images).toHaveLength(1);
     expect(afterImageDelete.body.images[0].isPrimary).toBe(true);
 
     const archive = await request(app)
       .delete(`/api/products/${productId}`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(archive.status).toBe(200);
     expect(archive.body.status).toBe("archived");
 
     const finalHistory = await request(app)
       .get(`/api/products/${productId}/history`)
-      .set("X-Shop-Id", String(shopId));
+      .set(authHeaderFor(21));
     expect(finalHistory.body.data.map((entry: { summary: string }) => entry.summary)).toEqual(
       expect.arrayContaining([
         "Thêm hình ảnh sản phẩm",

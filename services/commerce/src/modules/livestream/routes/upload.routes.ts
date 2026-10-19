@@ -1,14 +1,18 @@
 import express, { Router } from "express";
 import { UploadController } from "../controllers/upload.controller.js";
-import { requireMerchantHeader } from "../../../shared/middleware/merchant.middleware.js";
 import { S3StorageService } from "../../../shared/storage/s3-storage.service.js";
 import { config } from "../../../config.js";
 import { LocalProductImageStorageService } from "../../../shared/storage/local-product-image-storage.service.js";
+import type { ShopRouteAuthorization } from "../../../shared/auth/shop-context.middleware.js";
 
 export function createUploadRouter(
   customS3Service?: S3StorageService,
-  customLocalProductImageStorage?: LocalProductImageStorageService
+  customLocalProductImageStorage?: LocalProductImageStorageService,
+  shopAuthorization?: ShopRouteAuthorization
 ): Router {
+  if (!shopAuthorization) {
+    throw new Error("Shop route authorization must be provided");
+  }
   const router = Router();
   const s3Service =
     customS3Service ||
@@ -27,17 +31,23 @@ export function createUploadRouter(
 
   router.post(
     "/livestream-cover/presign",
-    requireMerchantHeader,
+    shopAuthorization.authenticate,
+    shopAuthorization.requireShopOwner,
+    shopAuthorization.resolveShopContext,
     controller.presignCoverUpload
   );
   router.post(
     "/product-image/presign",
-    requireMerchantHeader,
+    shopAuthorization.authenticate,
+    shopAuthorization.requireShopOwner,
+    shopAuthorization.resolveShopContext,
     controller.presignProductImageUpload
   );
   router.put(
     "/product-image/:fileName",
-    requireMerchantHeader,
+    shopAuthorization.authenticate,
+    shopAuthorization.requireShopOwner,
+    shopAuthorization.resolveShopContext,
     (req, res, next) => {
       express.raw({
         type: ["image/jpeg", "image/png", "image/webp"],

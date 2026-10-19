@@ -6,29 +6,50 @@ import { createApp } from "../../../src/app.js";
 import { PostgresInventoryRepository } from "../../../src/modules/inventory/repositories/inventory.repository.js";
 import { PostgresProductRepository } from "../../../src/modules/product/repositories/product.repository.js";
 import { pool, runMigrations } from "../../../src/shared/database/database.js";
+import {
+  authHeaderFor,
+  createShopTestAuthRepository,
+} from "../../helpers/auth.helper.js";
 
 describe("Inventory API - PostgreSQL integration", () => {
   const shopId = 2147482000;
   const otherShopId = 2147482001;
   const skuCode = `INV-${randomUUID()}`;
+  const headers = authHeaderFor(26);
   const app = createApp(
     undefined,
     undefined,
     undefined,
     new PostgresProductRepository(),
-    undefined,
+    createShopTestAuthRepository([
+      {
+        userId: 26,
+        shop: {
+          id: shopId,
+          merchantId: "a0000000-0000-0000-0000-000000000026",
+          name: "Inventory integration shop",
+        },
+      },
+      {
+        userId: 27,
+        shop: {
+          id: otherShopId,
+          merchantId: "a0000000-0000-0000-0000-000000000027",
+          name: "Other inventory integration shop",
+        },
+      },
+    ]),
     undefined,
     new PostgresInventoryRepository()
   );
   let productId: string;
   let skuId: string;
-  const headers = { "X-Shop-Id": String(shopId), "X-User-Id": "5" };
 
   beforeAll(async () => {
     await runMigrations();
     const create = await request(app)
       .post("/api/products")
-      .set("X-Shop-Id", String(shopId))
+      .set(headers)
       .send({
         code: `INV-P-${randomUUID()}`,
         name: "Inventory fixture",
@@ -59,7 +80,7 @@ describe("Inventory API - PostgreSQL integration", () => {
   it("isolates inventory by shop", async () => {
     const response = await request(app)
       .get(`/api/inventory/skus/${skuId}`)
-      .set("X-Shop-Id", String(otherShopId));
+      .set(authHeaderFor(27));
     expect(response.status).toBe(404);
   });
 
@@ -70,7 +91,7 @@ describe("Inventory API - PostgreSQL integration", () => {
       .send({ delta: 5, reason: "stock_in", note: "restock" });
     expect(inc.status).toBe(200);
     expect(inc.body.item.onHandQuantity).toBe(25);
-    expect(inc.body.adjustment).toMatchObject({ delta: 5, onHandAfter: 25, createdBy: "5" });
+    expect(inc.body.adjustment).toMatchObject({ delta: 5, onHandAfter: 25, createdBy: "26" });
 
     const set = await request(app)
       .post(`/api/inventory/skus/${skuId}/adjust`)
@@ -225,15 +246,15 @@ describe("Inventory API - PostgreSQL integration", () => {
 
     const otherShop = await request(app)
       .patch(`/api/inventory/skus/${skuId}/threshold`)
-      .set("X-Shop-Id", String(otherShopId))
+      .set(authHeaderFor(27))
       .send({ lowStockThreshold: 3 });
     expect(otherShop.status).toBe(404);
 
     const anonymous = await request(app)
       .post(`/api/inventory/skus/${skuId}/adjust`)
-      .set("X-Shop-Id", String(shopId))
+      .set(headers)
       .send({ delta: 1, reason: "correction" });
-    expect(anonymous.body.adjustment.createdBy).toBeNull();
+    expect(anonymous.body.adjustment.createdBy).toBe("26");
   });
 
   it("exports the filtered history as a styled xlsx workbook", async () => {
@@ -314,11 +335,11 @@ describe("Inventory API - PostgreSQL integration", () => {
 
     const otherShopRead = await request(app)
       .get(`${draftUrl}?productId=${productId}`)
-      .set("X-Shop-Id", String(otherShopId));
+      .set(authHeaderFor(27));
     expect(otherShopRead.body.data).toBeNull();
     const otherShopSave = await request(app)
       .put(draftUrl)
-      .set("X-Shop-Id", String(otherShopId))
+      .set(authHeaderFor(27))
       .send({ productId, items: [{ skuId, delta: 1, reason: "x" }] });
     expect(otherShopSave.status).toBe(404);
 
@@ -326,7 +347,7 @@ describe("Inventory API - PostgreSQL integration", () => {
       .onHandQuantity as number;
     const wrongShopConfirm = await request(app)
       .post("/api/inventory/adjustments/batch")
-      .set("X-Shop-Id", String(otherShopId))
+      .set(authHeaderFor(27))
       .send({ items: [{ skuId, delta: 1, reason: "x" }], documentId });
     expect(wrongShopConfirm.status).toBe(404);
 

@@ -72,9 +72,10 @@ export class LivestreamService {
 
   async updateLivestreamStatus(
     id: string,
-    status: LivestreamStatus
+    status: LivestreamStatus,
+    merchantId: string
   ): Promise<Livestream | null> {
-    const existing = await this.repository.findById(id);
+    const existing = await this.repository.findByIdForMerchant(id, merchantId);
     if (!existing) {
       return null;
     }
@@ -82,7 +83,11 @@ export class LivestreamService {
       throw new Error("Cannot restart an ended livestream");
     }
 
-    const updated = await this.repository.updateStatus(id, status);
+    const updated = await this.repository.updateStatusForMerchant(
+      id,
+      status,
+      merchantId
+    );
 
     // Khi phiên kết thúc (ended) hoặc bị hủy (cancelled), tự động dọn dẹp xóa kênh trên AWS IVS ngầm
     if (
@@ -101,13 +106,13 @@ export class LivestreamService {
     return updated;
   }
 
-  async getOrCreateIvsStreamConfig(id: string): Promise<{
+  async getOrCreateIvsStreamConfig(id: string, merchantId: string): Promise<{
     channelArn: string;
     playbackUrl: string;
     ingestEndpoint: string;
     streamKey?: string;
   } | null> {
-    const livestream = await this.repository.findById(id);
+    const livestream = await this.repository.findByIdForMerchant(id, merchantId);
     if (!livestream) return null;
 
     if (!this.ivsService) {
@@ -131,11 +136,13 @@ export class LivestreamService {
 
     // 2. Nếu chưa có hoặc channel cũ không tìm thấy trên IVS -> Tạo channel IVS mới
     const newChannel = await this.ivsService.createChannel(livestream.title);
-    await this.repository.updateIvsChannel(
+    const updated = await this.repository.updateIvsChannelForMerchant(
       id,
       newChannel.channelArn,
-      newChannel.playbackUrl
+      newChannel.playbackUrl,
+      merchantId
     );
+    if (!updated) return null;
 
     return {
       channelArn: newChannel.channelArn,
@@ -145,4 +152,3 @@ export class LivestreamService {
     };
   }
 }
-

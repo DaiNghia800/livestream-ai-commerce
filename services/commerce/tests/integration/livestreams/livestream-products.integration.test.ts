@@ -1,8 +1,13 @@
+import { randomUUID } from "crypto";
 import request from "supertest";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { pool } from "../../../src/shared/database/database.js";
 import { PostgresLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
+import {
+    authHeaderFor,
+    createShopTestAuthRepository,
+} from "../../helpers/auth.helper.js";
 import { PostgresLivestreamProductRepository } from "../../../src/modules/livestream/repositories/livestream-product.repository.js";
 
 const UUID_REGEX =
@@ -11,7 +16,13 @@ const UUID_REGEX =
 describe("Livestream Products - PostgreSQL Integration Tests", () => {
   const liveRepo = new PostgresLivestreamRepository();
   const productRepo = new PostgresLivestreamProductRepository();
-  const liveApp = createApp(liveRepo, undefined, productRepo);
+  let liveApp: ReturnType<typeof createApp>;
+  let merchantId = "";
+  let shopId = 0;
+  let ownerId = "";
+  let productId1 = "";
+  let productId2 = "";
+  let livestreamIdForCleanup: string | undefined;
   let dbConnected = false;
 
   beforeAll(async () => {
@@ -22,6 +33,64 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
     } catch {
       dbConnected = false;
     }
+    if (!dbConnected) return;
+
+    merchantId = randomUUID();
+    const owner = await pool.query<{ id: string }>(
+      `INSERT INTO users (email, password_hash, full_name, role, is_active)
+       VALUES ($1, 'test-only-hash', 'Livestream integration owner', 'shop_owner', TRUE)
+       RETURNING id`,
+      [`livestream-integration-${randomUUID()}@example.test`]
+    );
+    ownerId = owner.rows[0].id;
+    const shop = await pool.query<{ id: number }>(
+      `INSERT INTO shops (owner_user_id, merchant_id, name)
+       VALUES ($1, $2, 'Livestream product integration shop')
+       RETURNING id`,
+      [ownerId, merchantId]
+    );
+    shopId = shop.rows[0].id;
+    const productCodes = [randomUUID(), randomUUID()];
+    const products = await pool.query<{ id: string; code: string }>(
+      `INSERT INTO products (shop_id, code, name)
+       VALUES ($1, $2, 'Livestream product fixture 1'),
+              ($1, $3, 'Livestream product fixture 2')
+       RETURNING id, code`,
+      [shopId, ...productCodes]
+    );
+    productId1 = products.rows.find((row) => row.code === productCodes[0])!.id;
+    productId2 = products.rows.find((row) => row.code === productCodes[1])!.id;
+    liveApp = createApp(
+      liveRepo,
+      undefined,
+      productRepo,
+      undefined,
+      createShopTestAuthRepository([
+          {
+              userId: 29,
+              shop: {
+                  id: shopId,
+                  merchantId,
+                  name: "Livestream product integration shop",
+              },
+          },
+      ])
+    );
+  });
+  afterAll(async () => {
+    if (!dbConnected) return;
+    if (livestreamIdForCleanup) {
+      await pool.query("DELETE FROM livestreams WHERE id = $1", [
+          livestreamIdForCleanup,
+      ]);
+    }
+    if (productId1 && productId2) {
+      await pool.query("DELETE FROM products WHERE id = ANY($1::bigint[])", [
+          [productId1, productId2],
+      ]);
+    }
+    if (shopId) await pool.query("DELETE FROM shops WHERE id = $1", [shopId]);
+    if (ownerId) await pool.query("DELETE FROM users WHERE id = $1", [ownerId]);
   });
 
   it("TC-LP-INT-001 - End-to-end add, list, update and remove products in PostgreSQL", async (ctx) => {
@@ -29,24 +98,22 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
       ctx.skip();
       return;
     }
-    const merchantId = "99999999-9999-4999-8999-999999999999";
-    const productId1 = "88888888-8888-4888-8888-888888888881";
-    const productId2 = "88888888-8888-4888-8888-888888888882";
 
     // 1. Create a live session in PostgreSQL
     const lsRes = await request(liveApp)
       .post("/api/livestreams")
-      .set("X-Merchant-Id", merchantId)
+      .set(authHeaderFor(29))
       .send({
         title: "Live Product Integration Test",
       });
     expect(lsRes.status).toBe(201);
-    const livestreamId = lsRes.body.id;
+    const livestreamId = lsRes.body.id as string;
+    livestreamIdForCleanup = livestreamId;
 
     // 2. Add product 1
     const add1Res = await request(liveApp)
       .post(`/api/livestreams/${livestreamId}/products`)
-      .set("X-Merchant-Id", merchantId)
+      .set(authHeaderFor(29))
       .send({
         productId: productId1,
         displayOrder: 1,
@@ -58,7 +125,7 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
     // 3. Add product 2 as featured
     const add2Res = await request(liveApp)
       .post(`/api/livestreams/${livestreamId}/products`)
-      .set("X-Merchant-Id", merchantId)
+      .set(authHeaderFor(29))
       .send({
         productId: productId2,
         displayOrder: 2,
@@ -79,7 +146,7 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
     // 5. Update product 1 to featured (which should unpin product 2)
     const updateRes = await request(liveApp)
       .patch(`/api/livestreams/${livestreamId}/products/${productId1}`)
-      .set("X-Merchant-Id", merchantId)
+      .set(authHeaderFor(29))
       .send({
         isFeatured: true,
         displayOrder: 0,
@@ -97,7 +164,7 @@ describe("Livestream Products - PostgreSQL Integration Tests", () => {
     // 6. Remove product 2
     const delRes = await request(liveApp)
       .delete(`/api/livestreams/${livestreamId}/products/${productId2}`)
-      .set("X-Merchant-Id", merchantId);
+      .set(authHeaderFor(29));
     expect(delRes.status).toBe(200);
 
     // Verify only 1 product remains

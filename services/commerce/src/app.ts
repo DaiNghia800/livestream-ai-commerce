@@ -23,6 +23,7 @@ import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 import { IIvsService } from "./shared/ivs/ivs.service.js";
 import { createAuthMiddleware } from "./shared/auth/auth.middleware.js";
+import { createShopRouteAuthorization } from "./shared/auth/shop-context.middleware.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
@@ -89,6 +90,10 @@ export function createApp(
   const authRepository: IAuthRepository =
     customAuthRepository ?? new PostgresAuthRepository();
   const authMiddleware = createAuthMiddleware(authRepository);
+  const shopAuthorization = createShopRouteAuthorization(
+    authRepository,
+    authMiddleware
+  );
 
   // Mount API routers
   const apiRouter = express.Router();
@@ -99,7 +104,8 @@ export function createApp(
     createLivestreamRouter(
       customRepository,
       customLivestreamProductRepository,
-      customIvsService
+      customIvsService,
+      shopAuthorization
     )
   );
   apiRouter.use("/orders", createOrderRouter());
@@ -107,10 +113,20 @@ export function createApp(
   apiRouter.use("/payments", createPaymentRouter());
   apiRouter.use(
     "/uploads",
-    createUploadRouter(customS3Service, localProductImageStorage)
+    createUploadRouter(
+      customS3Service,
+      localProductImageStorage,
+      shopAuthorization
+    )
   );
-  apiRouter.use("/products", createProductRouter(customProductRepository));
-  apiRouter.use("/inventory", createInventoryRouter(customInventoryRepository));
+  apiRouter.use(
+    "/products",
+    createProductRouter(customProductRepository, shopAuthorization)
+  );
+  apiRouter.use(
+    "/inventory",
+    createInventoryRouter(customInventoryRepository, shopAuthorization)
+  );
 
 
   app.use(config.apiPrefix, apiRouter);

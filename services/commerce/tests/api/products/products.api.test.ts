@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import {
   DuplicateProductCodeError,
   DuplicateProductImageError,
@@ -61,21 +62,36 @@ describe("Products API", () => {
       updateImage: vi.fn(),
       removeImage: vi.fn(),
     };
-    app = createApp(undefined, undefined, undefined, repository);
+    app = createApp(
+      undefined,
+      undefined,
+      undefined,
+      repository,
+      createShopTestAuthRepository()
+    );
   });
 
-  it("requires a positive X-Shop-Id for shop-scoped endpoints", async () => {
+  it("requires an authenticated shop owner for shop-scoped endpoints", async () => {
     const response = await request(app).get("/api/products");
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe("BadRequest");
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
+    expect(repository.list).not.toHaveBeenCalled();
+  });
+
+  it("rejects customer tokens on shop routes", async () => {
+    const response = await request(app)
+      .get("/api/products")
+      .set(authHeaderFor(9, "customer"));
+
+    expect(response.status).toBe(403);
     expect(repository.list).not.toHaveBeenCalled();
   });
 
   it("lists products with pagination, search and filters", async () => {
     const response = await request(app)
       .get("/api/products?q=linen&categoryId=2&status=active&page=2&pageSize=5")
-      .set("X-Shop-Id", "7");
+      .set({ ...authHeaderFor(7), "X-Shop-Id": "8" });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
@@ -97,7 +113,7 @@ describe("Products API", () => {
   it("rejects invalid product input", async () => {
     const response = await request(app)
       .post("/api/products")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ name: "Missing code" });
 
     expect(response.status).toBe(400);
@@ -108,7 +124,7 @@ describe("Products API", () => {
   it("creates a product and maps duplicate code to conflict", async () => {
     const created = await request(app)
       .post("/api/products")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ code: "LINEN-01", name: "Linen shirt" });
 
     expect(created.status).toBe(201);
@@ -123,7 +139,7 @@ describe("Products API", () => {
     vi.mocked(repository.create).mockRejectedValueOnce(new DuplicateProductCodeError());
     const duplicate = await request(app)
       .post("/api/products")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ code: "LINEN-01", name: "Another product" });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.error).toBe("ConflictError");
@@ -133,7 +149,7 @@ describe("Products API", () => {
     vi.mocked(repository.findById).mockResolvedValue(null);
     const response = await request(app)
       .get("/api/products/41")
-      .set("X-Shop-Id", "8");
+      .set(authHeaderFor(8));
 
     expect(response.status).toBe(404);
     expect(repository.findById).toHaveBeenCalledWith(8, "41");
@@ -149,7 +165,7 @@ describe("Products API", () => {
     vi.mocked(repository.listEditHistory).mockResolvedValue(history);
     const response = await request(app)
       .get("/api/products/41/history")
-      .set("X-Shop-Id", "7");
+      .set(authHeaderFor(7));
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual(history);
@@ -159,7 +175,7 @@ describe("Products API", () => {
   it("archives products through DELETE", async () => {
     const response = await request(app)
       .delete("/api/products/41")
-      .set("X-Shop-Id", "7");
+      .set(authHeaderFor(7));
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("archived");
@@ -180,7 +196,7 @@ describe("Products API", () => {
     vi.mocked(repository.createImage).mockResolvedValue(image);
     const created = await request(app)
       .post("/api/products/41/images")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ url: image.url, contentHash: image.contentHash, isPrimary: true });
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject(image);
@@ -196,7 +212,7 @@ describe("Products API", () => {
     vi.mocked(repository.createImage).mockRejectedValueOnce(new DuplicateProductImageError());
     const response = await request(app)
       .post("/api/products/41/images")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ url: "https://example.com/duplicate.jpg", contentHash: "a".repeat(64) });
 
     expect(response.status).toBe(409);
@@ -207,7 +223,7 @@ describe("Products API", () => {
     vi.mocked(repository.createImage).mockRejectedValueOnce(new ProductImageLimitError());
     const response = await request(app)
       .post("/api/products/41/images")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ url: "https://example.com/extra.jpg" });
     expect(response.status).toBe(409);
     expect(response.body.message).toContain("at most 8 images");
@@ -217,14 +233,14 @@ describe("Products API", () => {
     vi.mocked(repository.updateImage).mockResolvedValue(null);
     const response = await request(app)
       .patch("/api/products/41/images/12")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ isPrimary: true });
     expect(response.status).toBe(404);
     expect(repository.updateImage).toHaveBeenCalledWith(7, "41", "12", { isPrimary: true });
 
     const invalid = await request(app)
       .patch("/api/products/41/images/12")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ isPrimary: "yes" });
     expect(invalid.status).toBe(400);
   });
@@ -239,6 +255,7 @@ describe("Products API", () => {
   it("creates a new global category", async () => {
     const response = await request(app)
       .post("/api/products/categories")
+      .set(authHeaderFor(7))
       .send({ name: "Shoes" });
 
     expect(response.status).toBe(201);
@@ -246,10 +263,23 @@ describe("Products API", () => {
     expect(repository.createCategory).toHaveBeenCalledWith("Shoes");
   });
 
+  it("requires authentication to create a category", async () => {
+    const response = await request(app)
+      .post("/api/products/categories")
+      .send({ name: "Shoes" });
+
+    expect(response.status).toBe(401);
+    expect(repository.createCategory).not.toHaveBeenCalled();
+  });
+
   it("rejects blank and overlong category names", async () => {
-    const blank = await request(app).post("/api/products/categories").send({ name: " " });
+    const blank = await request(app)
+      .post("/api/products/categories")
+      .set(authHeaderFor(7))
+      .send({ name: " " });
     const longName = await request(app)
       .post("/api/products/categories")
+      .set(authHeaderFor(7))
       .send({ name: "a".repeat(151) });
 
     expect(blank.status).toBe(400);
@@ -260,7 +290,7 @@ describe("Products API", () => {
   it("exports an xlsx workbook scoped to the requested shop", async () => {
     const response = await request(app)
       .get("/api/products/export.xlsx?q=linen")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .buffer(true)
       .parse((stream, callback) => {
         const chunks: Buffer[] = [];
@@ -283,7 +313,7 @@ describe("Products API", () => {
 
     const response = await request(app)
       .post("/api/products/import.xlsx")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
       .send(file);
 

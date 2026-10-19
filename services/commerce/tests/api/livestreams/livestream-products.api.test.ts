@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import { InMemoryLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { InMemoryLivestreamProductRepository } from "../../../src/modules/livestream/repositories/livestream-product.repository.js";
 
@@ -18,7 +19,13 @@ describe("Livestream Products API Tests", () => {
   beforeEach(async () => {
     livestreamRepo = new InMemoryLivestreamRepository();
     productRepo = new InMemoryLivestreamProductRepository();
-    app = createApp(livestreamRepo, undefined, productRepo);
+    app = createApp(
+      livestreamRepo,
+      undefined,
+      productRepo,
+      undefined,
+      createShopTestAuthRepository()
+    );
 
     // Create a base livestream for tests
     const ls = await livestreamRepo.create({
@@ -40,7 +47,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-001 - Successfully add product to livestream -> HTTP 201", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
           displayOrder: 1,
@@ -58,7 +65,7 @@ describe("Livestream Products API Tests", () => {
       // Add first product as featured
       await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
           isFeatured: true,
@@ -67,7 +74,7 @@ describe("Livestream Products API Tests", () => {
       // Add second product as featured
       const res2 = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_2_ID,
           isFeatured: true,
@@ -84,21 +91,21 @@ describe("Livestream Products API Tests", () => {
       expect(p1?.isFeatured).toBe(false);
     });
 
-    it("TC-LP-003 - Missing X-Merchant-Id -> HTTP 400", async () => {
+    it("TC-LP-003 - Missing bearer token -> HTTP 401", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
         .send({
           productId: PRODUCT_1_ID,
         });
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("BadRequest");
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe("Unauthorized");
     });
 
     it("TC-LP-004 - Invalid livestream ID UUID -> HTTP 400", async () => {
       const res = await request(app)
         .post("/api/livestreams/invalid-uuid/products")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
         });
@@ -110,7 +117,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-005 - Missing productId in body -> HTTP 400", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({});
 
       expect(res.status).toBe(400);
@@ -120,7 +127,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-006 - Invalid productId UUID format -> HTTP 400", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: "not-a-uuid",
         });
@@ -132,7 +139,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-007 - Forbidden extra fields in body -> HTTP 400", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
           hackedField: "injected",
@@ -145,7 +152,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-008 - Livestream not found -> HTTP 404", async () => {
       const res = await request(app)
         .post("/api/livestreams/99999999-9999-4999-8999-999999999999/products")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
         });
@@ -154,16 +161,16 @@ describe("Livestream Products API Tests", () => {
       expect(res.body.error).toBe("NotFoundError");
     });
 
-    it("TC-LP-009 - Merchant does not own livestream -> HTTP 403", async () => {
+    it("TC-LP-009 - Another shop cannot access this livestream -> HTTP 404", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", OTHER_MERCHANT_ID)
+        .set(authHeaderFor(8))
         .send({
           productId: PRODUCT_1_ID,
         });
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe("ForbiddenError");
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("NotFoundError");
     });
 
     it("TC-LP-010 - Livestream is ended -> HTTP 400", async () => {
@@ -182,7 +189,7 @@ describe("Livestream Products API Tests", () => {
 
       const res = await request(app)
         .post(`/api/livestreams/${endedLs.id}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
         });
@@ -195,7 +202,7 @@ describe("Livestream Products API Tests", () => {
       // First addition
       await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
         });
@@ -203,7 +210,7 @@ describe("Livestream Products API Tests", () => {
       // Second addition
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
         });
@@ -262,7 +269,7 @@ describe("Livestream Products API Tests", () => {
         .patch(
           `/api/livestreams/${activeLivestreamId}/products/${PRODUCT_1_ID}`
         )
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           displayOrder: 10,
           isFeatured: true,
@@ -278,7 +285,7 @@ describe("Livestream Products API Tests", () => {
         .patch(
           `/api/livestreams/${activeLivestreamId}/products/${PRODUCT_1_ID}`
         )
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({});
 
       expect(res.status).toBe(400);
@@ -288,7 +295,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-017 - Invalid UUID param -> HTTP 400", async () => {
       const res1 = await request(app)
         .patch(`/api/livestreams/invalid-uuid/products/${PRODUCT_1_ID}`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ isFeatured: true });
 
       expect(res1.status).toBe(400);
@@ -296,7 +303,7 @@ describe("Livestream Products API Tests", () => {
 
       const res2 = await request(app)
         .patch(`/api/livestreams/${activeLivestreamId}/products/not-uuid`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ isFeatured: true });
 
       expect(res2.status).toBe(400);
@@ -308,23 +315,23 @@ describe("Livestream Products API Tests", () => {
         .patch(
           `/api/livestreams/${activeLivestreamId}/products/99999999-9999-4999-8999-999999999999`
         )
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ isFeatured: true });
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBe("NotFoundError");
     });
 
-    it("TC-LP-019 - Merchant does not own livestream -> HTTP 403", async () => {
+    it("TC-LP-019 - Another shop cannot access this livestream -> HTTP 404", async () => {
       const res = await request(app)
         .patch(
           `/api/livestreams/${activeLivestreamId}/products/${PRODUCT_1_ID}`
         )
-        .set("X-Merchant-Id", OTHER_MERCHANT_ID)
+        .set(authHeaderFor(8))
         .send({ isFeatured: true });
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe("ForbiddenError");
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("NotFoundError");
     });
 
     it("TC-LP-019B - Livestream is ended on patch -> HTTP 400", async () => {
@@ -343,7 +350,7 @@ describe("Livestream Products API Tests", () => {
 
       const res = await request(app)
         .patch(`/api/livestreams/${endedLs.id}/products/${PRODUCT_1_ID}`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ isFeatured: true });
 
       expect(res.status).toBe(400);
@@ -366,7 +373,7 @@ describe("Livestream Products API Tests", () => {
         .delete(
           `/api/livestreams/${activeLivestreamId}/products/${PRODUCT_1_ID}`
         )
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.message).toContain("removed");
@@ -381,12 +388,12 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-020B - Invalid UUID params on DELETE -> HTTP 400", async () => {
       const res1 = await request(app)
         .delete(`/api/livestreams/invalid-uuid/products/${PRODUCT_1_ID}`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
       expect(res1.status).toBe(400);
 
       const res2 = await request(app)
         .delete(`/api/livestreams/${activeLivestreamId}/products/invalid-uuid`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
       expect(res2.status).toBe(400);
     });
 
@@ -395,21 +402,21 @@ describe("Livestream Products API Tests", () => {
         .delete(
           `/api/livestreams/${activeLivestreamId}/products/99999999-9999-4999-8999-999999999999`
         )
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBe("NotFoundError");
     });
 
-    it("TC-LP-022 - Remove when merchant does not own livestream -> HTTP 403", async () => {
+    it("TC-LP-022 - Another shop cannot remove a livestream product -> HTTP 404", async () => {
       const res = await request(app)
         .delete(
           `/api/livestreams/${activeLivestreamId}/products/${PRODUCT_1_ID}`
         )
-        .set("X-Merchant-Id", OTHER_MERCHANT_ID);
+        .set(authHeaderFor(8));
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe("ForbiddenError");
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe("NotFoundError");
     });
 
     it("TC-LP-022B - Remove when livestream is ended -> HTTP 400", async () => {
@@ -428,7 +435,7 @@ describe("Livestream Products API Tests", () => {
 
       const res = await request(app)
         .delete(`/api/livestreams/${endedLs.id}/products/${PRODUCT_1_ID}`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe("BadRequest");
@@ -445,7 +452,7 @@ describe("Livestream Products API Tests", () => {
 
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: PRODUCT_1_ID,
         });
@@ -459,7 +466,7 @@ describe("Livestream Products API Tests", () => {
     it("TC-LP-024 - Successfully add catalog product with numeric BIGINT ID -> HTTP 201", async () => {
       const res = await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: "105",
           variantId: "302",
@@ -477,7 +484,7 @@ describe("Livestream Products API Tests", () => {
       // 1. Add numeric product
       await request(app)
         .post(`/api/livestreams/${activeLivestreamId}/products`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           productId: "201",
           displayOrder: 1,
@@ -486,7 +493,7 @@ describe("Livestream Products API Tests", () => {
       // 2. Update display order and pin status
       const updateRes = await request(app)
         .patch(`/api/livestreams/${activeLivestreamId}/products/201`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({
           isFeatured: true,
           displayOrder: 0,
@@ -498,7 +505,7 @@ describe("Livestream Products API Tests", () => {
       // 3. Remove numeric product
       const delRes = await request(app)
         .delete(`/api/livestreams/${activeLivestreamId}/products/201`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
       expect(delRes.status).toBe(200);
       expect(delRes.body.message).toContain("successfully");
     });

@@ -13,15 +13,6 @@ export class LivestreamNotFoundError extends Error {
   }
 }
 
-export class ForbiddenMerchantError extends Error {
-  constructor(
-    message = "You do not have permission to manage products for this livestream"
-  ) {
-    super(message);
-    this.name = "ForbiddenMerchantError";
-  }
-}
-
 export class InvalidLivestreamStatusError extends Error {
   constructor(
     message = "Cannot modify products of ended or cancelled livestream"
@@ -56,13 +47,12 @@ export class LivestreamProductService {
     livestreamId: string,
     params: Omit<AddLivestreamProductDto, "livestreamId">
   ): Promise<LivestreamProduct> {
-    const livestream = await this.livestreamRepo.findById(livestreamId);
+    const livestream = await this.livestreamRepo.findByIdForMerchant(
+      livestreamId,
+      merchantId
+    );
     if (!livestream) {
       throw new LivestreamNotFoundError();
-    }
-
-    if (livestream.merchantId !== merchantId) {
-      throw new ForbiddenMerchantError();
     }
 
     if (livestream.status === "ended" || livestream.status === "cancelled") {
@@ -77,13 +67,15 @@ export class LivestreamProductService {
       throw new DuplicateProductError();
     }
 
-    return this.productRepo.addProduct({
+    const created = await this.productRepo.addProductForMerchant({
       livestreamId,
       productId: params.productId,
       variantId: params.variantId,
       displayOrder: params.displayOrder,
       isFeatured: params.isFeatured,
-    });
+    }, merchantId);
+    if (!created) throw new LivestreamNotFoundError();
+    return created;
   }
 
   async getProducts(livestreamId: string): Promise<LivestreamProduct[]> {
@@ -101,23 +93,23 @@ export class LivestreamProductService {
     productId: string,
     params: UpdateLivestreamProductDto
   ): Promise<LivestreamProduct> {
-    const livestream = await this.livestreamRepo.findById(livestreamId);
+    const livestream = await this.livestreamRepo.findByIdForMerchant(
+      livestreamId,
+      merchantId
+    );
     if (!livestream) {
       throw new LivestreamNotFoundError();
-    }
-
-    if (livestream.merchantId !== merchantId) {
-      throw new ForbiddenMerchantError();
     }
 
     if (livestream.status === "ended" || livestream.status === "cancelled") {
       throw new InvalidLivestreamStatusError();
     }
 
-    const updated = await this.productRepo.updateProduct(
+    const updated = await this.productRepo.updateProductForMerchant(
       livestreamId,
       productId,
-      params
+      params,
+      merchantId
     );
     if (!updated) {
       throw new ProductNotInLivestreamError();
@@ -131,22 +123,22 @@ export class LivestreamProductService {
     livestreamId: string,
     productId: string
   ): Promise<void> {
-    const livestream = await this.livestreamRepo.findById(livestreamId);
+    const livestream = await this.livestreamRepo.findByIdForMerchant(
+      livestreamId,
+      merchantId
+    );
     if (!livestream) {
       throw new LivestreamNotFoundError();
-    }
-
-    if (livestream.merchantId !== merchantId) {
-      throw new ForbiddenMerchantError();
     }
 
     if (livestream.status === "ended" || livestream.status === "cancelled") {
       throw new InvalidLivestreamStatusError();
     }
 
-    const removed = await this.productRepo.removeProduct(
+    const removed = await this.productRepo.removeProductForMerchant(
       livestreamId,
-      productId
+      productId,
+      merchantId
     );
     if (!removed) {
       throw new ProductNotInLivestreamError();

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LivestreamProductService,
   LivestreamNotFoundError,
-  ForbiddenMerchantError,
   InvalidLivestreamStatusError,
   DuplicateProductError,
   ProductNotInLivestreamError,
@@ -52,14 +51,21 @@ describe("LivestreamProductService - Unit Tests", () => {
     livestreamRepo = {
       create: vi.fn(),
       findById: vi.fn().mockResolvedValue(sampleLivestream),
+      findByIdForMerchant: vi.fn().mockImplementation(
+        async (_id: string, merchantId: string) =>
+          merchantId === MERCHANT_ID ? sampleLivestream : null
+      ),
     };
 
     productRepo = {
       addProduct: vi.fn().mockResolvedValue(sampleProduct),
+      addProductForMerchant: vi.fn().mockResolvedValue(sampleProduct),
       findByLivestreamAndProduct: vi.fn().mockResolvedValue(null),
       findByLivestreamId: vi.fn().mockResolvedValue([sampleProduct]),
       updateProduct: vi.fn().mockResolvedValue(sampleProduct),
+      updateProductForMerchant: vi.fn().mockResolvedValue(sampleProduct),
       removeProduct: vi.fn().mockResolvedValue(true),
+      removeProductForMerchant: vi.fn().mockResolvedValue(true),
     };
 
     service = new LivestreamProductService(livestreamRepo, productRepo);
@@ -74,18 +80,18 @@ describe("LivestreamProductService - Unit Tests", () => {
       });
 
       expect(result).toEqual(sampleProduct);
-      expect(productRepo.addProduct).toHaveBeenCalledWith({
+      expect(productRepo.addProductForMerchant).toHaveBeenCalledWith({
         livestreamId: LIVESTREAM_ID,
         productId: PRODUCT_ID,
         variantId: undefined,
         displayOrder: 0,
         isFeatured: false,
-      });
+      }, MERCHANT_ID);
     });
 
     it("UT-LP-002 - Add product with custom displayOrder and isFeatured true", async () => {
       const featuredProduct = { ...sampleProduct, isFeatured: true, displayOrder: 1 };
-      vi.mocked(productRepo.addProduct).mockResolvedValue(featuredProduct);
+      vi.mocked(productRepo.addProductForMerchant).mockResolvedValue(featuredProduct);
 
       const result = await service.addProduct(MERCHANT_ID, LIVESTREAM_ID, {
         productId: PRODUCT_ID,
@@ -98,7 +104,7 @@ describe("LivestreamProductService - Unit Tests", () => {
     });
 
     it("UT-LP-003 - Throws LivestreamNotFoundError when livestream does not exist", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue(null);
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue(null);
 
       await expect(
         service.addProduct(MERCHANT_ID, LIVESTREAM_ID, {
@@ -116,11 +122,11 @@ describe("LivestreamProductService - Unit Tests", () => {
           displayOrder: 0,
           isFeatured: false,
         })
-      ).rejects.toThrow(ForbiddenMerchantError);
+      ).rejects.toThrow(LivestreamNotFoundError);
     });
 
     it("UT-LP-005 - Throws InvalidLivestreamStatusError when livestream is ended", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue({
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue({
         ...sampleLivestream,
         status: "ended",
       });
@@ -135,7 +141,7 @@ describe("LivestreamProductService - Unit Tests", () => {
     });
 
     it("UT-LP-006 - Throws InvalidLivestreamStatusError when livestream is cancelled", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue({
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue({
         ...sampleLivestream,
         status: "cancelled",
       });
@@ -181,7 +187,7 @@ describe("LivestreamProductService - Unit Tests", () => {
   describe("updateProduct", () => {
     it("UT-LP-010 - Update product successfully", async () => {
       const updatedProduct = { ...sampleProduct, isFeatured: true, displayOrder: 5 };
-      vi.mocked(productRepo.updateProduct).mockResolvedValue(updatedProduct);
+      vi.mocked(productRepo.updateProductForMerchant).mockResolvedValue(updatedProduct);
 
       const result = await service.updateProduct(
         MERCHANT_ID,
@@ -191,15 +197,16 @@ describe("LivestreamProductService - Unit Tests", () => {
       );
 
       expect(result).toEqual(updatedProduct);
-      expect(productRepo.updateProduct).toHaveBeenCalledWith(
+      expect(productRepo.updateProductForMerchant).toHaveBeenCalledWith(
         LIVESTREAM_ID,
         PRODUCT_ID,
-        { isFeatured: true, displayOrder: 5 }
+        { isFeatured: true, displayOrder: 5 },
+        MERCHANT_ID
       );
     });
 
     it("UT-LP-011 - Throws LivestreamNotFoundError when livestream does not exist", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue(null);
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue(null);
 
       await expect(
         service.updateProduct(MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID, {
@@ -213,11 +220,11 @@ describe("LivestreamProductService - Unit Tests", () => {
         service.updateProduct(OTHER_MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID, {
           isFeatured: true,
         })
-      ).rejects.toThrow(ForbiddenMerchantError);
+      ).rejects.toThrow(LivestreamNotFoundError);
     });
 
     it("UT-LP-013 - Throws InvalidLivestreamStatusError when livestream is ended", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue({
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue({
         ...sampleLivestream,
         status: "ended",
       });
@@ -230,7 +237,7 @@ describe("LivestreamProductService - Unit Tests", () => {
     });
 
     it("UT-LP-014 - Throws ProductNotInLivestreamError when product not found in livestream", async () => {
-      vi.mocked(productRepo.updateProduct).mockResolvedValue(null);
+      vi.mocked(productRepo.updateProductForMerchant).mockResolvedValue(null);
 
       await expect(
         service.updateProduct(MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID, {
@@ -243,14 +250,15 @@ describe("LivestreamProductService - Unit Tests", () => {
   describe("removeProduct", () => {
     it("UT-LP-015 - Remove product successfully", async () => {
       await service.removeProduct(MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID);
-      expect(productRepo.removeProduct).toHaveBeenCalledWith(
+      expect(productRepo.removeProductForMerchant).toHaveBeenCalledWith(
         LIVESTREAM_ID,
-        PRODUCT_ID
+        PRODUCT_ID,
+        MERCHANT_ID
       );
     });
 
     it("UT-LP-016 - Throws LivestreamNotFoundError when livestream does not exist", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue(null);
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue(null);
 
       await expect(
         service.removeProduct(MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID)
@@ -260,11 +268,11 @@ describe("LivestreamProductService - Unit Tests", () => {
     it("UT-LP-017 - Throws ForbiddenMerchantError when merchant does not own livestream", async () => {
       await expect(
         service.removeProduct(OTHER_MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID)
-      ).rejects.toThrow(ForbiddenMerchantError);
+      ).rejects.toThrow(LivestreamNotFoundError);
     });
 
     it("UT-LP-018 - Throws InvalidLivestreamStatusError when livestream is cancelled", async () => {
-      vi.mocked(livestreamRepo.findById).mockResolvedValue({
+      vi.mocked(livestreamRepo.findByIdForMerchant).mockResolvedValue({
         ...sampleLivestream,
         status: "cancelled",
       });
@@ -275,7 +283,7 @@ describe("LivestreamProductService - Unit Tests", () => {
     });
 
     it("UT-LP-019 - Throws ProductNotInLivestreamError when product not found in livestream", async () => {
-      vi.mocked(productRepo.removeProduct).mockResolvedValue(false);
+      vi.mocked(productRepo.removeProductForMerchant).mockResolvedValue(false);
 
       await expect(
         service.removeProduct(MERCHANT_ID, LIVESTREAM_ID, PRODUCT_ID)

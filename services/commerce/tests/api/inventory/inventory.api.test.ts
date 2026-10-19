@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import {
   InsufficientStockError,
   InventorySkuNotFoundError,
@@ -26,26 +27,35 @@ describe("Inventory API", () => {
       consume: vi.fn(),
       listAdjustments: vi.fn().mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 }),
     };
-    app = createApp(undefined, undefined, undefined, undefined, undefined, undefined, repository);
+    app = createApp(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createShopTestAuthRepository(),
+      undefined,
+      repository
+    );
   });
 
-  it("requires X-Shop-Id", async () => {
+  it("requires an authenticated shop owner", async () => {
     const response = await request(app).get("/api/inventory");
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
   });
 
-  it("validates X-User-Id", async () => {
+  it("ignores a spoofed X-User-Id header", async () => {
     const response = await request(app)
       .get("/api/inventory")
-      .set("X-Shop-Id", "7")
+      .set({ ...authHeaderFor(7), "X-Shop-Id": "8" })
       .set("X-User-Id", "abc");
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+    expect(repository.list).toHaveBeenCalledWith(7, expect.any(Object));
   });
 
   it("passes list filters to the repository", async () => {
     const response = await request(app)
       .get("/api/inventory?q=linen&status=low&page=2&pageSize=5")
-      .set("X-Shop-Id", "7");
+      .set(authHeaderFor(7));
     expect(response.status).toBe(200);
     expect(repository.list).toHaveBeenCalledWith(7, {
       q: "linen",
@@ -58,42 +68,42 @@ describe("Inventory API", () => {
   it("validates and forwards adjustment drafts", async () => {
     const bad = await request(app)
       .put("/api/inventory/adjustments/documents/draft")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ productId: "3", items: [{ skuId: "9", delta: 0, reason: "x" }] });
     expect(bad.status).toBe(400);
 
     const body = { productId: "3", syncLive: false, items: [{ skuId: "9", delta: 2, reason: "x" }] };
     const saved = await request(app)
       .put("/api/inventory/adjustments/documents/draft")
-      .set({ "X-Shop-Id": "7", "X-User-Id": "3" })
+      .set(authHeaderFor(3))
       .send(body);
     expect(saved.status).toBe(200);
     expect(repository.saveAdjustmentDraft).toHaveBeenCalledWith(7, body, 3);
 
     const read = await request(app)
       .get("/api/inventory/adjustments/documents/draft?productId=3")
-      .set("X-Shop-Id", "7");
+      .set(authHeaderFor(7));
     expect(read.body).toEqual({ data: null });
     expect(repository.getAdjustmentDraft).toHaveBeenCalledWith(7, "3");
   });
 
   it("returns 404 for an unknown SKU", async () => {
-    const response = await request(app).get("/api/inventory/skus/9").set("X-Shop-Id", "7");
+    const response = await request(app).get("/api/inventory/skus/9").set(authHeaderFor(7));
     expect(response.status).toBe(404);
   });
 
   it("validates adjustment bodies", async () => {
     const both = await request(app)
       .post("/api/inventory/skus/9/adjust")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ delta: 1, newQuantity: 2, reason: "x" });
     const zero = await request(app)
       .post("/api/inventory/skus/9/adjust")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ delta: 0, reason: "x" });
     const badId = await request(app)
       .post("/api/inventory/skus/abc/adjust")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ delta: 1, reason: "x" });
     expect([both.status, zero.status, badId.status]).toEqual([400, 400, 400]);
     expect(repository.adjust).not.toHaveBeenCalled();
@@ -102,7 +112,7 @@ describe("Inventory API", () => {
   it("forwards user id and maps domain errors", async () => {
     await request(app)
       .post("/api/inventory/skus/9/adjust")
-      .set({ "X-Shop-Id": "7", "X-User-Id": "3" })
+      .set(authHeaderFor(3))
       .send({ delta: 4, reason: "stock_in" });
     expect(repository.adjust).toHaveBeenCalledWith(
       7,
@@ -114,20 +124,20 @@ describe("Inventory API", () => {
     vi.mocked(repository.reserve).mockRejectedValueOnce(new InsufficientStockError());
     const conflict = await request(app)
       .post("/api/inventory/skus/9/reserve")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ quantity: 5 });
     expect(conflict.status).toBe(409);
 
     vi.mocked(repository.adjustMany).mockRejectedValueOnce(new InventorySkuNotFoundError("1"));
     const missing = await request(app)
       .post("/api/inventory/adjustments/batch")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({ items: [{ skuId: "1", delta: 1, reason: "x" }] });
     expect(missing.status).toBe(404);
   });
 
   it("serves summary, history, item, threshold and batch endpoints", async () => {
-    const shop = { "X-Shop-Id": "7", "X-User-Id": "3" };
+    const shop = authHeaderFor(3);
     expect((await request(app).get("/api/inventory/summary").set(shop)).status).toBe(200);
     expect((await request(app).get("/api/inventory/adjustments?movementType=reserve").set(shop)).status).toBe(200);
     expect((await request(app).get("/api/inventory/adjustments?movementType=bad").set(shop)).status).toBe(400);
@@ -159,7 +169,7 @@ describe("Inventory API", () => {
   });
 
   it("handles reserve, release and consume including failures", async () => {
-    const shop = { "X-Shop-Id": "7" };
+    const shop = authHeaderFor(7);
     vi.mocked(repository.release).mockResolvedValue({ item: {}, adjustment: {} } as never);
     vi.mocked(repository.consume).mockResolvedValue({ item: {}, adjustment: {} } as never);
     for (const action of ["reserve", "release", "consume"]) {
@@ -179,8 +189,8 @@ describe("Inventory API", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(repository.list).mockRejectedValueOnce(new Error("boom"));
     vi.mocked(repository.getSummary).mockRejectedValueOnce(new Error("boom"));
-    const list = await request(app).get("/api/inventory").set("X-Shop-Id", "7");
-    const summary = await request(app).get("/api/inventory/summary").set("X-Shop-Id", "7");
+    const list = await request(app).get("/api/inventory").set(authHeaderFor(7));
+    const summary = await request(app).get("/api/inventory/summary").set(authHeaderFor(7));
     spy.mockRestore();
     expect([list.status, summary.status]).toEqual([500, 500]);
   });
@@ -188,7 +198,7 @@ describe("Inventory API", () => {
   it("rejects duplicate SKUs in a batch", async () => {
     const response = await request(app)
       .post("/api/inventory/adjustments/batch")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .send({
         items: [
           { skuId: "1", delta: 1, reason: "x" },

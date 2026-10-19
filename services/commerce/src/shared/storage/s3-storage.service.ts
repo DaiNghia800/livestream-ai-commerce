@@ -51,16 +51,24 @@ export class S3StorageService {
 
   async createPresignedCoverUpload(
     contentType: string,
-    fileSize: number
+    fileSize: number,
+    shopId?: number
   ): Promise<PresignedUploadResult> {
-    return this.createPresignedUpload(contentType, fileSize, "public/livestreams/covers");
+    const prefix =
+      shopId === undefined
+        ? "public/livestreams/covers"
+        : `shops/${shopId}/livestream-covers`;
+    return this.createPresignedUpload(contentType, fileSize, prefix);
   }
 
   async createPresignedProductImageUpload(
     contentType: string,
-    fileSize: number
+    fileSize: number,
+    shopId?: number
   ): Promise<PresignedProductImageUploadResult> {
-    const result = await this.createPresignedUpload(contentType, fileSize, "products/images");
+    const prefix =
+      shopId === undefined ? "products/images" : `shops/${shopId}/products/images`;
+    const result = await this.createPresignedUpload(contentType, fileSize, prefix);
     const publicBaseUrl = this.config.publicBaseUrl?.replace(/\/+$/, "");
     const imageUrl = publicBaseUrl
       ? `${publicBaseUrl}/${result.objectKey}`

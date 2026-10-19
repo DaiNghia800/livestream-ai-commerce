@@ -11,8 +11,11 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
 interface PendingUpload {
   contentType: string;
   fileSize: number;
+  shopId: number;
   expiresAt: number;
 }
+
+export class UploadOwnershipError extends Error {}
 
 export interface LocalProductImageUpload {
   uploadUrl: string;
@@ -32,7 +35,11 @@ export class LocalProductImageStorageService {
     return this.directory;
   }
 
-  createUpload(contentType: string, fileSize: number): LocalProductImageUpload {
+  createUpload(
+    contentType: string,
+    fileSize: number,
+    shopId: number
+  ): LocalProductImageUpload {
     const extension = MIME_EXTENSION_MAP[contentType];
     if (!extension) throw new Error("Unsupported product image type");
 
@@ -40,6 +47,7 @@ export class LocalProductImageStorageService {
     this.pendingUploads.set(objectKey, {
       contentType,
       fileSize,
+      shopId,
       expiresAt: Date.now() + 5 * 60 * 1000,
     });
     for (const [key, upload] of this.pendingUploads) {
@@ -57,7 +65,8 @@ export class LocalProductImageStorageService {
   async saveUpload(
     objectKey: string,
     contentType: string,
-    body: Buffer
+    body: Buffer,
+    shopId: number
   ): Promise<void> {
     const pending = this.pendingUploads.get(objectKey);
     if (!pending || pending.expiresAt <= Date.now()) {
@@ -66,6 +75,9 @@ export class LocalProductImageStorageService {
     }
     if (pending.contentType !== contentType || pending.fileSize !== body.byteLength) {
       throw new Error("Uploaded image does not match the requested content type or file size");
+    }
+    if (pending.shopId !== shopId) {
+      throw new UploadOwnershipError("Upload URL belongs to another shop");
     }
 
     this.pendingUploads.delete(objectKey);

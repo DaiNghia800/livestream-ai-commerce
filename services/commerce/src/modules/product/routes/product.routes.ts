@@ -6,32 +6,7 @@ import {
 } from "../repositories/product.repository.js";
 import { ProductService } from "../services/product.service.js";
 import { ProductSpreadsheetService } from "../services/product-spreadsheet.service.js";
-
-declare global {
-  namespace Express {
-    interface Request {
-      shopId?: number;
-    }
-  }
-}
-
-export function requireShopHeader(req: Request, res: Response, next: NextFunction): void {
-  const shopHeader = req.header("X-Shop-Id");
-  if (!shopHeader || !/^[1-9]\d*$/.test(shopHeader)) {
-    res.status(400).json({
-      error: "BadRequest",
-      message: "X-Shop-Id header is required and must be a positive integer.",
-    });
-    return;
-  }
-  const shopId = Number(shopHeader);
-  if (!Number.isSafeInteger(shopId)) {
-    res.status(400).json({ error: "BadRequest", message: "Invalid X-Shop-Id header." });
-    return;
-  }
-  req.shopId = shopId;
-  next();
-}
+import type { ShopRouteAuthorization } from "../../../shared/auth/shop-context.middleware.js";
 
 export function requireNumericId(parameter: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -47,7 +22,13 @@ export function requireNumericId(parameter: string) {
   };
 }
 
-export function createProductRouter(customRepository?: IProductRepository): Router {
+export function createProductRouter(
+  customRepository?: IProductRepository,
+  shopAuthorization?: ShopRouteAuthorization
+): Router {
+  if (!shopAuthorization) {
+    throw new Error("Shop route authorization must be provided");
+  }
   const router = Router();
   const repository = customRepository || new PostgresProductRepository();
   const controller = new ProductController(
@@ -56,8 +37,18 @@ export function createProductRouter(customRepository?: IProductRepository): Rout
   );
 
   router.get("/categories", controller.listCategories);
-  router.post("/categories", controller.createCategory);
-  router.use(requireShopHeader);
+  router.post(
+    "/categories",
+    shopAuthorization.authenticate,
+    shopAuthorization.requireShopOwner,
+    shopAuthorization.resolveShopContext,
+    controller.createCategory
+  );
+  router.use(
+    shopAuthorization.authenticate,
+    shopAuthorization.requireShopOwner,
+    shopAuthorization.resolveShopContext
+  );
   router.get("/export.xlsx", controller.exportExcel);
   router.post(
     "/import.xlsx",

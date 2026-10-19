@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import { InMemoryLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { InMemoryLivestreamProductRepository } from "../../../src/modules/livestream/repositories/livestream-product.repository.js";
 import { InMemoryIvsService } from "../../../src/shared/ivs/ivs.service.js";
@@ -23,7 +24,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
       undefined,
       mockProductRepo,
       undefined,
-      undefined,
+      createShopTestAuthRepository(),
       undefined,
       undefined,
       mockIvsService
@@ -34,24 +35,23 @@ describe("Livestream API - List and Get Detail Tests", () => {
   // GET /api/livestreams (List Livestreams)
   // =========================================================================
   describe("GET /api/livestreams", () => {
-    it("TC-LL-001 - Missing X-Merchant-Id header -> HTTP 400", async () => {
+    it("TC-LL-001 - Missing bearer token -> HTTP 401", async () => {
       const res = await request(app).get("/api/livestreams");
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("BadRequest");
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe("Unauthorized");
     });
 
-    it("TC-LL-002 - Invalid X-Merchant-Id format -> HTTP 400", async () => {
+    it("TC-LL-002 - Ignores a spoofed X-Merchant-Id header", async () => {
       const res = await request(app)
         .get("/api/livestreams")
-        .set("X-Merchant-Id", "not-a-uuid");
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("BadRequest");
+        .set({ ...authHeaderFor(7), "X-Merchant-Id": "not-a-uuid" });
+      expect(res.status).toBe(200);
     });
 
     it("TC-LL-003 - Return empty list when merchant has no livestreams -> HTTP 200", async () => {
       const res = await request(app)
         .get("/api/livestreams")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -61,6 +61,28 @@ describe("Livestream API - List and Get Detail Tests", () => {
         limit: 10,
         totalPages: 1,
       });
+    });
+
+    it("returns public livestream data without merchant or IVS internals", async () => {
+        const created = await mockLiveRepo.create({
+          merchantId: VALID_MERCHANT_ID,
+          title: "Public session",
+          description: null,
+          coverImageKey: null,
+          status: "live",
+          channelArn: "arn:internal:channel",
+          playbackUrl: "https://example.test/playback.m3u8",
+          scheduledAt: null,
+          startedAt: null,
+          endedAt: null,
+        });
+
+        const response = await request(app).get(`/api/livestreams/${created.id}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body).not.toHaveProperty("merchantId");
+        expect(response.body).not.toHaveProperty("channelArn");
+        expect(JSON.stringify(response.body)).not.toMatch(/streamKey|ingestEndpoint|secret/i);
     });
 
     it("TC-LL-004 - Return only livestreams belonging to authenticated merchant -> HTTP 200", async () => {
@@ -94,7 +116,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(1);
@@ -132,7 +154,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams?status=live")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(1);
@@ -143,7 +165,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
     it("TC-LL-006 - Invalid status parameter -> HTTP 400", async () => {
       const res = await request(app)
         .get("/api/livestreams?status=unknown_status")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe("ValidationError");
@@ -178,7 +200,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams?search=tech")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(1);
@@ -203,7 +225,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams?page=2&limit=2")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(5);
@@ -216,12 +238,12 @@ describe("Livestream API - List and Get Detail Tests", () => {
     it("TC-LL-009 - Invalid pagination numbers -> HTTP 400", async () => {
       const resNegativePage = await request(app)
         .get("/api/livestreams?page=0")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
       expect(resNegativePage.status).toBe(400);
 
       const resOverLimit = await request(app)
         .get("/api/livestreams?limit=150")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
       expect(resOverLimit.status).toBe(400);
     });
 
@@ -243,7 +265,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.items[0].productCount).toBe(8);
@@ -256,7 +278,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("InternalServerError");
@@ -307,7 +329,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams?fromDate=2026-10-04T00:00:00.000Z&toDate=2026-10-06T23:59:59.999Z")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(1);
@@ -345,7 +367,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams?fromDate=2026-10-01T00:00:00.000Z")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(1);
@@ -381,7 +403,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get("/api/livestreams?toDate=2026-09-30T23:59:59.999Z")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(1);
@@ -482,19 +504,19 @@ describe("Livestream API - List and Get Detail Tests", () => {
   // PATCH /api/livestreams/:id/status (Update Livestream Status)
   // =========================================================================
   describe("PATCH /api/livestreams/:id/status", () => {
-    it("TC-ST-001 - Missing X-Merchant-Id header -> HTTP 400", async () => {
+    it("TC-ST-001 - Missing bearer token -> HTTP 401", async () => {
       const res = await request(app)
         .patch("/api/livestreams/11111111-1111-4111-8111-111111111111/status")
         .send({ status: "live" });
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("BadRequest");
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe("Unauthorized");
     });
 
     it("TC-ST-002 - Invalid livestream ID format -> HTTP 400", async () => {
       const res = await request(app)
         .patch("/api/livestreams/not-a-valid-uuid/status")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "live" });
 
       expect(res.status).toBe(400);
@@ -504,7 +526,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
     it("TC-ST-003 - Invalid status value -> HTTP 400", async () => {
       const res = await request(app)
         .patch("/api/livestreams/11111111-1111-4111-8111-111111111111/status")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "unknown_status" });
 
       expect(res.status).toBe(400);
@@ -514,7 +536,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
     it("TC-ST-004 - Livestream session not found -> HTTP 404", async () => {
       const res = await request(app)
         .patch("/api/livestreams/99999999-9999-4999-8999-999999999999/status")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "live" });
 
       expect(res.status).toBe(404);
@@ -537,7 +559,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .patch(`/api/livestreams/${created.id}/status`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "live" });
 
       expect(res.status).toBe(200);
@@ -562,7 +584,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .patch(`/api/livestreams/${created.id}/status`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "ended" });
 
       expect(res.status).toBe(200);
@@ -587,7 +609,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .patch(`/api/livestreams/${created.id}/status`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "live" });
 
       expect(res.status).toBe(400);
@@ -595,13 +617,13 @@ describe("Livestream API - List and Get Detail Tests", () => {
     });
 
     it("TC-ST-008 - Handle unexpected server error -> HTTP 500", async () => {
-      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+      vi.spyOn(mockLiveRepo, "findByIdForMerchant").mockRejectedValueOnce(
         new Error("Database crash")
       );
 
       const res = await request(app)
         .patch("/api/livestreams/11111111-1111-4111-8111-111111111111/status")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ status: "live" });
 
       expect(res.status).toBe(500);
@@ -613,19 +635,19 @@ describe("Livestream API - List and Get Detail Tests", () => {
   // GET /api/livestreams/:id/stream-config (AWS IVS Stream Configuration)
   // =========================================================================
   describe("GET /api/livestreams/:id/stream-config", () => {
-    it("TC-SC-001 - Missing X-Merchant-Id header -> HTTP 400", async () => {
+    it("TC-SC-001 - Missing bearer token -> HTTP 401", async () => {
       const res = await request(app).get(
         "/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config"
       );
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe("BadRequest");
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe("Unauthorized");
     });
 
     it("TC-SC-002 - Invalid livestream ID format -> HTTP 400", async () => {
       const res = await request(app)
         .get("/api/livestreams/invalid-uuid/stream-config")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe("ValidationError");
@@ -634,7 +656,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
     it("TC-SC-003 - Livestream not found -> HTTP 404", async () => {
       const res = await request(app)
         .get("/api/livestreams/88888888-8888-4888-8888-888888888888/stream-config")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBe("NotFoundError");
@@ -656,7 +678,7 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const res = await request(app)
         .get(`/api/livestreams/${created.id}/stream-config`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(200);
       expect(res.body.channelArn).toContain("arn:aws:ivs:ap-southeast-1:");
@@ -687,14 +709,14 @@ describe("Livestream API - List and Get Detail Tests", () => {
 
       const firstRes = await request(app)
         .get(`/api/livestreams/${created.id}/stream-config`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(firstRes.status).toBe(200);
 
       // Second request should return the exact same channel without error
       const secondRes = await request(app)
         .get(`/api/livestreams/${created.id}/stream-config`)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(secondRes.status).toBe(200);
       expect(secondRes.body.channelArn).toBe(firstRes.body.channelArn);
@@ -702,31 +724,29 @@ describe("Livestream API - List and Get Detail Tests", () => {
     });
 
     it("TC-SC-006 - Handle AWS IVS not configured error -> HTTP 500 ConfigurationError", async () => {
-      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+      vi.spyOn(mockLiveRepo, "findByIdForMerchant").mockRejectedValueOnce(
         new Error("AWS IVS service is not configured")
       );
 
       const res = await request(app)
         .get("/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("ConfigurationError");
     });
 
     it("TC-SC-007 - Handle unexpected internal error -> HTTP 500 InternalServerError", async () => {
-      vi.spyOn(mockLiveRepo, "findById").mockRejectedValueOnce(
+      vi.spyOn(mockLiveRepo, "findByIdForMerchant").mockRejectedValueOnce(
         new Error("Fatal AWS outage")
       );
 
       const res = await request(app)
         .get("/api/livestreams/11111111-1111-4111-8111-111111111111/stream-config")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID);
+        .set(authHeaderFor(7));
 
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("InternalServerError");
     });
   });
 });
-
-

@@ -4,13 +4,40 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { PostgresProductRepository } from "../../../src/modules/product/repositories/product.repository.js";
 import { pool, runMigrations } from "../../../src/shared/database/database.js";
+import {
+  authHeaderFor,
+  createShopTestAuthRepository,
+} from "../../helpers/auth.helper.js";
 
 describe("Products API - repository edge cases (PostgreSQL)", () => {
   const shopId = 2147482500;
   const otherShopId = 2147482501;
-  const app = createApp(undefined, undefined, undefined, new PostgresProductRepository());
-  const shop = { "X-Shop-Id": String(shopId) };
-  const other = { "X-Shop-Id": String(otherShopId) };
+  const app = createApp(
+    undefined,
+    undefined,
+    undefined,
+    new PostgresProductRepository(),
+    createShopTestAuthRepository([
+      {
+        userId: 23,
+        shop: {
+          id: shopId,
+          merchantId: "a0000000-0000-0000-0000-000000000023",
+          name: "Edge integration shop",
+        },
+      },
+      {
+        userId: 24,
+        shop: {
+          id: otherShopId,
+          merchantId: "a0000000-0000-0000-0000-000000000024",
+          name: "Other edge integration shop",
+        },
+      },
+    ])
+  );
+  const shop = authHeaderFor(23);
+  const other = authHeaderFor(24);
   const productCode = `EDGE-${randomUUID()}`;
   let productId: string;
   let skuId: string;

@@ -2,7 +2,10 @@ import { Request, Response } from "express";
 import { ZodError } from "zod";
 import { PresignCoverUploadRequestSchema } from "../schemas/upload.schema.js";
 import { S3StorageService } from "../../../shared/storage/s3-storage.service.js";
-import { LocalProductImageStorageService } from "../../../shared/storage/local-product-image-storage.service.js";
+import {
+  LocalProductImageStorageService,
+  UploadOwnershipError,
+} from "../../../shared/storage/local-product-image-storage.service.js";
 
 export class UploadController {
   constructor(
@@ -16,7 +19,8 @@ export class UploadController {
 
       const result = await this.s3Service.createPresignedCoverUpload(
         validatedInput.contentType,
-        validatedInput.fileSize
+        validatedInput.fileSize,
+        req.shopId!
       );
 
       res.status(200).json({
@@ -60,14 +64,16 @@ export class UploadController {
       if (!this.s3Service.isConfigured()) {
         const result = this.localProductImageStorage.createUpload(
           validatedInput.contentType,
-          validatedInput.fileSize
+          validatedInput.fileSize,
+          req.shopId!
         );
         res.status(200).json({ ...result, expiresIn: 300, storage: "local" });
         return;
       }
       const result = await this.s3Service.createPresignedProductImageUpload(
         validatedInput.contentType,
-        validatedInput.fileSize
+        validatedInput.fileSize,
+        req.shopId!
       );
       res.status(200).json({
         uploadUrl: result.uploadUrl,
@@ -113,10 +119,15 @@ export class UploadController {
       await this.localProductImageStorage.saveUpload(
         req.params.fileName,
         req.header("Content-Type") || "",
-        req.body
+        req.body,
+        req.shopId!
       );
       res.status(204).end();
     } catch (error) {
+      if (error instanceof UploadOwnershipError) {
+        res.status(404).json({ error: "NotFound", message: "Upload not found" });
+        return;
+      }
       if (error instanceof Error && error.message.includes("Upload URL")) {
         res.status(400).json({ error: "ValidationError", message: error.message });
         return;

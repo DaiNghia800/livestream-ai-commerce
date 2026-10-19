@@ -5,13 +5,26 @@ import { pool } from "../../../src/shared/database/database.js";
 import {
     PostgresLivestreamRepository,
 } from "../../../src/modules/livestream/repositories/livestream.repository.js";
+import {
+    authHeaderFor,
+    createShopTestAuthRepository,
+} from "../../helpers/auth.helper.js";
 
 const UUID_REGEX =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 describe("POST /api/livestreams - PostgreSQL Integration Tests", () => {
     const liveRepo = new PostgresLivestreamRepository();
-    const liveApp = createApp(liveRepo);
+    const merchantId = "99999999-9999-4999-8999-999999999999";
+    const liveApp = createApp(
+        liveRepo,
+        undefined,
+        undefined,
+        undefined,
+        createShopTestAuthRepository([
+            { userId: 28, shop: { id: 28, merchantId, name: "Livestream integration shop" } },
+        ])
+    );
     let dbConnected = false;
 
     beforeAll(async () => {
@@ -33,12 +46,9 @@ describe("POST /api/livestreams - PostgreSQL Integration Tests", () => {
             ctx.skip();
             return;
         }
-        const merchantId =
-            "99999999-9999-4999-8999-999999999999";
-
         const res = await request(liveApp)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", merchantId)
+            .set(authHeaderFor(28))
             .send({
                 title: "Node.js Live Integration Session",
                 description:
@@ -69,12 +79,11 @@ describe("POST /api/livestreams - PostgreSQL Integration Tests", () => {
             ctx.skip();
             return;
         }
-        const merchantId = "99999999-9999-4999-8999-999999999999";
         const coverKey = "livestreams/covers/integ-test-key.webp";
 
         const res = await request(liveApp)
             .post("/api/livestreams")
-            .set("X-Merchant-Id", merchantId)
+            .set(authHeaderFor(28))
             .send({
                 title: "Live With S3 Cover Key Integration",
                 description: "Testing raw SQL persistence of cover_image_key",

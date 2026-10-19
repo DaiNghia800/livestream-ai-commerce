@@ -4,7 +4,16 @@
  */
 import { createHmac } from "node:crypto";
 import { config } from "../../src/config.js";
+import type { IAuthRepository } from "../../src/modules/login/repositories/auth.repository.js";
 import { createAccessToken } from "../../src/modules/login/services/auth-token.service.js";
+import type {
+  ActiveUser,
+  AuthUser,
+  RefreshSession,
+  RegisterUserInput,
+  Shop,
+  User,
+} from "../../src/modules/login/types/auth.types.js";
 import { UserRole } from "../../src/shared/auth/token.js";
 
 interface TokenUser {
@@ -12,7 +21,104 @@ interface TokenUser {
   role: UserRole;
 }
 
+export interface TestShopOwner {
+  userId: number;
+  shop: Shop;
+}
+
+export function createShopTestAuthRepository(
+  owners: TestShopOwner[] = [
+    {
+      userId: 7,
+      shop: {
+        id: 7,
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        name: "Test shop 7",
+      },
+    },
+    {
+      userId: 8,
+      shop: {
+        id: 8,
+        merchantId: "a0000000-0000-0000-0000-000000000002",
+        name: "Test shop 8",
+      },
+    },
+    {
+      userId: 3,
+      shop: {
+        id: 7,
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        name: "Test shop 7",
+      },
+    },
+    {
+      userId: 5,
+      shop: {
+        id: 7,
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        name: "Test shop 7",
+      },
+    },
+  ],
+  additionalActiveUserIds: number[] = [9]
+): IAuthRepository {
+  const users = new Map<number, ActiveUser>();
+  const shops = new Map<number, Shop>();
+  for (const { userId, shop } of owners) {
+    users.set(userId, {
+      id: userId,
+      email: `shop-owner-${userId}@example.test`,
+      fullName: `Shop owner ${userId}`,
+      role: "shop_owner",
+      isActive: true,
+    });
+    shops.set(userId, shop);
+  }
+
+  for (const id of additionalActiveUserIds) {
+    if (!users.has(id)) {
+      users.set(id, {
+        id,
+        email: `user-${id}@example.test`,
+        fullName: `Test user ${id}`,
+        role: "customer",
+        isActive: true,
+      });
+    }
+  }
+
+  return {
+    async findActiveUserByEmail(email: string): Promise<AuthUser | null> {
+      const user = [...users.values()].find((item) => item.email === email);
+      return user ? { ...user, passwordHash: "test-password-hash" } : null;
+    },
+    async findActiveUserById(id: number): Promise<ActiveUser | null> {
+      return users.get(id) ?? null;
+    },
+    async findShopByOwnerUserId(userId: number): Promise<Shop | null> {
+      return shops.get(userId) ?? null;
+    },
+    async registerWithSession(
+      _input: RegisterUserInput,
+      _createSession: (user: User) => RefreshSession
+    ): Promise<{ user: User; refreshToken: string; shop?: Shop }> {
+      throw new Error("Registration is not supported by the shop auth test repository");
+    },
+    async createSession(_userId: number, _session: RefreshSession): Promise<void> {
+      throw new Error("Session creation is not supported by the shop auth test repository");
+    },
+  };
+}
+
 /** Creates a valid Bearer header string for the given user using the app's secretKey. */
+export function authHeaderFor(
+  userId: number,
+  role: UserRole = "shop_owner"
+): { Authorization: string } {
+  return { Authorization: bearerFor({ userId, role }) };
+}
+
 export function bearerFor({ userId, role }: TokenUser): string {
   const fakeUser = { id: userId, email: "test@example.com", fullName: "Test", role };
   return `Bearer ${createAccessToken(fakeUser)}`;

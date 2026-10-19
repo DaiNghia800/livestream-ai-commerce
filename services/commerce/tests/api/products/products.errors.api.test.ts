@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import {
   InvalidProductReferenceError,
   type IProductRepository,
@@ -59,11 +60,17 @@ describe("Products API - error handling", () => {
       updateImage: vi.fn(),
       removeImage: vi.fn(),
     };
-    app = createApp(undefined, undefined, undefined, repository);
+    app = createApp(
+      undefined,
+      undefined,
+      undefined,
+      repository,
+      createShopTestAuthRepository()
+    );
   });
 
   const send = (call: Call) => {
-    const req = request(app)[call.method](call.path).set("X-Shop-Id", "7");
+    const req = request(app)[call.method](call.path).set(authHeaderFor(7));
     return call.body ? req.send(call.body) : req;
   };
 
@@ -98,13 +105,15 @@ describe("Products API - error handling", () => {
     }
   });
 
-  it("rejects non-numeric shop headers and unsupported import bodies", async () => {
-    const badShop = await request(app).get("/api/products").set("X-Shop-Id", "abc");
-    expect(badShop.status).toBe(400);
+  it("ignores spoofed shop headers and rejects unsupported import bodies", async () => {
+    const badShop = await request(app)
+      .get("/api/products")
+      .set({ ...authHeaderFor(7), "X-Shop-Id": "abc" });
+    expect(badShop.status).toBe(200);
 
     const noBody = await request(app)
       .post("/api/products/import.xlsx")
-      .set("X-Shop-Id", "7")
+      .set(authHeaderFor(7))
       .set("Content-Type", "application/json")
       .send({});
     expect(noBody.status).toBe(400);

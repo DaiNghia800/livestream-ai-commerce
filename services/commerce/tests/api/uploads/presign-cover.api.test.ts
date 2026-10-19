@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "fs/promises";
 import os from "os";
 import path from "path";
 import { createApp } from "../../../src/app.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 import { LocalProductImageStorageService } from "../../../src/shared/storage/local-product-image-storage.service.js";
 import { S3StorageService } from "../../../src/shared/storage/s3-storage.service.js";
 
@@ -23,38 +24,65 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       region: "ap-southeast-1",
       bucketName: "liveorder-covers",
     });
-    app = createApp(undefined, mockS3Service);
+    app = createApp(
+      undefined,
+      mockS3Service,
+      undefined,
+      undefined,
+      createShopTestAuthRepository()
+    );
   });
 
   it("uses S3 signed uploads and a stable image URL when S3 is configured", async () => {
-    const s3App = createApp(undefined, new S3StorageService({
-      region: "ap-southeast-1",
-      bucketName: "liveorder-covers",
-    }));
+    const s3App = createApp(
+      undefined,
+      new S3StorageService({
+        region: "ap-southeast-1",
+        bucketName: "liveorder-covers",
+      }),
+      undefined,
+      undefined,
+      createShopTestAuthRepository()
+    );
     const response = await request(s3App)
       .post("/api/uploads/product-image/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set({ ...authHeaderFor(7), "X-Merchant-Id": "b0000000-0000-0000-0000-000000000002" })
       .send({ fileName: "shirt.webp", contentType: "image/webp", fileSize: 1024 });
 
     expect(response.status).toBe(200);
-    expect(response.body.objectKey).toMatch(/^products\/images\/[0-9a-f-]+\.webp$/);
+    expect(response.body.objectKey).toMatch(/^shops\/7\/products\/images\/[0-9a-f-]+\.webp$/);
     expect(response.body.imageUrl).toBe("https://liveorder-covers.s3.ap-southeast-1.amazonaws.com/presigned-put-url");
     expect(response.body.expiresIn).toBe(300);
   });
 
+  it("rejects customer tokens and ignores a spoofed merchant header", async () => {
+    const response = await request(app)
+      .post("/api/uploads/livestream-cover/presign")
+      .set({ ...authHeaderFor(9, "customer"), "X-Merchant-Id": VALID_MERCHANT_ID })
+      .send({ fileName: "cover.jpg", contentType: "image/jpeg", fileSize: 1024 });
+
+    expect(response.status).toBe(403);
+  });
+
   it("uses the configured public CDN base URL for S3 product images", async () => {
-    const s3App = createApp(undefined, new S3StorageService({
-      region: "ap-southeast-1",
-      bucketName: "liveorder-covers",
-      publicBaseUrl: "https://images.example.com/catalog/",
-    }));
+    const s3App = createApp(
+      undefined,
+      new S3StorageService({
+        region: "ap-southeast-1",
+        bucketName: "liveorder-covers",
+        publicBaseUrl: "https://images.example.com/catalog/",
+      }),
+      undefined,
+      undefined,
+      createShopTestAuthRepository()
+    );
     const response = await request(s3App)
       .post("/api/uploads/product-image/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({ fileName: "shirt.png", contentType: "image/png", fileSize: 1024 });
 
     expect(response.status).toBe(200);
-    expect(response.body.imageUrl).toMatch(/^https:\/\/images\.example\.com\/catalog\/products\/images\/[0-9a-f-]+\.png$/);
+    expect(response.body.imageUrl).toMatch(/^https:\/\/images\.example\.com\/catalog\/shops\/7\/products\/images\/[0-9a-f-]+\.png$/);
   });
 
   it("stores and serves product images locally when S3 is not configured", async () => {
@@ -66,44 +94,60 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
         new S3StorageService({}),
         undefined,
         undefined,
+        createShopTestAuthRepository(),
+        localStorage,
         undefined,
-        localStorage
+        undefined
       );
       const content = Buffer.from("test image bytes");
       const presign = await request(localApp)
         .post("/api/uploads/product-image/presign")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ fileName: "shirt.png", contentType: "image/png", fileSize: content.byteLength });
 
       expect(presign.status).toBe(200);
       expect(presign.body.storage).toBe("local");
       expect(presign.body.imageUrl).toMatch(/^http:\/\/localhost:8000\/uploads\/products\/[0-9a-f-]+\.png$/);
 
+      const uploadPath = new URL(presign.body.uploadUrl).pathname;
+      const imagePath = new URL(presign.body.imageUrl).pathname;
+      const otherShopUpload = await request(localApp)
+        .put(uploadPath)
+        .set(authHeaderFor(8))
+        .set("Content-Type", "image/png")
+        .send(content);
+      expect(otherShopUpload.status).toBe(404);
+      expect(otherShopUpload.body).toMatchObject({
+        error: "NotFound",
+        message: "Upload not found",
+      });
+      expect((await request(localApp).get(imagePath)).status).toBe(404);
+
       const uploaded = await request(localApp)
-        .put(new URL(presign.body.uploadUrl).pathname)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .put(uploadPath)
+        .set(authHeaderFor(7))
         .set("Content-Type", "image/png")
         .send(content);
       expect(uploaded.status).toBe(204);
 
-      const served = await request(localApp).get(new URL(presign.body.imageUrl).pathname);
+      const served = await request(localApp).get(imagePath);
       expect(served.status).toBe(200);
       expect(served.body).toEqual(content);
 
       const reusedUploadUrl = await request(localApp)
         .put(new URL(presign.body.uploadUrl).pathname)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .set("Content-Type", "image/png")
         .send(content);
       expect(reusedUploadUrl.status).toBe(400);
 
       const wrongSizePresign = await request(localApp)
         .post("/api/uploads/product-image/presign")
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .send({ fileName: "shirt.png", contentType: "image/png", fileSize: content.byteLength + 1 });
       const wrongSizeUpload = await request(localApp)
         .put(new URL(wrongSizePresign.body.uploadUrl).pathname)
-        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .set(authHeaderFor(7))
         .set("Content-Type", "image/png")
         .send(content);
       expect(wrongSizeUpload.status).toBe(400);
@@ -115,7 +159,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-001 - Presign valid JPEG image -> HTTP 200", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "cover.jpg",
         contentType: "image/jpeg",
@@ -124,7 +168,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.uploadUrl).toBeDefined();
-    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.jpg$/);
+    expect(res.body.objectKey).toMatch(/^shops\/7\/livestream-covers\/[0-9a-f-]+\.jpg$/);
     expect(res.body.coverImageUrl).toBeUndefined();
     expect(res.body.expiresIn).toBe(300);
   });
@@ -132,7 +176,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-002 - Presign valid PNG image -> HTTP 200", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "banner.png",
         contentType: "image/png",
@@ -140,13 +184,13 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.png$/);
+    expect(res.body.objectKey).toMatch(/^shops\/7\/livestream-covers\/[0-9a-f-]+\.png$/);
   });
 
   it("TC-UP-003 - Presign valid WebP image -> HTTP 200", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "cover.webp",
         contentType: "image/webp",
@@ -154,13 +198,13 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.objectKey).toMatch(/^public\/livestreams\/covers\/[0-9a-f-]+\.webp$/);
+    expect(res.body.objectKey).toMatch(/^shops\/7\/livestream-covers\/[0-9a-f-]+\.webp$/);
   });
 
   it("TC-UP-004 - Reject unsupported MIME type (image/gif) -> HTTP 400", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "animated.gif",
         contentType: "image/gif",
@@ -175,7 +219,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-005 - Reject unsupported MIME type (application/pdf) -> HTTP 400", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "document.pdf",
         contentType: "application/pdf",
@@ -189,7 +233,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-006 - Reject file size exceeding 5MB -> HTTP 400", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "large.jpg",
         contentType: "image/jpeg",
@@ -204,7 +248,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-007 - Reject file size zero or negative -> HTTP 400", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "empty.jpg",
         contentType: "image/jpeg",
@@ -218,7 +262,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-008 - Reject missing fileName -> HTTP 400", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         contentType: "image/jpeg",
         fileSize: 1024,
@@ -228,7 +272,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
     expect(res.body.error).toBe("ValidationError");
   });
 
-  it("TC-UP-009 - Missing X-Merchant-Id header -> HTTP 400", async () => {
+  it("TC-UP-009 - Missing bearer token -> HTTP 401", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
       .send({
@@ -237,18 +281,23 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
         fileSize: 1024,
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("BadRequest");
-    expect(res.body.message).toContain("X-Merchant-Id header is required");
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("Unauthorized");
   });
 
   it("TC-UP-010 - Handle unconfigured S3 storage gracefully -> HTTP 500 ConfigurationError", async () => {
     const unconfiguredService = new S3StorageService({});
-    const unconfiguredApp = createApp(undefined, unconfiguredService);
+    const unconfiguredApp = createApp(
+      undefined,
+      unconfiguredService,
+      undefined,
+      undefined,
+      createShopTestAuthRepository()
+    );
 
     const res = await request(unconfiguredApp)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "cover.jpg",
         contentType: "image/jpeg",
@@ -267,7 +316,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
 
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "cover.jpg",
         contentType: "image/jpeg",
@@ -282,7 +331,7 @@ describe("POST /api/uploads/livestream-cover/presign - API Tests", () => {
   it("TC-UP-012 - Reject unexpected extra fields -> HTTP 400", async () => {
     const res = await request(app)
       .post("/api/uploads/livestream-cover/presign")
-      .set("X-Merchant-Id", VALID_MERCHANT_ID)
+      .set(authHeaderFor(7))
       .send({
         fileName: "cover.jpg",
         contentType: "image/jpeg",

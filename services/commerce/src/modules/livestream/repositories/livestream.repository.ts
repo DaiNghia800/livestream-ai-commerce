@@ -24,9 +24,21 @@ export interface CreateLivestreamDto {
 export interface ILivestreamRepository {
   create(dto: CreateLivestreamDto): Promise<Livestream>;
   findById(id: string): Promise<Livestream | null>;
+  findByIdForMerchant(id: string, merchantId: string): Promise<Livestream | null>;
   findMany(query: LivestreamListQuery): Promise<LivestreamListResult>;
   updateStatus(id: string, status: LivestreamStatus): Promise<Livestream | null>;
+  updateStatusForMerchant(
+    id: string,
+    status: LivestreamStatus,
+    merchantId: string
+  ): Promise<Livestream | null>;
   updateIvsChannel(id: string, channelArn: string, playbackUrl: string): Promise<Livestream | null>;
+  updateIvsChannelForMerchant(
+    id: string,
+    channelArn: string,
+    playbackUrl: string,
+    merchantId: string
+  ): Promise<Livestream | null>;
 }
 
 export class PostgresLivestreamRepository implements ILivestreamRepository {
@@ -133,6 +145,40 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
     };
   }
 
+  async findByIdForMerchant(
+    id: string,
+    merchantId: string
+  ): Promise<Livestream | null> {
+    const result = await pool.query(
+      `SELECT id, merchant_id AS "merchantId", title, description,
+              cover_image_key AS "coverImageKey", status,
+              channel_arn AS "channelArn", playback_url AS "playbackUrl",
+              scheduled_at AS "scheduledAt", started_at AS "startedAt",
+              ended_at AS "endedAt", created_at AS "createdAt",
+              updated_at AS "updatedAt"
+       FROM livestreams
+       WHERE id = $1 AND merchant_id = $2`,
+      [id, merchantId]
+    );
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey || null,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
   async updateStatus(
     id: string,
     status: LivestreamStatus
@@ -182,6 +228,43 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
     };
   }
 
+  async updateStatusForMerchant(
+    id: string,
+    status: LivestreamStatus,
+    merchantId: string
+  ): Promise<Livestream | null> {
+    const startedAtSql = status === "live" ? "started_at = COALESCE(started_at, NOW())," : "";
+    const endedAtSql = status === "ended" ? "ended_at = COALESCE(ended_at, NOW())," : "";
+    const result = await pool.query(
+      `UPDATE livestreams
+       SET status = $2, ${startedAtSql} ${endedAtSql} updated_at = NOW()
+       WHERE id = $1 AND merchant_id = $3
+       RETURNING id, merchant_id AS "merchantId", title, description,
+         cover_image_key AS "coverImageKey", status, channel_arn AS "channelArn",
+         playback_url AS "playbackUrl", scheduled_at AS "scheduledAt",
+         started_at AS "startedAt", ended_at AS "endedAt",
+         created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [id, status, merchantId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey || null,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
   async updateIvsChannel(
     id: string,
     channelArn: string,
@@ -212,6 +295,42 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
     const result = await pool.query(query, [id, channelArn, playbackUrl]);
     if (result.rows.length === 0) return null;
     const row = result.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey || null,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
+  async updateIvsChannelForMerchant(
+    id: string,
+    channelArn: string,
+    playbackUrl: string,
+    merchantId: string
+  ): Promise<Livestream | null> {
+    const result = await pool.query(
+      `UPDATE livestreams
+       SET channel_arn = $2, playback_url = $3, updated_at = NOW()
+       WHERE id = $1 AND merchant_id = $4
+       RETURNING id, merchant_id AS "merchantId", title, description,
+         cover_image_key AS "coverImageKey", status, channel_arn AS "channelArn",
+         playback_url AS "playbackUrl", scheduled_at AS "scheduledAt",
+         started_at AS "startedAt", ended_at AS "endedAt",
+         created_at AS "createdAt", updated_at AS "updatedAt"`,
+      [id, channelArn, playbackUrl, merchantId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
     return {
       id: row.id,
       merchantId: row.merchantId,
@@ -365,6 +484,14 @@ export class InMemoryLivestreamRepository implements ILivestreamRepository {
     return this.items.get(id) || null;
   }
 
+  async findByIdForMerchant(
+    id: string,
+    merchantId: string
+  ): Promise<Livestream | null> {
+    const item = this.items.get(id);
+    return item?.merchantId === merchantId ? item : null;
+  }
+
   async findMany(query: LivestreamListQuery): Promise<LivestreamListResult> {
     const page = query.page && query.page > 0 ? query.page : 1;
     const limit = query.limit && query.limit > 0 ? query.limit : 10;
@@ -440,6 +567,15 @@ export class InMemoryLivestreamRepository implements ILivestreamRepository {
     return updated;
   }
 
+  async updateStatusForMerchant(
+    id: string,
+    status: LivestreamStatus,
+    merchantId: string
+  ): Promise<Livestream | null> {
+    if (!(await this.findByIdForMerchant(id, merchantId))) return null;
+    return this.updateStatus(id, status);
+  }
+
   async updateIvsChannel(
     id: string,
     channelArn: string,
@@ -456,5 +592,14 @@ export class InMemoryLivestreamRepository implements ILivestreamRepository {
     this.items.set(id, updated);
     return updated;
   }
-}
 
+  async updateIvsChannelForMerchant(
+    id: string,
+    channelArn: string,
+    playbackUrl: string,
+    merchantId: string
+  ): Promise<Livestream | null> {
+    if (!(await this.findByIdForMerchant(id, merchantId))) return null;
+    return this.updateIvsChannel(id, channelArn, playbackUrl);
+  }
+}

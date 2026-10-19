@@ -5,13 +5,29 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { PostgresProductRepository } from "../../../src/modules/product/repositories/product.repository.js";
 import { pool, runMigrations } from "../../../src/shared/database/database.js";
+import { authHeaderFor, createShopTestAuthRepository } from "../../helpers/auth.helper.js";
 
 const shopId = 1;
 const productCode = `XLSX-${randomUUID()}`;
 const rollbackCode = `ROLLBACK-${randomUUID()}`;
 const skuCode1 = `XLSX-SKU-${randomUUID()}`;
 const skuCode2 = `XLSX-SKU-${randomUUID()}`;
-const app = createApp(undefined, undefined, undefined, new PostgresProductRepository());
+const app = createApp(
+  undefined,
+  undefined,
+  undefined,
+  new PostgresProductRepository(),
+  createShopTestAuthRepository([
+    {
+      userId: 25,
+      shop: {
+        id: shopId,
+        merchantId: "a0000000-0000-0000-0000-000000000025",
+        name: "Excel integration shop",
+      },
+    },
+  ])
+);
 
 async function workbookBuffer(rows: unknown[][]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -43,7 +59,7 @@ describe("Products Excel - PostgreSQL integration", () => {
 
     const imported = await request(app)
       .post("/api/products/import.xlsx")
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(25))
       .set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
       .send(file);
     expect(imported.status).toBe(201);
@@ -51,7 +67,7 @@ describe("Products Excel - PostgreSQL integration", () => {
 
     const exported = await request(app)
       .get(`/api/products/export.xlsx?q=${encodeURIComponent(productCode)}`)
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(25))
       .buffer(true)
       .parse((stream, callback) => {
         const chunks: Buffer[] = [];
@@ -71,7 +87,7 @@ describe("Products Excel - PostgreSQL integration", () => {
     ]);
     const duplicate = await request(app)
       .post("/api/products/import.xlsx")
-      .set("X-Shop-Id", String(shopId))
+      .set(authHeaderFor(25))
       .set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
       .send(duplicateFile);
     expect(duplicate.status).toBe(409);

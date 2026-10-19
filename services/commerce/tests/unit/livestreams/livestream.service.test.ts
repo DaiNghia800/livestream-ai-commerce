@@ -33,6 +33,9 @@ describe("LivestreamService - Unit Tests", () => {
     repository = {
       create: vi.fn(),
       findById: vi.fn(),
+      findByIdForMerchant: vi.fn(),
+      updateStatusForMerchant: vi.fn(),
+      updateIvsChannelForMerchant: vi.fn(),
     };
 
     service = new LivestreamService(repository);
@@ -355,50 +358,54 @@ describe("LivestreamService - Unit Tests", () => {
   });
 
   it("UT-LS-018 - updateLivestreamStatus returns null when livestream does not exist", async () => {
-    vi.mocked(repository.findById).mockResolvedValue(null);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(null);
 
-    const result = await service.updateLivestreamStatus("missing-id", "live");
+    const result = await service.updateLivestreamStatus("missing-id", "live", MERCHANT_ID);
 
     expect(result).toBeNull();
   });
 
   it("UT-LS-019 - updateLivestreamStatus throws error when restarting an ended livestream", async () => {
-    vi.mocked(repository.findById).mockResolvedValue({
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue({
       ...createdLivestream,
       status: "ended",
     });
 
     await expect(
-      service.updateLivestreamStatus(createdLivestream.id, "live")
+      service.updateLivestreamStatus(createdLivestream.id, "live", MERCHANT_ID)
     ).rejects.toThrow("Cannot restart an ended livestream");
   });
 
   it("UT-LS-020 - updateLivestreamStatus delegates to repository on valid transition", async () => {
-    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(createdLivestream);
     const updatedLivestream = { ...createdLivestream, status: "live" as const };
-    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+    vi.mocked(repository.updateStatusForMerchant).mockResolvedValue(updatedLivestream);
 
-    const result = await service.updateLivestreamStatus(createdLivestream.id, "live");
+    const result = await service.updateLivestreamStatus(createdLivestream.id, "live", MERCHANT_ID);
 
     expect(result).toEqual(updatedLivestream);
-    expect((repository as any).updateStatus).toHaveBeenCalledWith(createdLivestream.id, "live");
+    expect(repository.updateStatusForMerchant).toHaveBeenCalledWith(
+      createdLivestream.id,
+      "live",
+      MERCHANT_ID
+    );
   });
 
   it("UT-LS-021 - getOrCreateIvsStreamConfig returns null when livestream is not found", async () => {
-    vi.mocked(repository.findById).mockResolvedValue(null);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(null);
 
-    const result = await service.getOrCreateIvsStreamConfig("missing-id");
+    const result = await service.getOrCreateIvsStreamConfig("missing-id", MERCHANT_ID);
 
     expect(result).toBeNull();
-    expect(repository.findById).toHaveBeenCalledWith("missing-id");
+    expect(repository.findByIdForMerchant).toHaveBeenCalledWith("missing-id", MERCHANT_ID);
   });
 
   it("UT-LS-022 - getOrCreateIvsStreamConfig throws when IVS service is not provided", async () => {
-    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(createdLivestream);
     const serviceNoIvs = new LivestreamService(repository, undefined, undefined);
 
     await expect(
-      serviceNoIvs.getOrCreateIvsStreamConfig(createdLivestream.id)
+      serviceNoIvs.getOrCreateIvsStreamConfig(createdLivestream.id, MERCHANT_ID)
     ).rejects.toThrow("AWS IVS service is not configured");
   });
 
@@ -408,7 +415,7 @@ describe("LivestreamService - Unit Tests", () => {
       channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/existing-ch",
       playbackUrl: "https://playback.live-video.net/existing.m3u8",
     };
-    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(livestreamWithIvs);
 
     const mockIvs = {
       isConfigured: () => true,
@@ -422,7 +429,10 @@ describe("LivestreamService - Unit Tests", () => {
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
-    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(livestreamWithIvs.id);
+    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(
+      livestreamWithIvs.id,
+      MERCHANT_ID
+    );
 
     expect(result).toEqual({
       channelArn: livestreamWithIvs.channelArn,
@@ -435,8 +445,8 @@ describe("LivestreamService - Unit Tests", () => {
   });
 
   it("UT-LS-024 - getOrCreateIvsStreamConfig provisions new channel and updates repository when not yet provisioned", async () => {
-    vi.mocked(repository.findById).mockResolvedValue(createdLivestream);
-    (repository as any).updateIvsChannel = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(createdLivestream);
+    vi.mocked(repository.updateIvsChannelForMerchant).mockResolvedValue(createdLivestream);
 
     const mockIvs = {
       isConfigured: () => true,
@@ -450,7 +460,10 @@ describe("LivestreamService - Unit Tests", () => {
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
-    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(createdLivestream.id);
+    const result = await serviceWithIvs.getOrCreateIvsStreamConfig(
+      createdLivestream.id,
+      MERCHANT_ID
+    );
 
     expect(result).toEqual({
       channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
@@ -459,10 +472,11 @@ describe("LivestreamService - Unit Tests", () => {
       streamKey: "mock-stream-key-new",
     });
     expect(mockIvs.createChannel).toHaveBeenCalledWith(createdLivestream.title);
-    expect((repository as any).updateIvsChannel).toHaveBeenCalledWith(
+    expect(repository.updateIvsChannelForMerchant).toHaveBeenCalledWith(
       createdLivestream.id,
       "arn:aws:ivs:ap-northeast-1:123456789012:channel/new-ch",
-      "https://playback.live-video.net/new.m3u8"
+      "https://playback.live-video.net/new.m3u8",
+      MERCHANT_ID
     );
   });
 
@@ -471,9 +485,9 @@ describe("LivestreamService - Unit Tests", () => {
       ...createdLivestream,
       channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/live-to-end",
     };
-    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(livestreamWithIvs);
     const updatedLivestream = { ...livestreamWithIvs, status: "ended" as const };
-    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+    vi.mocked(repository.updateStatusForMerchant).mockResolvedValue(updatedLivestream);
 
     const mockIvs = {
       isConfigured: () => true,
@@ -483,7 +497,11 @@ describe("LivestreamService - Unit Tests", () => {
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
-    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+    const result = await serviceWithIvs.updateLivestreamStatus(
+      livestreamWithIvs.id,
+      "ended",
+      MERCHANT_ID
+    );
 
     expect(result).toEqual(updatedLivestream);
     expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
@@ -494,9 +512,9 @@ describe("LivestreamService - Unit Tests", () => {
       ...createdLivestream,
       channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/live-to-cancel",
     };
-    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(livestreamWithIvs);
     const updatedLivestream = { ...livestreamWithIvs, status: "cancelled" as const };
-    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+    vi.mocked(repository.updateStatusForMerchant).mockResolvedValue(updatedLivestream);
 
     const mockIvs = {
       isConfigured: () => true,
@@ -506,7 +524,11 @@ describe("LivestreamService - Unit Tests", () => {
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
-    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "cancelled");
+    const result = await serviceWithIvs.updateLivestreamStatus(
+      livestreamWithIvs.id,
+      "cancelled",
+      MERCHANT_ID
+    );
 
     expect(result).toEqual(updatedLivestream);
     expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
@@ -517,9 +539,9 @@ describe("LivestreamService - Unit Tests", () => {
       ...createdLivestream,
       channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/stay-live",
     };
-    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(livestreamWithIvs);
     const updatedLivestream = { ...livestreamWithIvs, status: "live" as const };
-    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+    vi.mocked(repository.updateStatusForMerchant).mockResolvedValue(updatedLivestream);
 
     const mockIvs = {
       isConfigured: () => true,
@@ -529,7 +551,11 @@ describe("LivestreamService - Unit Tests", () => {
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
-    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "live");
+    const result = await serviceWithIvs.updateLivestreamStatus(
+      livestreamWithIvs.id,
+      "live",
+      MERCHANT_ID
+    );
 
     expect(result).toEqual(updatedLivestream);
     expect(mockIvs.deleteChannel).not.toHaveBeenCalled();
@@ -540,9 +566,9 @@ describe("LivestreamService - Unit Tests", () => {
       ...createdLivestream,
       channelArn: "arn:aws:ivs:ap-northeast-1:123456789012:channel/error-channel",
     };
-    vi.mocked(repository.findById).mockResolvedValue(livestreamWithIvs);
+    vi.mocked(repository.findByIdForMerchant).mockResolvedValue(livestreamWithIvs);
     const updatedLivestream = { ...livestreamWithIvs, status: "ended" as const };
-    (repository as any).updateStatus = vi.fn().mockResolvedValue(updatedLivestream);
+    vi.mocked(repository.updateStatusForMerchant).mockResolvedValue(updatedLivestream);
 
     const mockIvs = {
       isConfigured: () => true,
@@ -552,7 +578,11 @@ describe("LivestreamService - Unit Tests", () => {
     };
 
     const serviceWithIvs = new LivestreamService(repository, undefined, mockIvs as any);
-    const result = await serviceWithIvs.updateLivestreamStatus(livestreamWithIvs.id, "ended");
+    const result = await serviceWithIvs.updateLivestreamStatus(
+      livestreamWithIvs.id,
+      "ended",
+      MERCHANT_ID
+    );
 
     expect(result).toEqual(updatedLivestream);
     expect(mockIvs.deleteChannel).toHaveBeenCalledWith(livestreamWithIvs.channelArn);
