@@ -146,6 +146,18 @@ test("order detail renders items, history and the payment box", async ({
   expect(consoleErrors).toEqual([]);
 });
 
+test("active shipment routes staff to tracking instead of manual completion", async ({ page }) => {
+  await stubApi(page, { orderDetail: {
+    ...ORDER_DETAIL,
+    status: "PROCESSING",
+    activeShipmentId: "shipment-123",
+  } });
+  await page.goto(`/shop/orders/${ORDER_DETAIL.orderCode}`);
+  await expect(page.getByRole("link", { name: "Xem vận đơn" })).toHaveAttribute("href", "/shop/shipping/shipment-123");
+  await expect(page.getByRole("button", { name: "Xác nhận đã giao" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hủy đơn hàng" })).toHaveCount(0);
+});
+
 test("cancel dialog blocks submit until a reason is chosen", async ({
   page,
 }) => {

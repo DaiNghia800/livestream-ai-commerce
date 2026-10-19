@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
+import crypto from "crypto";
 import { ZodError } from "zod";
+import { config } from "../../../config.js";
 import {
   InvalidOrderStateError,
   OrderNotFoundError,
@@ -49,6 +51,22 @@ export class PaymentController {
    * lại mãi, mà giao dịch thì vốn đã ghi nhận xong rồi.
    */
   bankWebhook = async (req: Request, res: Response): Promise<void> => {
+    // Endpoint này có thể ghi PAID. Thiếu bí mật thì khoá hẳn, không
+    // cho người lạ tự gửi một JSON giả làm thông báo tiền về.
+    if (!config.bankWebhookSecret) {
+      res.status(503).json({ error: "BankWebhookNotConfigured" });
+      return;
+    }
+    const received = req.header("x-bank-webhook-secret") ?? "";
+    const expectedBytes = Buffer.from(config.bankWebhookSecret);
+    const receivedBytes = Buffer.from(received);
+    if (
+      receivedBytes.length !== expectedBytes.length ||
+      !crypto.timingSafeEqual(receivedBytes, expectedBytes)
+    ) {
+      res.status(401).json({ error: "InvalidWebhookSecret" });
+      return;
+    }
     try {
       const input = BankTransferWebhookSchema.parse(req.body);
       const payment = await this.service.recordBankTransfer(input);
@@ -64,6 +82,14 @@ export class PaymentController {
       res.json(this.present(await this.service.getByOrder(req.params.orderId)));
     } catch (err) {
       this.handle(err, res, "load payment");
+    }
+  };
+
+  getByTxnRef = async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(this.present(await this.service.getByTxnRef(req.params.txnRef)));
+    } catch (err) {
+      this.handle(err, res, "load payment by reference");
     }
   };
 
@@ -199,7 +225,13 @@ export class PaymentController {
    * code mà cổng thật đi qua.
    */
   mockCheckoutPage = async (req: Request, res: Response): Promise<void> => {
-    const gateway = getGateway("mock") as MockGateway;
+    let gateway: MockGateway;
+    try {
+      gateway = getGateway("mock") as MockGateway;
+    } catch (err) {
+      this.handle(err, res, "load mock checkout");
+      return;
+    }
     const txnRef = String(req.query.txnRef ?? "");
     const amount = String(req.query.amount ?? "0");
     const orderCode = String(req.query.orderCode ?? "");
