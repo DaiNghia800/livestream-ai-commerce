@@ -164,6 +164,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               <span className="material-symbols-outlined text-[16px]">filter_list</span>
             </span>
             <input
+              aria-label="Tìm đơn hàng"
               className="h-9 pl-8 pr-3 text-body-sm font-body-sm bg-surface rounded-lg border border-outline-variant/60 focus:outline-none focus:border-primary w-48 lg:w-56 min-h-0"
               placeholder="Lọc theo khách, mã đơn..."
               type="text"
@@ -177,6 +178,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
 
           {/* Status filter */}
           <select
+            aria-label="Trạng thái"
             className="h-9 px-3 text-body-sm font-body-sm bg-surface rounded-lg border border-outline-variant/60 focus:outline-none focus:border-primary text-on-surface min-h-0"
             value={statusFilter}
             onChange={(e) => {
@@ -225,7 +227,16 @@ export function OrdersTable({ orders }: OrdersTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant/30 text-body-md font-body-md">
-            {filtered.map((order) => {
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-10 text-center">
+                  <h4 className="font-semibold text-on-surface">
+                    Không tìm thấy đơn hàng
+                  </h4>
+                </td>
+              </tr>
+            ) : (
+              filtered.map((order) => {
               const st = statusConfig[order.status];
               const pm = paymentBadge[order.paymentMethod] ?? "bg-surface-container-low text-on-surface-variant border border-outline-variant";
               return (
@@ -293,7 +304,8 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   </td>
                 </tr>
               );
-            })}
+              })
+            )}
           </tbody>
         </table>
       </div>
