@@ -17,7 +17,7 @@ function KpiCard({ metric }: KpiCardProps) {
       ? "hover:border-error/50"
       : "hover:border-primary/40";
 
-  function BadgeContent() {
+  const badgeContent = (() => {
     if (isLive) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200">
@@ -56,9 +56,9 @@ function KpiCard({ metric }: KpiCardProps) {
       );
     }
     return null;
-  }
+  })();
 
-  function IconContent() {
+  const iconContent = (() => {
     if (!metric.icon || isError) return null;
     const bgMap: Record<string, string> = {
       indigo: "bg-indigo-50 border-indigo-100 text-primary",
@@ -71,9 +71,9 @@ function KpiCard({ metric }: KpiCardProps) {
         <span className="material-symbols-outlined text-[20px]">{metric.icon}</span>
       </div>
     );
-  }
+  })();
 
-  function NoteContent() {
+  const noteContent = (() => {
     if (!metric.note) return null;
     if (metric.noteTone === "success") {
       return (
@@ -107,7 +107,7 @@ function KpiCard({ metric }: KpiCardProps) {
         {metric.note}
       </div>
     );
-  }
+  })();
 
   return (
     <div
@@ -115,7 +115,7 @@ function KpiCard({ metric }: KpiCardProps) {
     >
       <div className="flex items-center justify-between">
         <span className="text-label-sm font-label-sm text-on-surface-variant">{metric.label}</span>
-        <BadgeContent />
+        {badgeContent}
       </div>
 
       {isRevenue ? (
@@ -151,11 +151,11 @@ function KpiCard({ metric }: KpiCardProps) {
               </span>
             )}
           </span>
-          <IconContent />
+          {iconContent}
         </div>
       )}
 
-      <NoteContent />
+      {noteContent}
     </div>
   );
 }
