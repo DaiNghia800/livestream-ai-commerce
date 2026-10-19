@@ -1,0 +1,416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:livestream-ai-commerce:proposed:b1:worker-intent-result-extension:v1",
+  "title": "PROPOSED / NOT IMPLEMENTED — worker-intent-result-extension v1",
+  "description": "Future opt-in B1 draft for team review. Schema validity is not identity, SKU, inventory, consent or transaction verification. Not an implemented API or authorization to create orders.",
+  "x-contract-status": "PROPOSED / NOT IMPLEMENTED",
+  "type": "object",
+  "properties": {
+    "schema_name": {
+      "const": "ai-worker.intent-result-extension"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "error"
+      ]
+    },
+    "correlation": {
+      "$ref": "#/$defs/correlation"
+    },
+    "decision": {
+      "enum": [
+        "purchase_candidate",
+        "needs_clarification",
+        "no_purchase",
+        null
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "uniqueItems": true
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "low",
+        null
+      ]
+    },
+    "error_type": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "proposal_evidence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/proposalEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "status",
+    "correlation",
+    "decision",
+    "reason_codes",
+    "confidence",
+    "error_type",
+    "proposal_evidence"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "correlation": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "comment_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "customer_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source_schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "event_id",
+        "comment_id",
+        "session_id",
+        "customer_id",
+        "source_schema_version",
+        "occurred_at"
+      ],
+      "additionalProperties": false
+    },
+    "productCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50,
+      "pattern": "^[A-Z]+(?:-[A-Z]+)*-?[0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "proposalEvidence": {
+      "type": "object",
+      "properties": {
+        "product_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/productCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "XXS",
+                "XS",
+                "S",
+                "M",
+                "L",
+                "XL",
+                "XXL",
+                "XXXL"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variant_options": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 2,
+              "maxItems": 2,
+              "uniqueItems": true
+            },
+            "selection_mode": {
+              "const": "SELLER_PROPOSES"
+            }
+          },
+          "required": [
+            "colors",
+            "selection_mode"
+          ],
+          "additionalProperties": false
+        },
+        "proposal_permitted": {
+          "type": "boolean"
+        },
+        "blocking_reason_codes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ambiguous_size",
+              "missing_quantity",
+              "invalid_quantity",
+              "quantity_out_of_range",
+              "unsupported_product_code",
+              "unsafe_language"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "product_code",
+        "quantity",
+        "size",
+        "variant_options",
+        "proposal_permitted",
+        "blocking_reason_codes"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "proposal_permitted": {
+                "const": true
+              }
+            },
+            "required": [
+              "proposal_permitted"
+            ]
+          },
+          "then": {
+            "properties": {
+              "product_code": {
+                "$ref": "#/$defs/productCode"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "blocking_reason_codes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "proposal_permitted": {
+                "const": false
+              }
+            },
+            "required": [
+              "proposal_permitted"
+            ]
+          },
+          "then": {
+            "properties": {
+              "blocking_reason_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "blocking_reason_codes": {
+                "contains": {
+                  "const": "ambiguous_size"
+                }
+              }
+            },
+            "required": [
+              "blocking_reason_codes"
+            ]
+          },
+          "then": {
+            "properties": {
+              "size": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "purchase_candidate",
+              "needs_clarification",
+              "no_purchase"
+            ]
+          },
+          "error_type": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "error"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "const": null
+          },
+          "reason_codes": {
+            "maxItems": 0
+          },
+          "confidence": {
+            "const": null
+          },
+          "proposal_evidence": {
+            "const": null
+          },
+          "error_type": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "proposal_evidence": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "proposal_evidence"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "decision": {
+            "const": "needs_clarification"
+          },
+          "reason_codes": {
+            "contains": {
+              "const": "ambiguous_color"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "proposal_evidence": {
+            "type": "object",
+            "properties": {
+              "proposal_permitted": {
+                "const": true
+              }
+            },
+            "required": [
+              "proposal_permitted"
+            ]
+          }
+        },
+        "required": [
+          "proposal_evidence"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "items": {
+              "const": "ambiguous_color"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

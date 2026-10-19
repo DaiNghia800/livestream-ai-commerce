@@ -1,0 +1,4 @@
+# Test-only JSON Schema Draft 2020-12 validation; not a Worker dependency.
+jsonschema==4.26.0
+# Enable date-time assertions instead of silently ignoring their format.
+rfc3339-validator==0.1.4

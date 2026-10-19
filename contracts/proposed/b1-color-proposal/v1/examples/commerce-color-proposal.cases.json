@@ -1,0 +1,849 @@
+{
+  "contract_status": "PROPOSED / NOT IMPLEMENTED",
+  "synthetic_only": true,
+  "description": "Fixture-only payloads, not runtime output, real catalog data, identity mappings or implemented endpoints.",
+  "cases": [
+    {
+      "id": "base",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      }
+    },
+    {
+      "id": "accepted",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "ACCEPTED",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": "2026-10-19T10:01:00Z",
+        "order_id": "66666666-6666-4666-8666-666666666666",
+        "inventory_reserved": true,
+        "status_reason": "CUSTOMER_ACCEPTED"
+      }
+    },
+    {
+      "id": "rejected",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "REJECTED",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": "CUSTOMER_REJECTED"
+      }
+    },
+    {
+      "id": "expired",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "EXPIRED",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": "EXPIRED"
+      }
+    },
+    {
+      "id": "invalidated-stock",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "INVALIDATED",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": "STOCK_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "invalidated-price",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "INVALIDATED",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": "PRICE_CHANGED"
+      }
+    },
+    {
+      "id": "invalidated-context",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "INVALIDATED",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": "CONTEXT_INVALID"
+      }
+    },
+    {
+      "id": "alternative-higher-priced-color",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "13",
+          "sku_code": "SYNTHETIC-BLACK",
+          "color": "đen",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "219000.00",
+          "goods_subtotal": "438000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "description": "Synthetic illustration only: a different SKU may have a different quote. No resolver or stock availability is proved."
+    },
+    {
+      "id": "reserve-before-confirmation",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": true,
+        "status_reason": null
+      },
+      "expected_keyword": "const"
+    },
+    {
+      "id": "order-before-confirmation",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": "66666666-6666-4666-8666-666666666666",
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "const"
+    },
+    {
+      "id": "sku-code-used-as-id",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "A12-RED",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "pattern"
+    },
+    {
+      "id": "untrusted-user-string-as-internal-customer",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "viewer-123",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "format"
+    },
+    {
+      "id": "quantity-above-max",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 101,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "maximum"
+    },
+    {
+      "id": "numeric-money",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": 199000,
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "type"
+    },
+    {
+      "id": "no-expiration",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "required"
+    },
+    {
+      "id": "invalid-calendar-date",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "SELLER_PROPOSES",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-02-30T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "format"
+    },
+    {
+      "id": "wrong-selection-mode",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-color-proposal",
+        "schema_version": 1,
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "status": "AWAITING_CUSTOMER_CONFIRMATION",
+        "correlation": {
+          "event_id": "11111111-1111-4111-8111-111111111111",
+          "comment_id": "22222222-2222-4222-8222-222222222222",
+          "session_id": "33333333-3333-4333-8333-333333333333",
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "source_schema_version": 1,
+          "occurred_at": "2026-10-19T10:00:00Z"
+        },
+        "context": {
+          "customer_id": "44444444-4444-4444-8444-444444444444",
+          "merchant_id": "77777777-7777-4777-8777-777777777777",
+          "shop_id": 1,
+          "livestream_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "product_code": "A12",
+        "quantity": 2,
+        "requested_colors": [
+          "đỏ",
+          "đen"
+        ],
+        "selection_mode": "AI_SELECTS",
+        "proposed_variant": {
+          "sku_id": "12",
+          "sku_code": "SYNTHETIC-RED",
+          "color": "đỏ",
+          "size": null
+        },
+        "price_quote": {
+          "currency": "VND",
+          "unit_price": "199000.00",
+          "goods_subtotal": "398000.00"
+        },
+        "created_at": "2026-10-19T10:00:01Z",
+        "expires_at": "2026-10-19T10:05:01Z",
+        "confirmed_at": null,
+        "order_id": null,
+        "inventory_reserved": false,
+        "status_reason": null
+      },
+      "expected_keyword": "const"
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "contract_status": "PROPOSED / NOT IMPLEMENTED",
+  "synthetic_only": true,
+  "description": "Fixture-only payloads, not runtime output, real catalog data, identity mappings or implemented endpoints.",
+  "cases": [
+    {
+      "id": "base",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "ACCEPT"
+      }
+    },
+    {
+      "id": "reject",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "REJECT"
+      }
+    },
+    {
+      "id": "chat-text-is-not-consent",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "ok"
+      },
+      "expected_keyword": "enum"
+    },
+    {
+      "id": "auto-accept-is-not-consent",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "AUTO_ACCEPT"
+      },
+      "expected_keyword": "enum"
+    },
+    {
+      "id": "boolean-is-not-version",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": true,
+        "action": "ACCEPT"
+      },
+      "expected_keyword": "type"
+    },
+    {
+      "id": "missing-action",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1
+      },
+      "expected_keyword": "required"
+    },
+    {
+      "id": "client-changes-sku",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "ACCEPT",
+        "sku_id": "13"
+      },
+      "expected_keyword": "additionalProperties"
+    },
+    {
+      "id": "client-changes-price",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "ACCEPT",
+        "unit_price": "1.00"
+      },
+      "expected_keyword": "additionalProperties"
+    },
+    {
+      "id": "client-claims-customer",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-request",
+        "schema_version": 1,
+        "proposal_version": 1,
+        "action": "ACCEPT",
+        "customer_id": "44444444-4444-4444-8444-444444444444"
+      },
+      "expected_keyword": "additionalProperties"
+    }
+  ]
+}
