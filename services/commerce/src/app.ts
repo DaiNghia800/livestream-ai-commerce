@@ -32,7 +32,10 @@ export function createApp(
   customAuthRepository?: IAuthRepository,
   customLocalProductImageStorage?: LocalProductImageStorageService,
   customInventoryRepository?: IInventoryRepository,
-  customIvsService?: IIvsService
+  customIvsService?: IIvsService,
+  customIvsChatService?: IIvsChatService,
+  customCommentRepository?: ILivestreamCommentRepository,
+  customSqsService?: ISqsService
 ): Express {
 
   const app = express();
@@ -99,7 +102,10 @@ export function createApp(
     createLivestreamRouter(
       customRepository,
       customLivestreamProductRepository,
-      customIvsService
+      customIvsService,
+      customIvsChatService,
+      customCommentRepository,
+      customSqsService
     )
   );
   apiRouter.use("/orders", createOrderRouter());

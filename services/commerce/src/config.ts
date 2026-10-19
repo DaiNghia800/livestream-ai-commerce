@@ -39,6 +39,8 @@ export interface AppConfig {
   awsRegion?: string;
   awsIvsRegion?: string;
   s3BucketName?: string;
+  s3MediaBucketName?: string;
+  sqsQueueUrl?: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
   holdConfirmSeconds: number;
@@ -119,6 +121,11 @@ export const config: AppConfig = {
       ? process.env.AWS_REGION
       : "ap-northeast-1"),
   s3BucketName: process.env.S3_BUCKET_NAME || undefined,
+  s3MediaBucketName:
+    process.env.S3_MEDIA_BUCKET_NAME ||
+    process.env.S3_BUCKET_NAME ||
+    undefined,
+  sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
   // 5 phút khi vừa chốt, 15 phút sau khi khách mở link xác nhận,
   // trần cứng 30 phút để không gia hạn vô hạn.
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),

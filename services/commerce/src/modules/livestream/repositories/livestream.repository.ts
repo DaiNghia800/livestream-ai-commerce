@@ -27,6 +27,8 @@ export interface ILivestreamRepository {
   findMany(query: LivestreamListQuery): Promise<LivestreamListResult>;
   updateStatus(id: string, status: LivestreamStatus): Promise<Livestream | null>;
   updateIvsChannel(id: string, channelArn: string, playbackUrl: string): Promise<Livestream | null>;
+  updateIvsChatRoom(id: string, chatRoomArn: string, chatRoomId: string): Promise<Livestream | null>;
+  updateReplayUrl(id: string, replayUrl: string): Promise<Livestream | null>;
 }
 
 export class PostgresLivestreamRepository implements ILivestreamRepository {
@@ -53,6 +55,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
         status,
         channel_arn AS "channelArn",
         playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
         scheduled_at AS "scheduledAt",
         started_at AS "startedAt",
         ended_at AS "endedAt",
@@ -85,6 +90,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
       status: row.status,
       channelArn: row.channelArn,
       playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
       scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
       startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
       endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
@@ -104,6 +112,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
         status,
         channel_arn AS "channelArn",
         playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
         scheduled_at AS "scheduledAt",
         started_at AS "startedAt",
         ended_at AS "endedAt",
@@ -125,6 +136,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
       status: row.status,
       channelArn: row.channelArn,
       playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
       scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
       startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
       endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
@@ -156,6 +170,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
         status,
         channel_arn AS "channelArn",
         playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
         scheduled_at AS "scheduledAt",
         started_at AS "startedAt",
         ended_at AS "endedAt",
@@ -174,6 +191,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
       status: updatedRow.status,
       channelArn: updatedRow.channelArn,
       playbackUrl: updatedRow.playbackUrl,
+      chatRoomArn: updatedRow.chatRoomArn || null,
+      chatRoomId: updatedRow.chatRoomId || null,
+      replayUrl: updatedRow.replayUrl || null,
       scheduledAt: updatedRow.scheduledAt ? new Date(updatedRow.scheduledAt).toISOString() : null,
       startedAt: updatedRow.startedAt ? new Date(updatedRow.startedAt).toISOString() : null,
       endedAt: updatedRow.endedAt ? new Date(updatedRow.endedAt).toISOString() : null,
@@ -203,6 +223,8 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
         status,
         channel_arn AS "channelArn",
         playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
         scheduled_at AS "scheduledAt",
         started_at AS "startedAt",
         ended_at AS "endedAt",
@@ -221,6 +243,110 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
       status: row.status,
       channelArn: row.channelArn,
       playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
+  async updateIvsChatRoom(
+    id: string,
+    chatRoomArn: string,
+    chatRoomId: string
+  ): Promise<Livestream | null> {
+    const query = `
+      UPDATE livestreams
+      SET
+        chat_room_arn = $2,
+        chat_room_id = $3,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING
+        id,
+        merchant_id AS "merchantId",
+        title,
+        description,
+        cover_image_key AS "coverImageKey",
+        status,
+        channel_arn AS "channelArn",
+        playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        scheduled_at AS "scheduledAt",
+        started_at AS "startedAt",
+        ended_at AS "endedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt";
+    `;
+    const result = await pool.query(query, [id, chatRoomArn, chatRoomId]);
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey || null,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
+  async updateReplayUrl(
+    id: string,
+    replayUrl: string
+  ): Promise<Livestream | null> {
+    const query = `
+      UPDATE livestreams
+      SET
+        replay_url = $2,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING
+        id,
+        merchant_id AS "merchantId",
+        title,
+        description,
+        cover_image_key AS "coverImageKey",
+        status,
+        channel_arn AS "channelArn",
+        playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
+        scheduled_at AS "scheduledAt",
+        started_at AS "startedAt",
+        ended_at AS "endedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt";
+    `;
+    const result = await pool.query(query, [id, replayUrl]);
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey || null,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
       scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
       startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
       endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
@@ -284,6 +410,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
         l.status,
         l.channel_arn AS "channelArn",
         l.playback_url AS "playbackUrl",
+        l.chat_room_arn AS "chatRoomArn",
+        l.chat_room_id AS "chatRoomId",
+        l.replay_url AS "replayUrl",
         l.scheduled_at AS "scheduledAt",
         l.started_at AS "startedAt",
         l.ended_at AS "endedAt",
@@ -309,6 +438,9 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
       status: row.status,
       channelArn: row.channelArn,
       playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
       scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
       startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
       endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
@@ -451,6 +583,38 @@ export class InMemoryLivestreamRepository implements ILivestreamRepository {
       ...item,
       channelArn,
       playbackUrl,
+      updatedAt: new Date().toISOString(),
+    };
+    this.items.set(id, updated);
+    return updated;
+  }
+
+  async updateIvsChatRoom(
+    id: string,
+    chatRoomArn: string,
+    chatRoomId: string
+  ): Promise<Livestream | null> {
+    const item = this.items.get(id);
+    if (!item) return null;
+    const updated: Livestream = {
+      ...item,
+      chatRoomArn,
+      chatRoomId,
+      updatedAt: new Date().toISOString(),
+    };
+    this.items.set(id, updated);
+    return updated;
+  }
+
+  async updateReplayUrl(
+    id: string,
+    replayUrl: string
+  ): Promise<Livestream | null> {
+    const item = this.items.get(id);
+    if (!item) return null;
+    const updated: Livestream = {
+      ...item,
+      replayUrl,
       updatedAt: new Date().toISOString(),
     };
     this.items.set(id, updated);

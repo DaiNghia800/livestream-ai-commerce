@@ -34,6 +34,7 @@ export interface StudioChatMessage {
   orderCreated?: boolean;
   orderId?: string;
   reviewReason?: string;
+  badge?: string;
 }
 
 export interface StudioSessionState {

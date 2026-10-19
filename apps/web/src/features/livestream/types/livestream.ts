@@ -14,6 +14,7 @@ export interface Livestream {
     hostName?: string;
     ivsChannel?: string;
     chatRoomArn?: string;
+    replayUrl?: string;
     resolution?: string;
     channelName?: string;
     scheduledAt?: string;

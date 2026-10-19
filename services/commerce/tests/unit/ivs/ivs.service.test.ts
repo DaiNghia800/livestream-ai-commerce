@@ -230,4 +230,83 @@ describe("IvsService Unit Tests", () => {
     const result = await service.deleteChannel("arn:test", 1);
     expect(result).toBe(false);
   });
+
+  it("getOrCreateRecordingConfiguration returns null if s3BucketName is not set", async () => {
+    const service = new IvsService({ region: "ap-northeast-1" });
+    const result = await service.getOrCreateRecordingConfiguration();
+    expect(result).toBeNull();
+  });
+
+  it("getOrCreateRecordingConfiguration creates and returns ARN when bucket is configured", async () => {
+    const mockSend = vi.fn().mockImplementation((command) => {
+      if (command.constructor.name === "ListRecordingConfigurationsCommand") {
+        return Promise.resolve({ recordingConfigurations: [] });
+      }
+      if (command.constructor.name === "CreateRecordingConfigurationCommand") {
+        return Promise.resolve({
+          recordingConfiguration: {
+            arn: "arn:aws:ivs:ap-northeast-1:123456789012:recording-configuration/test-arn",
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const mockClient = { send: mockSend } as any;
+    const service = new IvsService(
+      { region: "ap-northeast-1", s3BucketName: "liveorder-dev-media" },
+      mockClient
+    );
+
+    const arn = await service.getOrCreateRecordingConfiguration();
+    expect(arn).toBe("arn:aws:ivs:ap-northeast-1:123456789012:recording-configuration/test-arn");
+    expect(mockSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("getReplayUrl returns S3 url when s3BucketName is provided and fallback when not", () => {
+    const serviceWithBucket = new IvsService({
+      region: "ap-southeast-1",
+      s3BucketName: "liveorder-dev-realtime-media-12345",
+    });
+    const s3Url = serviceWithBucket.getReplayUrl("session-123");
+    expect(s3Url).toBe(
+      "https://liveorder-dev-realtime-media-12345.s3.ap-southeast-1.amazonaws.com/recordings/session-123/master.m3u8"
+    );
+
+    const serviceWithoutBucket = new IvsService({ region: "ap-northeast-1" });
+    const fallbackUrl = serviceWithoutBucket.getReplayUrl("session-123");
+    expect(fallbackUrl).toContain(".m3u8");
+  });
+
+  it("InMemoryIvsService.getReplayUrl returns mock playback stream url", () => {
+    const mockService = new InMemoryIvsService();
+    const replayUrl = mockService.getReplayUrl("session-123");
+    expect(replayUrl).toBe("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8");
+  });
+
+  it("deleteChannel handles error when StopStreamCommand fails inside retry loop", async () => {
+    let deleteCount = 0;
+    const mockSend = vi.fn().mockImplementation((command) => {
+      if (command.constructor.name === "DeleteChannelCommand") {
+        deleteCount++;
+        if (deleteCount === 1) {
+          return Promise.reject(
+            new Error("Unable to perform: ivs:DeleteChannel while resource: arn:aws:ivs:test is live")
+          );
+        }
+        return Promise.resolve({});
+      }
+      if (command.constructor.name === "StopStreamCommand") {
+        return Promise.reject(new Error("Stream already stopped"));
+      }
+      return Promise.resolve({});
+    });
+
+    const mockClient = { send: mockSend } as any;
+    const service = new IvsService({ region: "ap-southeast-1" }, mockClient);
+
+    const result = await service.deleteChannel("arn:aws:ivs:test", 1);
+    expect(result).toBe(true);
+    expect(deleteCount).toBe(2);
+  });
 });

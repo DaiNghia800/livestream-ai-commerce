@@ -8,6 +8,12 @@ import {
 import { ILivestreamRepository } from "../repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "../repositories/livestream-product.repository.js";
 import { IIvsService } from "../../../shared/ivs/ivs.service.js";
+import {
+  IIvsChatService,
+  IvsChatRoomDetails,
+  IvsChatTokenResult,
+  CreateChatTokenParams,
+} from "../../../shared/ivs/ivs-chat.service.js";
 
 export interface CreateLivestreamParams {
   merchantId: string;
@@ -22,7 +28,8 @@ export class LivestreamService {
   constructor(
     private readonly repository: ILivestreamRepository,
     private readonly productRepository?: ILivestreamProductRepository,
-    private readonly ivsService?: IIvsService
+    private readonly ivsService?: IIvsService,
+    private readonly ivsChatService?: IIvsChatService
   ) {}
 
   async createLivestream(params: CreateLivestreamParams): Promise<Livestream> {
@@ -82,20 +89,49 @@ export class LivestreamService {
       throw new Error("Cannot restart an ended livestream");
     }
 
-    const updated = await this.repository.updateStatus(id, status);
+    let updated = await this.repository.updateStatus(id, status);
 
-    // Khi phiên kết thúc (ended) hoặc bị hủy (cancelled), tự động dọn dẹp xóa kênh trên AWS IVS ngầm
+    // Khi phiên kết thúc (ended), tự động lưu đường dẫn xem lại bản ghi video từ S3 (HLS replay)
     if (
-      (status === "ended" || status === "cancelled") &&
-      existing.channelArn &&
-      this.ivsService
+      status === "ended" &&
+      this.ivsService &&
+      typeof this.ivsService.getReplayUrl === "function" &&
+      (existing.channelArn || existing.playbackUrl)
     ) {
-      this.ivsService.deleteChannel(existing.channelArn).catch((err) => {
+      try {
+        const replayUrl = this.ivsService.getReplayUrl(id, existing.channelArn);
+        if (replayUrl) {
+          const withReplay = await this.repository.updateReplayUrl(id, replayUrl);
+          if (withReplay) {
+            updated = withReplay;
+          }
+        }
+      } catch (err) {
         console.warn(
-          `[LivestreamService] Error deleting IVS channel for ended livestream ${id}:`,
+          `[LivestreamService] Error setting replay URL for ended livestream ${id}:`,
           err
         );
-      });
+      }
+    }
+
+    // Khi phiên kết thúc (ended) hoặc bị hủy (cancelled), tự động dọn dẹp xóa kênh video và chat room trên AWS IVS ngầm
+    if (status === "ended" || status === "cancelled") {
+      if (existing.channelArn && this.ivsService) {
+        this.ivsService.deleteChannel(existing.channelArn).catch((err) => {
+          console.warn(
+            `[LivestreamService] Error deleting IVS channel for ended livestream ${id}:`,
+            err
+          );
+        });
+      }
+      if (existing.chatRoomArn && this.ivsChatService) {
+        this.ivsChatService.deleteRoom(existing.chatRoomArn).catch((err) => {
+          console.warn(
+            `[LivestreamService] Error deleting IVS chat room for ended livestream ${id}:`,
+            err
+          );
+        });
+      }
     }
 
     return updated;
@@ -144,5 +180,58 @@ export class LivestreamService {
       streamKey: newChannel.streamKeyValue,
     };
   }
+
+  /**
+   * Lấy hoặc tự động tạo phòng chat AWS IVS Chat Room cho phiên livestream
+   */
+  async getOrCreateIvsChatRoom(id: string): Promise<IvsChatRoomDetails | null> {
+    const livestream = await this.repository.findById(id);
+    if (!livestream) return null;
+
+    if (!this.ivsChatService) {
+      throw new Error("AWS IVS Chat service is not configured");
+    }
+
+    // 1. Nếu đã có chatRoomArn, kiểm tra còn tồn tại không
+    if (livestream.chatRoomArn && livestream.chatRoomId) {
+      const existingRoom = await this.ivsChatService.getRoom(livestream.chatRoomArn);
+      if (existingRoom) {
+        return existingRoom;
+      }
+    }
+
+    // 2. Tạo Chat Room mới
+    const newRoom = await this.ivsChatService.createRoom(livestream.title);
+    await this.repository.updateIvsChatRoom(id, newRoom.roomArn, newRoom.roomId);
+
+    return newRoom;
+  }
+
+  /**
+   * Cấp Chat Token (JWT) để kết nối vào WebSocket IVS Chat
+   */
+  async createIvsChatToken(
+    id: string,
+    params: Omit<CreateChatTokenParams, "roomArn">
+  ): Promise<(IvsChatTokenResult & { roomArn: string; roomId: string }) | null> {
+    const room = await this.getOrCreateIvsChatRoom(id);
+    if (!room) return null;
+
+    if (!this.ivsChatService) {
+      throw new Error("AWS IVS Chat service is not configured");
+    }
+
+    const tokenResult = await this.ivsChatService.createChatToken({
+      ...params,
+      roomArn: room.roomArn,
+    });
+
+    return {
+      ...tokenResult,
+      roomArn: room.roomArn,
+      roomId: room.roomId,
+    };
+  }
 }
+
 
