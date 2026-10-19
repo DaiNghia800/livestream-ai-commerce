@@ -44,7 +44,7 @@ function kyVnpay(params: Record<string, string>): string {
 }
 
 /** Đơn đã xác nhận + khoản thu ONLINE đang chờ. */
-async function orderWithPayment(quantity = 2) {
+async function orderWithPayment(quantity = 2, method: "ONLINE" | "COD" = "ONLINE") {
   const sku = await createSkuWithStock(pool, 20);
   const draft = await request(app)
     .post("/api/orders/draft")
@@ -64,7 +64,7 @@ async function orderWithPayment(quantity = 2) {
 
   const payment = await request(app)
     .post(`/api/payments/orders/${draft.body.id}`)
-    .send({ method: "ONLINE" });
+    .send({ method });
   expect(payment.status).toBe(201);
 
   return { orderId: draft.body.id, payment: payment.body };
@@ -79,6 +79,23 @@ async function readStatus(orderId: string) {
 }
 
 describe("Xin đường dẫn thanh toán", () => {
+  it("không mở cổng cho khoản COD", async () => {
+    const { orderId } = await orderWithPayment(2, "COD");
+    const res = await request(app).post(`/api/payments/orders/${orderId}/checkout`).send({});
+    expect(res.status).toBe(409);
+  });
+
+  it("không thu lại toàn bộ qua cổng khi ngân hàng đã nhận một phần", async () => {
+    const { orderId, payment } = await orderWithPayment();
+    config.bankWebhookSecret = "integration-bank-webhook-secret";
+    await request(app).post("/api/payments/bank-webhook")
+      .set("x-bank-webhook-secret", config.bankWebhookSecret)
+      .send({ txnRef: payment.txnRef, provider: "vcb", providerTxnId: crypto.randomUUID(), amount: "1000.00" });
+    const res = await request(app).post(`/api/payments/orders/${orderId}/checkout`).send({});
+    expect(res.status).toBe(409);
+    expect((await readStatus(orderId)).paid_amount).toBe("1000.00");
+  });
+
   it("cổng mặc định là cổng giả chạy trong máy", async () => {
     const { orderId } = await orderWithPayment();
 
@@ -140,7 +157,9 @@ describe("Xin đường dẫn thanh toán", () => {
 
   it("đã thu xong thì KHÔNG dựng đường dẫn mới", async () => {
     const { orderId, payment } = await orderWithPayment();
-    await request(app).post("/api/payments/bank-webhook").send({
+    config.bankWebhookSecret = "integration-bank-webhook-secret";
+    await request(app).post("/api/payments/bank-webhook")
+      .set("x-bank-webhook-secret", config.bankWebhookSecret).send({
       txnRef: payment.txnRef,
       provider: "vcb",
       providerTxnId: `FT${crypto.randomUUID()}`,

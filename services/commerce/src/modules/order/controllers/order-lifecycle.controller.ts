@@ -11,6 +11,7 @@ import {
 } from "../schemas/order.schema.js";
 import type { CancelIntentService } from "../services/cancel-intent.service.js";
 import type { OrderLifecycleService } from "../services/order-lifecycle.service.js";
+import type { Order } from "../types/order.types.js";
 
 export class OrderLifecycleController {
   constructor(
@@ -73,7 +74,7 @@ export class OrderLifecycleController {
    */
   openConfirmLink = async (req: Request, res: Response): Promise<void> => {
     try {
-      res.json(await this.service.openConfirmLink(req.params.token));
+      res.json(this.presentCustomerOrder(await this.service.openConfirmLink(req.params.token)));
     } catch (err) {
       this.handleError(err, res, "open confirm link");
     }
@@ -83,7 +84,7 @@ export class OrderLifecycleController {
   confirm = async (req: Request, res: Response): Promise<void> => {
     try {
       const input = ConfirmOrderRequestSchema.parse(req.body);
-      res.json(await this.service.confirmOrder(req.params.token, input));
+      res.json(this.presentCustomerOrder(await this.service.confirmOrder(req.params.token, input)));
     } catch (err) {
       this.handleError(err, res, "confirm order");
     }
@@ -165,5 +166,21 @@ export class OrderLifecycleController {
       error: "InternalServerError",
       message: `Failed to ${action}`,
     });
+  }
+
+  /** Link công khai không cần lộ UUID khách/shop hay echo token bí mật. */
+  private presentCustomerOrder(order: Order) {
+    return {
+      id: order.id,
+      orderCode: order.orderCode,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      heldUntil: order.heldUntil,
+      recipientName: order.recipientName ?? null,
+      recipientPhone: order.recipientPhone ?? null,
+      shippingAddress: order.shippingAddress ?? null,
+      addressNormalized: order.addressNormalized ?? false,
+      items: order.items,
+    };
   }
 }

@@ -27,6 +27,7 @@ export function createPaymentRouter(customPool?: Pool): Router {
   router.get("/mock/checkout", controller.mockCheckoutPage);
 
   router.get("/", controller.list);
+  router.get("/by-ref/:txnRef", controller.getByTxnRef);
   router.post("/orders/:orderId", controller.create);
   router.post("/orders/:orderId/checkout", controller.checkout);
   router.get("/orders/:orderId", controller.getByOrder);

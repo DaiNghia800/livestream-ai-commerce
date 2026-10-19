@@ -10,7 +10,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
           <Brand />
         </Link>
         <nav aria-label="Điều hướng khách hàng">
-          <Link href="/" aria-current="page">
+          <Link href="/">
             Xem livestream
           </Link>
           <Link href="/shop">Kênh chủ shop</Link>
@@ -20,7 +20,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         {children}
       </main>
       <footer>
-        LiveOrder AI · Bản mẫu giao diện · Chưa kết nối dịch vụ bán hàng
+        LiveOrder AI · Môi trường thử nghiệm
       </footer>
     </>
   );

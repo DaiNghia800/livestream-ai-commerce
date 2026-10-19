@@ -3,7 +3,9 @@ export type OrderStatus =
   | "PENDING_CONFIRMATION"
   | "CONFIRMED"
   | "PROCESSING"
+  | "SHIPPING"
   | "COMPLETED"
+  | "RETURNED"
   | "EXPIRED"
   | "CANCELLED";
 
@@ -16,6 +18,8 @@ export type OrderSource =
 export interface OrderItem {
   id: string;
   skuId: string;
+  skuCode?: string;
+  productName?: string;
   quantity: number;
   requestedQty: number;
   isPartial: boolean;
@@ -34,6 +38,10 @@ export interface Order {
   heldUntil: string | null;
   confirmToken: string | null;
   createdAt: string;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  shippingAddress?: string | null;
+  addressNormalized?: boolean;
   items: OrderItem[];
 }
 
