@@ -10,6 +10,7 @@ import {
   LivestreamComment,
   CreateCommentInput,
 } from "../types/livestream-comment.types.js";
+import { evaluateCommentForSqs } from "../utils/comment-prefilter.util.js";
 
 export class LivestreamNotFoundError extends Error {
   constructor(message = "Livestream not found") {
@@ -34,23 +35,21 @@ export class LivestreamCommentService {
   ) {}
 
   /**
-   * Returns an empty array — comments are ephemeral (not persisted to DB).
-   * Following TikTok-style: chat history is not stored permanently.
+   * Retrieves comments for a livestream session with pagination support.
    */
   async getComments(
     livestreamId: string,
-    _limit: number = 100
+    options: { limit?: number; before?: string } = {}
   ): Promise<LivestreamComment[] | null> {
     const livestream = await this.livestreamRepository.findById(livestreamId);
     if (!livestream) {
       return null;
     }
-    // Comments are not stored in DB — return empty array intentionally
-    return [];
+    return this.commentRepository.findByLivestreamId(livestreamId, options);
   }
 
   /**
-   * Accepts a comment, builds an ephemeral object (no DB write),
+   * Accepts a comment, persists it to the database,
    * broadcasts it to AWS IVS Chat Room via WebSocket,
    * then pushes a comment.created event to SQS for downstream AI processing.
    */
@@ -81,31 +80,23 @@ export class LivestreamCommentService {
       );
     }
 
-    // Build ephemeral comment object — NOT saved to database
-    const ephemeralComment: LivestreamComment = {
-      id: crypto.randomUUID(),
-      livestreamId,
-      userId: input.userId,
-      username: input.username,
-      avatarUrl: input.avatarUrl || null,
-      content: input.content,
-      role: input.role || "buyer",
-      createdAt: new Date().toISOString(),
-    };
+    // Persist comment to PostgreSQL database
+    const savedComment = await this.commentRepository.create(livestreamId, input);
 
     // Broadcast tới AWS IVS Chat Room qua SendEventCommand (hiển thị tức thì trên WebSocket của Studio và Viewers)
-    if (livestream.chatRoomArn && this.ivsChatService) {
+    // Nếu client đã gửi trực tiếp qua WebSocket (skipIvsBroadcast: true), chỉ đẩy vào SQS mà không broadcast lại để tránh trùng tin nhắn
+    if (!input.skipIvsBroadcast && livestream.chatRoomArn && this.ivsChatService) {
       try {
         const attributes: Record<string, string> = {
-          id: ephemeralComment.id,
-          userId: ephemeralComment.userId,
-          username: ephemeralComment.username,
-          content: ephemeralComment.content,
-          role: ephemeralComment.role || "buyer",
-          createdAt: ephemeralComment.createdAt,
+          id: savedComment.id,
+          userId: savedComment.userId,
+          username: savedComment.username,
+          content: savedComment.content,
+          role: savedComment.role || "buyer",
+          createdAt: savedComment.createdAt,
         };
-        if (ephemeralComment.avatarUrl) {
-          attributes.avatarUrl = ephemeralComment.avatarUrl;
+        if (savedComment.avatarUrl) {
+          attributes.avatarUrl = savedComment.avatarUrl;
         }
 
         await this.ivsChatService.sendEvent(
@@ -121,27 +112,40 @@ export class LivestreamCommentService {
       }
     }
 
-    // Push comment.created event to SQS for AI Worker processing
-    const event: CommentCreatedEvent = {
-      schema_version: 1,
-      event_id: crypto.randomUUID(),
-      event_type: "comment.created",
-      occurred_at: ephemeralComment.createdAt,
-      comment_id: ephemeralComment.id,
-      session_id: livestreamId,
-      customer_id: ephemeralComment.userId,
-      content: ephemeralComment.content,
-    };
+    // Push comment.created event to SQS for AI Worker processing only if it passes pre-filtering
+    // Filter guards the queue from junk, chat chatter, complaints, emojis, host messages, and spam floods.
+    const filterResult = evaluateCommentForSqs({
+      userId: savedComment.userId,
+      role: savedComment.role,
+      content: savedComment.content,
+    });
 
-    try {
-      await this.sqsService.sendCommentCreatedEvent(event);
-    } catch (err) {
-      console.error(
-        `[LivestreamCommentService] Failed to push comment ${ephemeralComment.id} to SQS:`,
-        err
+    if (filterResult.shouldProcess) {
+      const event: CommentCreatedEvent = {
+        schema_version: 1,
+        event_id: crypto.randomUUID(),
+        event_type: "comment.created",
+        occurred_at: savedComment.createdAt,
+        comment_id: savedComment.id,
+        session_id: livestreamId,
+        customer_id: savedComment.userId,
+        content: savedComment.content,
+      };
+
+      try {
+        await this.sqsService.sendCommentCreatedEvent(event);
+      } catch (err) {
+        console.error(
+          `[LivestreamCommentService] Failed to push comment ${savedComment.id} to SQS:`,
+          err
+        );
+      }
+    } else {
+      console.log(
+        `[CommentFilter] Skipped SQS (reason: ${filterResult.reason}): "${savedComment.content}" (role: ${savedComment.role})`
       );
     }
 
-    return ephemeralComment;
+    return savedComment;
   }
 }

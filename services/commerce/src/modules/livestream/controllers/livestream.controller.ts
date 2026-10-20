@@ -6,8 +6,18 @@ import {
   ListLivestreamsQuerySchema,
   UpdateLivestreamStatusSchema,
   CreateChatTokenRequestSchema,
+  UpdateLivestreamRequestSchema,
 } from "../schemas/livestream.schema.js";
-import { LivestreamService } from "../services/livestream.service.js";
+import {
+  LivestreamService,
+  LivestreamNotFoundError,
+  UnauthorizedLivestreamAccessError,
+  InvalidLivestreamEditStatusError,
+  InvalidLivestreamDeleteStatusError,
+  LivestreamHasOrdersError,
+  LivestreamScheduleConflictError,
+  MerchantAlreadyLiveError,
+} from "../services/livestream.service.js";
 
 export class LivestreamController {
   constructor(private readonly livestreamService: LivestreamService) {}
@@ -51,6 +61,20 @@ export class LivestreamController {
           error: "ValidationError",
           message: err.errors.map((e) => e.message).join("; "),
           details: err.errors,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamScheduleConflictError) {
+        res.status(409).json({
+          error: "ScheduleConflictError",
+          message: err.message,
+          details: {
+            conflictingLivestreamId: err.conflictingLivestream.id,
+            conflictingTitle: err.conflictingLivestream.title,
+            conflictingScheduledAt: err.conflictingLivestream.scheduledAt,
+            bufferMinutes: err.bufferMinutes,
+          },
         });
         return;
       }
@@ -165,6 +189,18 @@ export class LivestreamController {
         return;
       }
 
+      if (err instanceof MerchantAlreadyLiveError) {
+        res.status(409).json({
+          error: "MerchantAlreadyLiveError",
+          message: err.message,
+          details: {
+            activeLivestreamId: err.activeLivestream.id,
+            activeTitle: err.activeLivestream.title,
+          },
+        });
+        return;
+      }
+
       console.error(
         "[LivestreamController] Internal error updating status:",
         err
@@ -172,6 +208,153 @@ export class LivestreamController {
       res.status(500).json({
         error: "InternalServerError",
         message: "Failed to update livestream status",
+      });
+    }
+  };
+
+  update = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = GetLivestreamParamSchema.parse(req.params);
+      const validatedInput = UpdateLivestreamRequestSchema.parse(req.body);
+      const merchantId = req.merchantId!;
+
+      const updated = await this.livestreamService.updateLivestream({
+        id,
+        merchantId,
+        title: validatedInput.title,
+        description: validatedInput.description,
+        scheduledAt: validatedInput.scheduledAt,
+        coverImageKey: validatedInput.coverImageKey,
+      });
+
+      res.status(200).json(updated);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: err.errors.map((e) => e.message).join("; "),
+          details: err.errors,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamNotFoundError) {
+        res.status(404).json({
+          error: "NotFoundError",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof UnauthorizedLivestreamAccessError) {
+        res.status(403).json({
+          error: "ForbiddenError",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof InvalidLivestreamEditStatusError) {
+        res.status(400).json({
+          error: "InvalidStateError",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamScheduleConflictError) {
+        res.status(409).json({
+          error: "ScheduleConflictError",
+          message: err.message,
+          details: {
+            conflictingLivestreamId: err.conflictingLivestream.id,
+            conflictingTitle: err.conflictingLivestream.title,
+            conflictingScheduledAt: err.conflictingLivestream.scheduledAt,
+            bufferMinutes: err.bufferMinutes,
+          },
+        });
+        return;
+      }
+
+      if (
+        err instanceof Error &&
+        (err.message.includes("title cannot") ||
+          err.message.includes("cannot exceed") ||
+          err.message.includes("scheduledAt cannot") ||
+          err.message.includes("scheduledAt must"))
+      ) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: err.message,
+        });
+        return;
+      }
+
+      console.error("[LivestreamController] Internal error updating livestream:", err);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to update livestream session",
+      });
+    }
+  };
+
+  delete = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = GetLivestreamParamSchema.parse(req.params);
+      const merchantId = req.merchantId!;
+
+      await this.livestreamService.deleteLivestream({ id, merchantId });
+
+      res.status(200).json({
+        message: "Livestream session deleted successfully",
+        id,
+      });
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: err.errors.map((e) => e.message).join("; "),
+          details: err.errors,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamNotFoundError) {
+        res.status(404).json({
+          error: "NotFoundError",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof UnauthorizedLivestreamAccessError) {
+        res.status(403).json({
+          error: "ForbiddenError",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof InvalidLivestreamDeleteStatusError) {
+        res.status(400).json({
+          error: "InvalidStateError",
+          message: err.message,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamHasOrdersError) {
+        res.status(409).json({
+          error: "ConflictError",
+          message: err.message,
+        });
+        return;
+      }
+
+      console.error("[LivestreamController] Internal error deleting livestream:", err);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to delete livestream session",
       });
     }
   };

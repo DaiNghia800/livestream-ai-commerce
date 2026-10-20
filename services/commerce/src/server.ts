@@ -52,6 +52,11 @@ async function bootstrap() {
   const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
     console.log(`[Commerce Service] API Prefix: ${config.apiPrefix}`);
+    if (config.sqsQueueUrl) {
+      console.log(`[SqsService] Connected to AWS SQS Queue: ${config.sqsQueueUrl}`);
+    } else {
+      console.log(`[SqsService] SQS Queue mode: SIMULATION (SQS_QUEUE_URL is not set)`);
+    }
   });
 
   // Tắt êm: dừng job rồi đóng server, tránh để một lượt quét đang chạy

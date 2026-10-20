@@ -17,4 +17,5 @@ export interface CreateCommentInput {
   avatarUrl?: string | null;
   content: string;
   role?: CommentRole;
+  skipIvsBroadcast?: boolean;
 }
