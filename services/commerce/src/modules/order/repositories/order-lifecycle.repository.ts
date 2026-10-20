@@ -119,6 +119,7 @@ export async function markConfirmLinkOpened(
             )
       WHERE id = $1
         AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
+        AND held_until > NOW()
       RETURNING held_until`,
     [params.orderId, params.extendSeconds, params.maxSeconds]
   );
@@ -144,7 +145,8 @@ export async function markConfirmed(
             confirmed_at = NOW(),
             held_until   = NULL
       WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')`,
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
+        AND held_until > NOW()`,
     [orderId]
   );
   return result.rowCount === 1;
@@ -167,7 +169,11 @@ export async function markCancelled(
             cancel_reason = $2,
             held_until    = NULL
       WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'PROCESSING')`,
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'PROCESSING')
+        AND NOT EXISTS (
+          SELECT 1 FROM shipments s WHERE s.order_id = orders.id
+            AND s.status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
+        )`,
     [params.orderId, params.reason]
   );
   return result.rowCount === 1;
@@ -228,7 +234,11 @@ export async function markCompleted(
   const result = await client.query(
     `UPDATE orders
         SET status = 'COMPLETED', completed_at = NOW()
-      WHERE id = $1 AND status IN ('CONFIRMED', 'PROCESSING')`,
+      WHERE id = $1 AND status IN ('CONFIRMED', 'PROCESSING')
+        AND NOT EXISTS (
+          SELECT 1 FROM shipments s WHERE s.order_id = orders.id
+            AND s.status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
+        )`,
     [orderId]
   );
   return result.rowCount === 1;
@@ -367,6 +377,10 @@ export async function findOrderDetailByCode(
             o.cod_blocked     AS "codBlocked",
             o.livestream_id   AS "livestreamId",
             o.created_at      AS "createdAt",
+            (SELECT s.id FROM shipments s WHERE s.order_id = o.id
+               AND s.status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
+             ORDER BY s.created_at DESC LIMIT 1) AS "activeShipmentId",
+            (a.normalized_at IS NOT NULL) AS "addressNormalized",
             COALESCE((
                 SELECT json_agg(json_build_object(
                            'id', oi.id,
@@ -405,6 +419,7 @@ export async function findOrderDetailByCode(
                     )
                FROM payments p WHERE p.order_id = o.id) AS payment
        FROM orders o
+       LEFT JOIN addresses a ON a.id = o.address_id
       WHERE o.order_code = $1`,
     [orderCode]
   );

@@ -130,11 +130,10 @@ export function StudioLeftSidebar({
             <button
               type="button"
               onClick={() => onChangeAspectRatio("16:9")}
-              className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-semibold text-[11px] transition cursor-pointer ${
-                aspectRatio === "16:9"
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-semibold text-[11px] transition cursor-pointer ${aspectRatio === "16:9"
                   ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-xs"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-              }`}
+                }`}
             >
               <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
               <span>16:9 Ngang</span>
@@ -143,11 +142,10 @@ export function StudioLeftSidebar({
             <button
               type="button"
               onClick={() => onChangeAspectRatio("9:16")}
-              className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-semibold text-[11px] transition cursor-pointer ${
-                aspectRatio === "9:16"
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-semibold text-[11px] transition cursor-pointer ${aspectRatio === "9:16"
                   ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-xs"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-              }`}
+                }`}
             >
               <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
               <span>9:16 Dọc Live</span>
@@ -190,11 +188,10 @@ export function StudioLeftSidebar({
                 <button
                   type="button"
                   onClick={onToggleMirrorVideo}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${
-                    isMirrorVideo
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${isMirrorVideo
                       ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"
-                  }`}
+                    }`}
                   title="Lật gương camera để chữ không bị ngược"
                   aria-label="Lật ngang camera"
                 >
@@ -257,20 +254,18 @@ export function StudioLeftSidebar({
             type="button"
             onClick={onToggleScreenShare}
             disabled={isEnded}
-            className={`w-full p-2.5 rounded-xl border flex items-center justify-between font-semibold transition cursor-pointer active:scale-98 disabled:opacity-40 ${
-              isScreenSharing
+            className={`w-full p-2.5 rounded-xl border flex items-center justify-between font-semibold transition cursor-pointer active:scale-98 disabled:opacity-40 ${isScreenSharing
                 ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300"
                 : "bg-[#0B1220]/70 border-slate-800 text-slate-300 hover:border-slate-700"
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
               <ScreenShare className={`h-4 w-4 ${isScreenSharing ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
               <span>Chia sẻ màn hình PC</span>
             </span>
             <span
-              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                isScreenSharing ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400"
-              }`}
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isScreenSharing ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400"
+                }`}
             >
               {isScreenSharing ? "ĐANG CHIA SẺ" : "BẬT"}
             </span>
@@ -300,16 +295,14 @@ export function StudioLeftSidebar({
             <button
               type="button"
               onClick={onToggleSafezone}
-              className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                showSafezone ? "bg-cyan-600" : "bg-slate-700"
-              }`}
+              className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${showSafezone ? "bg-cyan-600" : "bg-slate-700"
+                }`}
               title="Bật/Tắt đường căn lề Safezone"
               aria-label="Bật/Tắt đường căn lề Safezone"
             >
               <span
-                className={`block w-3.5 h-3.5 rounded-full bg-white transition-transform ${
-                  showSafezone ? "translate-x-4" : "translate-x-0.5"
-                }`}
+                className={`block w-3.5 h-3.5 rounded-full bg-white transition-transform ${showSafezone ? "translate-x-4" : "translate-x-0.5"
+                  }`}
               />
             </button>
           </div>
@@ -328,16 +321,14 @@ export function StudioLeftSidebar({
             <button
               type="button"
               onClick={() => setFlashSaleEnabled((p) => !p)}
-              className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-                flashSaleEnabled ? "bg-cyan-600" : "bg-slate-700"
-              }`}
+              className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${flashSaleEnabled ? "bg-cyan-600" : "bg-slate-700"
+                }`}
               title="Bật/Tắt đồng hồ Flash Sale"
               aria-label="Bật/Tắt đồng hồ Flash Sale"
             >
               <span
-                className={`block w-3.5 h-3.5 rounded-full bg-white transition-transform ${
-                  flashSaleEnabled ? "translate-x-4" : "translate-x-0.5"
-                }`}
+                className={`block w-3.5 h-3.5 rounded-full bg-white transition-transform ${flashSaleEnabled ? "translate-x-4" : "translate-x-0.5"
+                  }`}
               />
             </button>
           </div>

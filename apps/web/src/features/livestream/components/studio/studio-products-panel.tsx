@@ -27,6 +27,9 @@ export interface StudioProductsPanelProps {
   activeTab?: "chat" | "products";
   onTabChange?: (tab: "chat" | "products") => void;
   chatMessages?: StudioChatMessage[];
+  isLoadingEarlier?: boolean;
+  hasMoreEarlier?: boolean;
+  onLoadEarlier?: () => void;
   isEnded?: boolean;
   isExpandedMode?: boolean;
   onToggleExpandMode?: () => void;
@@ -50,6 +53,9 @@ export function StudioProductsPanel({
   activeTab: controlledTab,
   onTabChange,
   chatMessages = mockStudioChatMessages,
+  isLoadingEarlier = false,
+  hasMoreEarlier = true,
+  onLoadEarlier,
   isEnded = false,
   isExpandedMode = false,
   onToggleExpandMode,
@@ -124,12 +130,11 @@ export function StudioProductsPanel({
         <div className="p-2 sm:p-2.5 shrink-0 border-b border-slate-800 bg-[#0B1220]/70">
           <PinnedProductCard
             product={pinnedProduct}
+            hasProducts={hasAnyProducts}
             onUnpin={onUnpinProduct}
             onChangeProduct={() => {
               if (hasAnyProducts) {
                 setIsSwitcherOpen(true);
-              } else if (onOpenAddProduct) {
-                onOpenAddProduct();
               }
             }}
             onSelectPrev={allProducts.length > 1 ? handleSelectPrevProduct : undefined}
@@ -148,8 +153,8 @@ export function StudioProductsPanel({
               type="button"
               onClick={() => handleTabChange("chat")}
               className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${currentTab === "chat"
-                  ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
-                  : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
+                : "border-transparent text-slate-400 hover:text-slate-200"
                 }`}
             >
               <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${currentTab === "chat" ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
@@ -169,8 +174,8 @@ export function StudioProductsPanel({
               type="button"
               onClick={() => handleTabChange("products")}
               className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${currentTab === "products"
-                  ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
-                  : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
+                : "border-transparent text-slate-400 hover:text-slate-200"
                 }`}
             >
               <ShoppingBag className={`h-3.5 w-3.5 shrink-0 ${currentTab === "products" ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
@@ -204,6 +209,9 @@ export function StudioProductsPanel({
               onFilterChange={setChatFilter}
               connectionState={connectionState}
               onSendMessage={onSendMessage}
+              isLoadingEarlier={isLoadingEarlier}
+              hasMoreEarlier={hasMoreEarlier}
+              onLoadEarlier={onLoadEarlier}
             />
           </div>
 

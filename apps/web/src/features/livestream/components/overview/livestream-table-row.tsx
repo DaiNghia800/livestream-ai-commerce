@@ -15,30 +15,48 @@ import type { Livestream } from "../../types/livestream";
 
 interface LivestreamTableRowProps {
   item: Livestream;
+  onDelete?: (item: Livestream) => void;
+  isDeleting?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
+export function LivestreamTableRow({
+  item,
+  onDelete,
+  isDeleting = false,
+  isSelected = false,
+  onToggleSelect,
+}: LivestreamTableRowProps) {
   const isLive = item.status === "LIVE";
   const isStarting = item.status === "STARTING";
   const isScheduled = item.status === "SCHEDULED";
   const isDraft = item.status === "DRAFT";
   const isEnded = item.status === "ENDED";
+  const isSelectable = !isLive && !isStarting;
 
   return (
     <tr
-      className={`border-b border-outline-variant/50 transition-colors text-xs ${isLive
-        ? "bg-red-50/25 hover:bg-red-50/45"
-        : isStarting
+      className={`border-b border-outline-variant/50 transition-colors text-xs ${
+        isSelected
+          ? "bg-primary/10 hover:bg-primary/15"
+          : isLive
+          ? "bg-red-50/25 hover:bg-red-50/45"
+          : isStarting
           ? "bg-amber-50/25 hover:bg-amber-50/45"
           : "hover:bg-surface-container-low/40"
-        }`}
+      }`}
     >
       {/* 1. Checkbox */}
       <td className="py-3 px-3.5 text-center">
         <input
           type="checkbox"
+          checked={isSelected}
+          disabled={!isSelectable}
+          onChange={() => onToggleSelect?.(item.id)}
+          title={!isSelectable ? "Không thể chọn phiên đang phát sóng" : `Chọn phiên ${item.title}`}
           aria-label={`Chọn phiên ${item.title}`}
-          className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-1 focus:ring-primary/40"
+          className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-1 focus:ring-primary/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         />
       </td>
 
@@ -275,13 +293,27 @@ export function LivestreamTableRow({ item }: LivestreamTableRowProps) {
             </>
           )}
 
-          {/* Thao tác phụ: Xóa bản nháp cho DRAFT, menu tùy chọn cho các trạng thái khác */}
-          {isDraft ? (
+          {/* Thao tác phụ: Xóa bản nháp / phiên lên lịch / phiên đã kết thúc (cấm xóa phiên đang live hoặc đang kết nối) */}
+          {!isLive && !isStarting ? (
             <button
               type="button"
-              title="Xóa bản nháp"
-              aria-label="Xóa bản nháp"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-outline transition-colors hover:bg-red-50 hover:text-red-600"
+              onClick={() => onDelete?.(item)}
+              disabled={isDeleting}
+              title={
+                isDraft
+                  ? "Xóa bản nháp"
+                  : isScheduled
+                  ? "Xóa phiên lên lịch"
+                  : "Xóa phiên livestream"
+              }
+              aria-label={
+                isDraft
+                  ? "Xóa bản nháp"
+                  : isScheduled
+                  ? "Xóa phiên lên lịch"
+                  : "Xóa phiên livestream"
+              }
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-outline transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>

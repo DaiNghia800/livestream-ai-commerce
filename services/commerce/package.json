@@ -12,6 +12,8 @@
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
     "smoke": "tsx scripts/smoke.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
+    "shipping:probe": "tsx scripts/shipping-probe.ts",
+    "shipping:demo": "tsx scripts/shipping-demo.ts",
     "seed:livestreams": "tsx scripts/seed-livestream-data.ts",
     "seed:product-catalog": "tsx scripts/seed-product-catalog.ts",
     "test": "vitest run",

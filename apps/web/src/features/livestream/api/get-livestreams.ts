@@ -164,6 +164,21 @@ export function formatCoverImageUrl(
 }
 
 /**
+ * Format hiển thị kênh AWS IVS thân thiện, bảo mật thông tin nội bộ (không để lộ chuỗi ARN thô)
+ */
+export function formatFriendlyIvsChannel(channelArn?: string | null): string {
+  if (!channelArn) return "Chưa cấu hình";
+  if (channelArn.includes("channel/")) {
+    const channelId = channelArn.split("channel/")[1];
+    return `IVS-${channelId.slice(0, 8).toUpperCase()}`;
+  }
+  if (channelArn.startsWith("arn:aws:ivs")) {
+    return "AWS IVS HD";
+  }
+  return channelArn;
+}
+
+/**
  * Adapter map dữ liệu từ backend sang kiểu Livestream của frontend UI
  */
 export function mapBackendLivestreamToFrontend(
@@ -173,14 +188,29 @@ export function mapBackendLivestreamToFrontend(
     item.scheduledAt || item.startedAt || item.createdAt
   );
 
+  let startDate: string | undefined = undefined;
+  let startTime: string | undefined = undefined;
+  if (item.scheduledAt) {
+    const d = new Date(item.scheduledAt);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      startDate = `${year}-${month}-${day}`;
+      startTime = `${hours}:${minutes}`;
+    }
+  }
+
   return {
     id: item.id,
     title: item.title,
     status: mapBackendStatusToFrontend(item.status),
     thumbnail: formatCoverImageUrl(item.coverImageKey),
     description: item.description || undefined,
-    channelName: item.channelArn ? "AWS IVS Channel" : "LiveOrder RTMP",
-    ivsChannel: item.channelArn || "Chưa cấu hình",
+    channelName: item.channelArn ? "AWS IVS HD" : "LiveOrder RTMP",
+    ivsChannel: formatFriendlyIvsChannel(item.channelArn),
     replayUrl: item.replayUrl || undefined,
     resolution: "1080p60",
     productCount:
@@ -201,6 +231,8 @@ export function mapBackendLivestreamToFrontend(
     startedAt: item.startedAt || undefined,
     endedAt: item.endedAt || undefined,
     createdAt: item.createdAt || undefined,
+    startDate,
+    startTime,
     timeDisplay,
     subTimeDisplay,
     currentViewers: item.status === "live" ? 0 : 0,
@@ -344,6 +376,78 @@ export async function updateLivestreamStatus(
   }
 
   return (await res.json()) as BackendLivestreamItem;
+}
+
+export interface UpdateLivestreamPayload {
+  title?: string;
+  description?: string | null;
+  scheduledAt?: string | null;
+  coverImageKey?: string | null;
+}
+
+/**
+ * Gọi API PATCH /api/livestreams/:id để cập nhật thông tin phiên livestream (tiêu đề, mô tả, ảnh bìa, lịch phát)
+ */
+export async function updateLivestream(
+  id: string,
+  payload: UpdateLivestreamPayload,
+  merchantId: string = DEFAULT_DEV_MERCHANT_ID
+): Promise<BackendLivestreamItem> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Merchant-Id": merchantId,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Cập nhật thông tin livestream thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as BackendLivestreamItem;
+}
+
+/**
+ * Gọi API DELETE /api/livestreams/:id để xóa phiên livestream (áp dụng cho bản nháp/lên lịch)
+ */
+export async function deleteLivestream(
+  id: string,
+  merchantId: string = DEFAULT_DEV_MERCHANT_ID
+): Promise<{ message: string; id: string }> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}`;
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "X-Merchant-Id": merchantId,
+    },
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Xóa phiên livestream thất bại (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as { message: string; id: string };
 }
 
 export interface IvsStreamConfig {

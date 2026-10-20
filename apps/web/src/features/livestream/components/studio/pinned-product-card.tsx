@@ -17,6 +17,7 @@ import type { StudioProductItem } from "../../types/studio";
 export interface PinnedProductCardProps {
   product: StudioProductItem | null;
   onUnpin: () => void;
+  hasProducts?: boolean;
   onChangeProduct?: () => void;
   onSelectPrev?: () => void;
   onSelectNext?: () => void;
@@ -28,6 +29,7 @@ export interface PinnedProductCardProps {
 
 export function PinnedProductCard({
   product,
+  hasProducts = true,
   onUnpin,
   onChangeProduct,
   onSelectPrev,
@@ -47,9 +49,11 @@ export function PinnedProductCard({
       <div className="rounded-xl border border-dashed border-slate-700 bg-[#0B1220]/60 px-3 py-1.5 text-center flex items-center justify-between gap-2 min-h-[46px]">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 min-w-0">
           <Package className="h-4 w-4 text-slate-500 shrink-0" aria-hidden="true" />
-          <span className="truncate">Chưa ghim sản phẩm lên live</span>
+          <span className="truncate">
+            {hasProducts ? "Chưa ghim sản phẩm lên live" : "Chưa có sản phẩm để ghim"}
+          </span>
         </div>
-        {!disabled && onChangeProduct && (
+        {!disabled && hasProducts && onChangeProduct && (
           <button
             type="button"
             onClick={onChangeProduct}

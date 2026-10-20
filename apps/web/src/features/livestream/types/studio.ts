@@ -35,6 +35,7 @@ export interface StudioChatMessage {
   orderId?: string;
   reviewReason?: string;
   badge?: string;
+  createdAt?: string;
 }
 
 export interface StudioSessionState {

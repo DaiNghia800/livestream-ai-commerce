@@ -76,6 +76,8 @@ export const ORDER_DETAIL = {
   codBlocked: false,
   livestreamId: null,
   createdAt: "2026-10-10T19:40:00+07:00",
+  activeShipmentId: null,
+  addressNormalized: true,
   items: [
     {
       id: "item-1",
@@ -175,9 +177,153 @@ export interface StubOptions {
   orderDetail?: unknown | null;
   payments?: unknown[];
   reviewQueue?: unknown[];
+  shipments?: unknown[];
+  shipmentDetail?: unknown | null;
+  tracking?: unknown | null;
   /** Bắt mọi lời gọi hỏng, để kiểm màn hình báo lỗi. */
   fail?: boolean;
 }
+
+// ── Vận chuyển ─────────────────────────────────────────────────────
+
+const VAN_DON_CHUNG = {
+  orderId: "order-1",
+  serviceCode: "2",
+  clientOrderCode: "LIVE-20261010-abc-1a2b3c",
+  deliveryAttempt: 0,
+  feeQuoted: "20900.00",
+  feeActual: null,
+  weightGram: 600,
+  failureReason: null,
+  trackingToken: "tok-abcdef0123456789abcdef",
+  recipientName: "Nguyễn Thuỳ Trang",
+};
+
+export const SHIP_CHO_LAY = {
+  ...VAN_DON_CHUNG,
+  id: "ship-1",
+  orderCode: "LIVE-20261010-abc123",
+  carrier: "ghn",
+  trackingCode: "GHN7728491",
+  status: "CREATED",
+  codAmount: "598000.00",
+  lastSyncedAt: "2026-10-18T05:09:51.000Z",
+  createdAt: "2026-10-18T05:09:48.000Z",
+};
+
+export const SHIP_DANG_DI = {
+  ...VAN_DON_CHUNG,
+  id: "ship-2",
+  orderCode: "LIVE-20261010-def456",
+  carrier: "ghtk",
+  trackingCode: "GHTK9023194",
+  status: "IN_TRANSIT",
+  codAmount: "0.00",
+  // Hãng cân lại ở kho rồi chốt cước cao hơn báo giá.
+  feeActual: "26500.00",
+  lastSyncedAt: "2026-10-18T06:00:00.000Z",
+  createdAt: "2026-10-17T05:09:48.000Z",
+};
+
+export const SHIP_HONG = {
+  ...VAN_DON_CHUNG,
+  id: "ship-3",
+  orderCode: "LIVE-20261010-ghi789",
+  carrier: "ghn",
+  trackingCode: "GHN8892100",
+  status: "FAILED",
+  codAmount: "380000.00",
+  deliveryAttempt: 1,
+  failureReason: "Giao lần 1 không gặp khách",
+  lastSyncedAt: "2026-10-18T04:00:00.000Z",
+  createdAt: "2026-10-16T05:09:48.000Z",
+};
+
+export const SHIP_TU_GIAO = {
+  ...VAN_DON_CHUNG,
+  id: "ship-4",
+  orderCode: "LIVE-20261010-jkl012",
+  carrier: "self",
+  trackingCode: "SELF1A2B3C4D",
+  status: "CREATED",
+  codAmount: "150000.00",
+  lastSyncedAt: null,
+  createdAt: "2026-10-18T07:00:00.000Z",
+};
+
+export const SHIP_DETAIL = {
+  ...SHIP_CHO_LAY,
+  events: [
+    {
+      eventCode: "ready_to_pick",
+      mappedStatus: "CREATED",
+      occurredAt: "2026-10-18T05:09:50.000Z",
+      description: "Tạo đơn hàng",
+    },
+    {
+      eventCode: "created",
+      mappedStatus: "CREATED",
+      occurredAt: "2026-10-18T05:09:48.000Z",
+      description: "Đã tạo vận đơn qua ghn",
+    },
+    {
+      eventCode: "mot_ma_la",
+      mappedStatus: null,
+      occurredAt: "2026-10-18T05:09:40.000Z",
+      description: "",
+    },
+  ],
+};
+
+export const CARRIERS = [
+  { name: "mock", label: "Hãng giả (thử nghiệm)", ready: true, missing: [] },
+  { name: "self", label: "Shop tự giao", ready: true, missing: [] },
+  { name: "ghn", label: "Giao Hàng Nhanh", ready: true, missing: [] },
+  {
+    name: "ghtk",
+    label: "Giao Hàng Tiết Kiệm",
+    ready: false,
+    missing: ["GHTK_TOKEN"],
+  },
+  { name: "vtp", label: "Viettel Post", ready: false, missing: ["VTP_USERNAME"] },
+  {
+    name: "ahamove",
+    label: "AhaMove (nội thành)",
+    ready: false,
+    missing: ["AHAMOVE_API_KEY"],
+  },
+];
+
+/** Dữ liệu trang công khai — đã che bớt đúng như backend trả về. */
+export const TRACKING_CONG_KHAI = {
+  trackingCode: "GHN7728491",
+  carrier: "ghn",
+  status: "IN_TRANSIT",
+  lastSyncedAt: "2026-10-18T06:00:00.000Z",
+  createdAt: "2026-10-18T05:09:48.000Z",
+  recipientName: "Nguyễn Thuỳ T.",
+  recipientPhone: "0984***899",
+  area: "Phường Bến Thành, TP. Hồ Chí Minh",
+  events: [
+    {
+      mappedStatus: "IN_TRANSIT",
+      occurredAt: "2026-10-18T06:00:00.000Z",
+      description: "Đang luân chuyển",
+    },
+    {
+      mappedStatus: "PICKED_UP",
+      occurredAt: "2026-10-18T05:30:00.000Z",
+      description: "Bưu tá đã lấy hàng",
+    },
+  ],
+};
+
+export const TRACKING_CHUA_CO_MA = {
+  ...TRACKING_CONG_KHAI,
+  trackingCode: null,
+  status: "REQUESTED",
+  events: [],
+};
 
 /** Cài sẵn các tuyến API trước khi điều hướng. */
 export async function stubApi(page: Page, options: StubOptions = {}) {
@@ -199,6 +345,9 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
     orderDetail = ORDER_DETAIL,
     payments = [PAYMENT_PAID, PAYMENT_UNDERPAID],
     reviewQueue = [REVIEW_REQUEST],
+    shipments = [SHIP_CHO_LAY, SHIP_DANG_DI, SHIP_HONG, SHIP_TU_GIAO],
+    shipmentDetail = SHIP_DETAIL,
+    tracking = TRACKING_CONG_KHAI,
     fail = false,
   } = options;
 
@@ -232,6 +381,34 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
         ? payments.filter((p) => (p as { status: string }).status === status)
         : payments;
       return json(route, { items: rows });
+    }
+
+    if (path.startsWith("/payments/by-ref/")) {
+      const ref = decodeURIComponent(path.slice("/payments/by-ref/".length));
+      const payment = payments.find((p) => (p as { txnRef?: string }).txnRef === ref);
+      return payment ? json(route, payment) : json(route, { message: "Không tìm thấy giao dịch" }, 404);
+    }
+
+    // Phải xét TRƯỚC "/shipments/:id", nếu không "carriers" bị nuốt
+    // thành một id.
+    if (path === "/shipments/carriers") {
+      return json(route, { items: CARRIERS });
+    }
+
+    if (path === "/shipments") {
+      return json(route, { items: shipments });
+    }
+
+    if (path.startsWith("/tracking/")) {
+      return tracking
+        ? json(route, tracking)
+        : json(route, { error: "TRACKING_NOT_FOUND" }, 404);
+    }
+
+    if (path.startsWith("/shipments/")) {
+      return shipmentDetail
+        ? json(route, shipmentDetail)
+        : json(route, { error: "SHIPMENT_NOT_FOUND" }, 404);
     }
 
     if (path === "/purchase-requests") {

@@ -164,11 +164,10 @@ export function StudioPreliveChecklist({
             onClick={onStartLive}
             disabled={!allReady || isStarting}
             title={disabledReason || "Bắt đầu phát sóng livestream"}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs active:scale-95 ${
-              allReady && !isStarting
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs active:scale-95 ${allReady && !isStarting
                 ? "bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-rose-950/30"
                 : "bg-slate-800/70 text-slate-500 border border-slate-800 cursor-not-allowed"
-            }`}
+              }`}
           >
             <Radio
               className={`h-3 w-3 ${isStarting ? "animate-spin" : ""}`}

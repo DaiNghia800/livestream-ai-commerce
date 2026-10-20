@@ -44,8 +44,6 @@ export function LivestreamCreateForm() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [startDate, setStartDate] = useState(getTodayDate());
   const [startTime, setStartTime] = useState("19:30");
-  const [endDate, setEndDate] = useState(getTodayDate());
-  const [endTime, setEndTime] = useState("22:30");
 
   // Initial products selected from catalog (default empty, user selects from catalog)
   const [products, setProducts] = useState<LiveProductItem[]>([]);
@@ -74,14 +72,15 @@ export function LivestreamCreateForm() {
     setProducts((prev) => prev.filter((p) => p.sku !== sku));
   };
 
-  // Date sequence check
-  const checkDatesValidity = (sDate: string, sTime: string, eDate: string, eTime: string) => {
-    if (sDate && eDate) {
+  // Date check
+  const checkDatesValidity = (sDate: string, sTime: string) => {
+    if (sDate) {
       const startDateTime = new Date(`${sDate}T${sTime || "00:00"}`);
-      const endDateTime = new Date(`${eDate}T${eTime || "23:59"}`);
-      if (!isNaN(startDateTime.getTime()) && !isNaN(endDateTime.getTime())) {
-        if (endDateTime <= startDateTime) {
-          return "Thời gian kết thúc dự kiến phải sau thời gian bắt đầu.";
+      if (!isNaN(startDateTime.getTime())) {
+        // Dung sai 5 phút cho thao tác nhập liệu form
+        const nowWithBuffer = Date.now() - 5 * 60 * 1000;
+        if (startDateTime.getTime() < nowWithBuffer) {
+          return "Thời gian bắt đầu dự kiến không thể trong quá khứ.";
         }
       }
     }
@@ -96,7 +95,7 @@ export function LivestreamCreateForm() {
       newErrors.title = "Vui lòng nhập tên phiên Livestream.";
     }
 
-    const dateErr = checkDatesValidity(startDate, startTime, endDate, endTime);
+    const dateErr = checkDatesValidity(startDate, startTime);
     if (dateErr) {
       newErrors.dates = dateErr;
     }
@@ -221,8 +220,14 @@ export function LivestreamCreateForm() {
     } catch (err) {
       if (err instanceof CreateLivestreamApiError) {
         setErrorMessage(err.message);
+        if (err.status === 409 || err.message.includes("lên lịch") || err.message.includes("cách nhau")) {
+          setErrors((prev) => ({ ...prev, dates: err.message }));
+        }
       } else if (err instanceof Error) {
         setErrorMessage(`Đã xảy ra lỗi: ${err.message}`);
+        if (err.message.includes("lên lịch") || err.message.includes("cách nhau")) {
+          setErrors((prev) => ({ ...prev, dates: err.message }));
+        }
       } else {
         setErrorMessage("Không thể tạo phiên Livestream. Vui lòng thử lại sau.");
       }
@@ -275,25 +280,13 @@ export function LivestreamCreateForm() {
             startDate={startDate}
             onStartDateChange={(v) => {
               setStartDate(v);
-              const dateErr = checkDatesValidity(v, startTime, endDate, endTime);
+              const dateErr = checkDatesValidity(v, startTime);
               setErrors((prev) => ({ ...prev, dates: dateErr }));
             }}
             startTime={startTime}
             onStartTimeChange={(v) => {
               setStartTime(v);
-              const dateErr = checkDatesValidity(startDate, v, endDate, endTime);
-              setErrors((prev) => ({ ...prev, dates: dateErr }));
-            }}
-            endDate={endDate}
-            onEndDateChange={(v) => {
-              setEndDate(v);
-              const dateErr = checkDatesValidity(startDate, startTime, v, endTime);
-              setErrors((prev) => ({ ...prev, dates: dateErr }));
-            }}
-            endTime={endTime}
-            onEndTimeChange={(v) => {
-              setEndTime(v);
-              const dateErr = checkDatesValidity(startDate, startTime, endDate, v);
+              const dateErr = checkDatesValidity(startDate, v);
               setErrors((prev) => ({ ...prev, dates: dateErr }));
             }}
             errors={errors}
@@ -312,8 +305,6 @@ export function LivestreamCreateForm() {
             title={title}
             startDate={startDate}
             startTime={startTime}
-            endDate={endDate}
-            endTime={endTime}
             products={products}
           />
         </div>

@@ -11,6 +11,7 @@
 
 import crypto from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { config } from "../../../src/config.js";
 import {
   assertSandbox,
   GatewayNotConfiguredError,
@@ -48,8 +49,15 @@ const ZALO = {
 };
 
 afterEach(() => {
+  config.allowMockPayment = true;
   vi.restoreAllMocks();
   resetGatewayCache();
+});
+
+it("cổng mock không thể ghi tiền khi deployment không cho phép", () => {
+  resetGatewayCache();
+  config.allowMockPayment = false;
+  expect(() => getGateway("mock")).toThrow(GatewayNotConfiguredError);
 });
 
 /**

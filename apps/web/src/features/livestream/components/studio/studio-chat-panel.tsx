@@ -12,6 +12,7 @@ import {
   AlignJustify,
   List,
   Send,
+  Loader2,
 } from "lucide-react";
 import type { StudioChatMessage } from "../../types/studio";
 import { mockStudioChatMessages } from "../../mocks/studio.mock";
@@ -27,6 +28,9 @@ export interface StudioChatPanelProps {
   onFilterChange?: (filter: ChatFilter) => void;
   connectionState?: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "ERROR";
   onSendMessage?: (content: string) => Promise<void> | void;
+  isLoadingEarlier?: boolean;
+  hasMoreEarlier?: boolean;
+  onLoadEarlier?: () => void;
 }
 
 export function StudioChatPanel({
@@ -37,6 +41,9 @@ export function StudioChatPanel({
   onFilterChange,
   connectionState = "CONNECTED",
   onSendMessage,
+  isLoadingEarlier = false,
+  hasMoreEarlier = true,
+  onLoadEarlier,
 }: StudioChatPanelProps) {
   const [internalFilter, setInternalFilter] = useState<ChatFilter>("ALL");
   const currentFilter = activeFilter !== undefined ? activeFilter : internalFilter;
@@ -52,6 +59,16 @@ export function StudioChatPanel({
     onFilterChange?.(newFilter);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    // Khi cuộn xuống gần đáy danh sách tin nhắn, tải thêm tin nhắn cũ hơn
+    const isNearBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight < 50;
+    if (isNearBottom && hasMoreEarlier && !isLoadingEarlier) {
+      onLoadEarlier?.();
     }
   };
 
@@ -93,8 +110,8 @@ export function StudioChatPanel({
             type="button"
             onClick={() => handleFilterSelect("ALL")}
             className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer ${currentFilter === "ALL"
-                ? "bg-cyan-600 text-white shadow-xs"
-                : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
+              ? "bg-cyan-600 text-white shadow-xs"
+              : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
               }`}
           >
             Tất cả ({counts.all})
@@ -103,8 +120,8 @@ export function StudioChatPanel({
             type="button"
             onClick={() => handleFilterSelect("AI_ORDERS")}
             className={`px-2 py-0.5 rounded-md font-semibold transition flex items-center gap-1 cursor-pointer ${currentFilter === "AI_ORDERS"
-                ? "bg-cyan-600 text-white shadow-xs"
-                : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
+              ? "bg-cyan-600 text-white shadow-xs"
+              : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
               }`}
           >
             <Clock className="h-2.5 w-2.5" aria-hidden="true" />
@@ -114,8 +131,8 @@ export function StudioChatPanel({
             type="button"
             onClick={() => handleFilterSelect("NEEDS_REVIEW")}
             className={`px-2 py-0.5 rounded-md font-semibold transition flex items-center gap-1 cursor-pointer ${currentFilter === "NEEDS_REVIEW"
-                ? "bg-cyan-600 text-white shadow-xs"
-                : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
+              ? "bg-cyan-600 text-white shadow-xs"
+              : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
               }`}
           >
             <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
@@ -128,19 +145,19 @@ export function StudioChatPanel({
           {/* IVS WebSocket Live Indicator - Compact */}
           <span
             className={`text-[9px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 shrink-0 ${connectionState === "CONNECTED"
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                : connectionState === "CONNECTING"
-                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                  : "bg-slate-800/80 text-slate-400 border border-slate-700/60"
+              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              : connectionState === "CONNECTING"
+                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                : "bg-slate-800/80 text-slate-400 border border-slate-700/60"
               }`}
             title={`Trạng thái WebSocket IVS Chat: ${connectionState}`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${connectionState === "CONNECTED"
-                  ? "bg-emerald-400"
-                  : connectionState === "CONNECTING"
-                    ? "bg-amber-400 animate-pulse"
-                    : "bg-slate-500"
+                ? "bg-emerald-400"
+                : connectionState === "CONNECTING"
+                  ? "bg-amber-400 animate-pulse"
+                  : "bg-slate-500"
                 }`}
             />
             <span>{connectionState === "CONNECTED" ? "LIVE" : connectionState}</span>
@@ -182,6 +199,7 @@ export function StudioChatPanel({
       {/* 3. Messages Stream - Với custom dark scrollbar */}
       <div
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className={`flex-1 min-h-0 overflow-y-auto pr-1 studio-scrollbar ${density === "compact" ? "space-y-1 py-1" : "space-y-2 py-1.5"
           }`}
       >
@@ -213,8 +231,8 @@ export function StudioChatPanel({
                 <div
                   key={msg.id}
                   className={`px-2 py-1.5 rounded-lg border text-xs leading-snug flex items-start justify-between gap-1.5 transition ${isReview
-                      ? "bg-[#151F31] border-rose-500/30 hover:border-rose-500/50"
-                      : "bg-[#151F31]/80 border-slate-800 hover:border-slate-700"
+                    ? "bg-[#151F31] border-rose-500/30 hover:border-rose-500/50"
+                    : "bg-[#151F31]/80 border-slate-800 hover:border-slate-700"
                     }`}
                 >
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
@@ -256,8 +274,8 @@ export function StudioChatPanel({
               <div
                 key={msg.id}
                 className={`p-2 sm:p-2.5 rounded-xl border space-y-1 transition ${isReview
-                    ? "bg-[#151F31] border-rose-500/30 hover:border-rose-500/50"
-                    : "bg-[#151F31] border-slate-800 hover:border-slate-700/80"
+                  ? "bg-[#151F31] border-rose-500/30 hover:border-rose-500/50"
+                  : "bg-[#151F31] border-slate-800 hover:border-slate-700/80"
                   }`}
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -299,6 +317,14 @@ export function StudioChatPanel({
               </div>
             );
           })
+        )}
+
+        {/* Loading Spinner khi cuộn xem thêm tin cũ */}
+        {isLoadingEarlier && (
+          <div className="py-2 text-center text-xs text-slate-400 flex items-center justify-center gap-1.5 animate-pulse bg-[#0B1220]/60 rounded-lg border border-slate-800">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+            <span className="text-[11px]">Đang tải thêm bình luận cũ...</span>
+          </div>
         )}
       </div>
 

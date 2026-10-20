@@ -47,15 +47,22 @@ describe("LivestreamCommentService Unit Tests", () => {
       expect(result).toBeNull();
     });
 
-    it("trả về mảng rỗng theo TikTok-style khi livestream tồn tại", async () => {
+    it("trả về danh sách bình luận đã lưu khi livestream tồn tại", async () => {
       const live = await livestreamRepo.create({
         merchantId: "m-1",
         title: "Test Live",
         status: "live",
       });
 
+      await service.addComment(live.id, {
+        userId: "u-1",
+        username: "user1",
+        content: "Bình luận số 1",
+      });
+
       const result = await service.getComments(live.id);
-      expect(result).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result?.[0].content).toBe("Bình luận số 1");
     });
   });
 
@@ -200,6 +207,44 @@ describe("LivestreamCommentService Unit Tests", () => {
       );
     });
 
+    it("fallback role về buyer khi savedComment.role là rỗng", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Active Live 4",
+        status: "live",
+      });
+      await livestreamRepo.updateIvsChatRoom(
+        live.id,
+        "arn:aws:ivschat:room/test4",
+        "room-4"
+      );
+
+      vi.spyOn(commentRepo, "create").mockResolvedValueOnce({
+        id: "c-empty-role",
+        livestreamId: live.id,
+        userId: "u-3",
+        username: "user3",
+        content: "Nội dung",
+        role: "" as any,
+        avatarUrl: null,
+        createdAt: new Date().toISOString(),
+      });
+
+      await service.addComment(live.id, {
+        userId: "u-3",
+        username: "user3",
+        content: "Nội dung",
+      });
+
+      expect(mockIvsChatService.sendEvent).toHaveBeenCalledWith(
+        "arn:aws:ivschat:room/test4",
+        "app:comment",
+        expect.objectContaining({
+          role: "buyer",
+        })
+      );
+    });
+
     it("xử lý nhẹ nhàng (bắt lỗi warn) khi IVS Chat sendEvent bị exception", async () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       (mockIvsChatService.sendEvent as any).mockRejectedValueOnce(
@@ -246,7 +291,7 @@ describe("LivestreamCommentService Unit Tests", () => {
       const result = await service.addComment(live.id, {
         userId: "u-4",
         username: "user4",
-        content: "Test SQS fail",
+        content: "Chốt 1 test SQS fail",
       });
 
       expect(result).not.toBeNull();
@@ -273,12 +318,73 @@ describe("LivestreamCommentService Unit Tests", () => {
       const result = await serviceNoIvs.addComment(live.id, {
         userId: "u-5",
         username: "user5",
-        content: "No IVS comment",
+        content: "Chốt 1 No IVS comment",
       });
 
       expect(result).not.toBeNull();
       expect(mockIvsChatService.sendEvent).not.toHaveBeenCalled();
       expect(mockSqsService.sendCommentCreatedEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it("bỏ qua ivsChatService.sendEvent khi skipIvsBroadcast = true nhưng vẫn đẩy sự kiện vào SQS", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Active Live with skipIvsBroadcast",
+        status: "live",
+      });
+      await livestreamRepo.updateIvsChatRoom(
+        live.id,
+        "arn:aws:ivschat:room/test-skip",
+        "room-skip"
+      );
+
+      const result = await service.addComment(live.id, {
+        userId: "buyer-test-1",
+        username: "Buyer Test",
+        content: "Chốt 1 tin nhắn từ Studio",
+        role: "buyer",
+        skipIvsBroadcast: true,
+      });
+
+      expect(result).not.toBeNull();
+      expect(mockIvsChatService.sendEvent).not.toHaveBeenCalled();
+      expect(mockSqsService.sendCommentCreatedEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it("không đẩy vào SQS khi comment là chat xã giao không có tín hiệu mua hàng (pre-filtered)", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Active Live Chatter Filter",
+        status: "live",
+      });
+
+      const result = await service.addComment(live.id, {
+        userId: "buyer-chatter-1",
+        username: "Buyer Chatter",
+        content: "áo đẹp quá shop ơi",
+        role: "buyer",
+      });
+
+      expect(result).not.toBeNull();
+      expect(mockSqsService.sendCommentCreatedEvent).not.toHaveBeenCalled();
+    });
+
+    it("không đẩy vào SQS khi người gửi là host hoặc moderator", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Active Live Host Message",
+        status: "live",
+      });
+
+      const result = await service.addComment(live.id, {
+        userId: "host-1",
+        username: "Chủ shop",
+        content: "Chốt đơn nhiệt tình nha mọi người",
+        role: "host",
+      });
+
+      expect(result).not.toBeNull();
+      expect(mockSqsService.sendCommentCreatedEvent).not.toHaveBeenCalled();
     });
   });
 });

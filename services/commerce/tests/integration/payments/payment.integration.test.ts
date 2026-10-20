@@ -17,6 +17,7 @@ import { createSkuWithStock } from "../../helpers/catalog.helper.js";
 
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
 const app = createApp();
+config.bankWebhookSecret = "integration-bank-webhook-secret";
 
 afterAll(async () => {
   await pool.end();
@@ -55,7 +56,10 @@ function createPayment(orderId: string, method = "ONLINE", provider = "vcb") {
 }
 
 function bankSays(body: Record<string, unknown>) {
-  return request(app).post("/api/payments/bank-webhook").send(body);
+  return request(app)
+    .post("/api/payments/bank-webhook")
+    .set("x-bank-webhook-secret", config.bankWebhookSecret)
+    .send(body);
 }
 
 async function readPaymentRow(orderId: string) {
@@ -110,6 +114,14 @@ describe("Tạo khoản thu", () => {
       [orderId]
     );
     expect(Number(count.rows[0].count)).toBe(1);
+  });
+
+  it("không âm thầm giữ COD khi shop yêu cầu đổi sang ONLINE", async () => {
+    const { orderId } = await confirmedOrder();
+    await createPayment(orderId, "COD");
+    const res = await createPayment(orderId, "ONLINE");
+    expect(res.status).toBe(409);
+    expect((await readPaymentRow(orderId)).status).toBe("PENDING");
   });
 
   it("đơn NHÁP chưa thu được tiền", async () => {
@@ -192,6 +204,21 @@ describe("BẪY-08 — khách rủi ro không được COD", () => {
 });
 
 describe("Tiền về qua ngân hàng", () => {
+  it("từ chối webhook thiếu hoặc sai bí mật", async () => {
+    const { orderId } = await confirmedOrder();
+    const payment = await createPayment(orderId);
+    const body = {
+      txnRef: payment.body.txnRef,
+      provider: "vcb",
+      providerTxnId: crypto.randomUUID(),
+      amount: payment.body.amount,
+    };
+    expect((await request(app).post("/api/payments/bank-webhook").send(body)).status).toBe(401);
+    expect((await request(app).post("/api/payments/bank-webhook")
+      .set("x-bank-webhook-secret", "wrong").send(body)).status).toBe(401);
+    expect((await readPaymentRow(orderId)).paid_amount).toBe("0.00");
+  });
+
   it("chuyển ĐỦ thì khoản thu chuyển PAID", async () => {
     const { orderId } = await confirmedOrder(2);
     const payment = await createPayment(orderId);
@@ -380,6 +407,13 @@ describe("COD — thu tiền lúc giao hàng", () => {
     const row = await readPaymentRow(orderId);
     expect(row.status).toBe("PAID");
     expect(Number(row.paid_amount)).toBe(Number(row.amount));
+    const txns = await pool.query(
+      `SELECT t.amount FROM payment_transactions t JOIN payments p ON p.id = t.payment_id
+        WHERE p.order_id = $1`,
+      [orderId]
+    );
+    expect(txns.rows).toHaveLength(1);
+    expect(Number(txns.rows[0].amount)).toBe(Number(row.paid_amount));
   });
 
   it("đơn chuyển khoản trước thì bước hoàn tất KHÔNG đụng vào", async () => {
@@ -481,6 +515,21 @@ describe("Đánh hỏng và hoàn tiền", () => {
     expect(res.status).toBe(409);
   });
 
+  it("không gắn nhãn hoàn toàn bộ khi chỉ khai hoàn một phần", async () => {
+    const { orderId } = await confirmedOrder();
+    const payment = await createPayment(orderId);
+    await bankSays({
+      txnRef: payment.body.txnRef,
+      provider: "vcb",
+      providerTxnId: crypto.randomUUID(),
+      amount: payment.body.amount,
+    });
+    const res = await request(app).post(`/api/payments/orders/${orderId}/refund`)
+      .send({ amount: "1000.00", reason: "OTHER" });
+    expect(res.status).toBe(409);
+    expect((await readPaymentRow(orderId)).status).toBe("PAID");
+  });
+
   it("hoàn tiền hai lần trả 409", async () => {
     const { orderId } = await confirmedOrder(2);
     const payment = await createPayment(orderId);
@@ -527,6 +576,19 @@ describe("Đọc dữ liệu cho màn hình shop", () => {
     expect(res.body.transactions).toHaveLength(1);
     expect(res.body.orderCode).toBeTruthy();
     expect(res.body.reconcile).toBe("UNDERPAID");
+  });
+
+  it("tra thẳng theo mã giao dịch trả đủ bút toán, kể cả khi không nằm trong 200 dòng mới", async () => {
+    const { orderId } = await confirmedOrder();
+    const payment = await createPayment(orderId);
+    await bankSays({ txnRef: payment.body.txnRef, provider: "vcb", providerTxnId: crypto.randomUUID(), amount: "50000.00" });
+
+    const res = await request(app).get(`/api/payments/by-ref/${payment.body.txnRef}`);
+    expect(res.status).toBe(200);
+    expect(res.body.orderId).toBe(orderId);
+    expect(res.body.transactions).toHaveLength(1);
+    expect(res.body.reconcile).toBe("UNDERPAID");
+    expect((await request(app).get("/api/payments/by-ref/NOT-FOUND")).status).toBe(404);
   });
 
   it("đơn chưa có khoản thu trả 404", async () => {

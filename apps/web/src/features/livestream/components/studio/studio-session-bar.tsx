@@ -18,6 +18,7 @@ import {
   Minimize2,
   Copy,
   Check,
+  ExternalLink,
 } from "lucide-react";
 import type { LivestreamStatus } from "../../types/livestream";
 
@@ -125,16 +126,27 @@ export function StudioSessionBar({
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
 
+        {/* Lối tắt mở trang Livestream Tổng quan trong tab mới */}
+        <Link
+          href="/shop/livestream"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden md:inline-flex items-center gap-1 px-2 py-1 bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 border border-slate-800 rounded-md text-[10px] font-medium transition-colors shrink-0"
+          title="Mở danh sách Livestream tổng quan trong tab mới (không gián đoạn phiên live)"
+        >
+          <ExternalLink className="h-3 w-3" />
+          <span>DS Live (Tab mới)</span>
+        </Link>
+
         {/* Nút Toggle Left Sidebar (Nguồn & Cảnh) kèm badge phím [ */}
         {onToggleLeftSidebar && (
           <button
             type="button"
             onClick={onToggleLeftSidebar}
-            className={`p-1.5 rounded-lg border transition cursor-pointer shrink-0 hidden md:inline-flex items-center gap-1 ${
-              isLeftSidebarOpen
+            className={`p-1.5 rounded-lg border transition cursor-pointer shrink-0 hidden md:inline-flex items-center gap-1 ${isLeftSidebarOpen
                 ? "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-750"
                 : "bg-slate-900/50 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800"
-            }`}
+              }`}
             title={
               isLeftSidebarOpen
                 ? "Thu gọn thanh công cụ trái (Phím [)"
@@ -223,11 +235,10 @@ export function StudioSessionBar({
           <button
             type="button"
             onClick={onToggleTheaterMode}
-            className={`p-1.5 rounded-lg border transition cursor-pointer hidden md:inline-flex items-center gap-1 ${
-              isTheaterMode
+            className={`p-1.5 rounded-lg border transition cursor-pointer hidden md:inline-flex items-center gap-1 ${isTheaterMode
                 ? "bg-slate-800 text-slate-100 border-slate-700"
                 : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800"
-            }`}
+              }`}
             title={
               isTheaterMode
                 ? "Khôi phục kích thước bình thường (Phím F hoặc Esc)"
@@ -251,11 +262,10 @@ export function StudioSessionBar({
           <button
             type="button"
             onClick={onToggleRightSidebar}
-            className={`p-1.5 rounded-lg border transition cursor-pointer hidden md:inline-flex items-center gap-1 ${
-              isRightSidebarOpen
+            className={`p-1.5 rounded-lg border transition cursor-pointer hidden md:inline-flex items-center gap-1 ${isRightSidebarOpen
                 ? "bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-750"
                 : "bg-slate-900/50 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800"
-            }`}
+              }`}
             title={
               isRightSidebarOpen
                 ? "Thu gọn thanh Bán hàng & Chat (Phím ])"

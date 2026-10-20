@@ -14,10 +14,6 @@ interface SessionInformationProps {
   onStartDateChange: (value: string) => void;
   startTime: string;
   onStartTimeChange: (value: string) => void;
-  endDate: string;
-  onEndDateChange: (value: string) => void;
-  endTime: string;
-  onEndTimeChange: (value: string) => void;
   errors?: {
     title?: string;
     dates?: string;
@@ -54,10 +50,6 @@ export function SessionInformation({
   onStartDateChange,
   startTime,
   onStartTimeChange,
-  endDate,
-  onEndDateChange,
-  endTime,
-  onEndTimeChange,
   errors = {},
   disabled = false,
 }: SessionInformationProps) {
@@ -393,14 +385,14 @@ export function SessionInformation({
         </div>
 
         {/* Thời gian bắt đầu dự kiến */}
-        <div>
+        <div className="md:col-span-2">
           <label
             htmlFor="livestream-start-date"
             className="mb-1.5 block text-xs font-semibold text-on-surface"
           >
             Thời gian bắt đầu dự kiến
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
             <div>
               <label htmlFor="livestream-start-date" className="sr-only">
                 Ngày bắt đầu
@@ -429,55 +421,15 @@ export function SessionInformation({
                   : "border-outline-variant focus:border-primary"
                   }`}
                 type="time"
+                step="900"
                 value={startTime}
                 onChange={(e) => onStartTimeChange(e.target.value)}
               />
             </div>
           </div>
-        </div>
-
-        {/* Thời gian kết thúc dự kiến */}
-        <div>
-          <label
-            htmlFor="livestream-end-date"
-            className="mb-1.5 block text-xs font-semibold text-on-surface"
-          >
-            Thời gian kết thúc dự kiến (ước tính)
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label htmlFor="livestream-end-date" className="sr-only">
-                Ngày kết thúc
-              </label>
-              <input
-                id="livestream-end-date"
-                disabled={disabled}
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.dates
-                  ? "border-error focus:border-error"
-                  : "border-outline-variant focus:border-primary"
-                  }`}
-                type="date"
-                value={endDate}
-                onChange={(e) => onEndDateChange(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="livestream-end-time" className="sr-only">
-                Giờ kết thúc
-              </label>
-              <input
-                id="livestream-end-time"
-                disabled={disabled}
-                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-container-low/50 disabled:opacity-70 ${errors.dates
-                  ? "border-error focus:border-error"
-                  : "border-outline-variant focus:border-primary"
-                  }`}
-                type="time"
-                value={endTime}
-                onChange={(e) => onEndTimeChange(e.target.value)}
-              />
-            </div>
-          </div>
+          <p className="mt-1 text-[11px] text-outline">
+            Thời điểm dự kiến phát sóng. Phiên live sẽ kết thúc khi chủ shop chủ động nhấn &quot;Kết thúc phiên&quot;.
+          </p>
         </div>
 
         {/* Date/Time Validation Error */}
