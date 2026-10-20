@@ -58,11 +58,27 @@ export function LoginForm() {
       }
 
       const data = await res.json();
+      if (data.user?.role === "admin") {
+        setErrors({
+          general: "Tài khoản quản trị viên cần đăng nhập riêng tại cổng /admin.",
+        });
+        return;
+      }
+
       localStorage.setItem("access_token", data.access_token);
+      if (data.user) {
+        localStorage.setItem(
+          "auth_user",
+          JSON.stringify({ full_name: data.user.full_name, email: data.user.email })
+        );
+      }
+      if (data.user?.role) {
+        localStorage.setItem("user_role", data.user.role);
+      }
       if (data.refresh_token) {
         localStorage.setItem("refresh_token", data.refresh_token);
       }
-      router.push("/shop");
+      router.push("/");
     } catch {
       setErrors({
         general: "Không thể kết nối đến server. Vui lòng thử lại.",
@@ -88,7 +104,7 @@ export function LoginForm() {
       )}
 
       <div className="field">
-        <label htmlFor="login-email">Email quản trị viên</label>
+        <label htmlFor="login-email">Email</label>
         <div className="input-icon-wrap">
           <Mail size={18} className="input-icon-left" aria-hidden="true" />
           <input

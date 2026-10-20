@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx scripts/migrate.ts",
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
     "smoke": "tsx scripts/smoke.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "shipping:probe": "tsx scripts/shipping-probe.ts",

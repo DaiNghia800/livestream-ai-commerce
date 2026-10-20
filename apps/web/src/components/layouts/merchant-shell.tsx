@@ -12,20 +12,24 @@ import {
   CircleUserRound,
   CreditCard,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
   Radio,
   Search,
   Settings,
   ShoppingCart,
+  Store,
   Truck,
+  UsersRound,
   Warehouse,
   Wifi,
   X,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Brand } from "./brand";
 import styles from "./merchant-shell.module.css";
 
@@ -37,7 +41,9 @@ const navigation = [
   { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", href: "/shop/inventory", icon: Warehouse },
   { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
-  { label: "Vận chuyển", href: "/shop/shipping", icon: Truck },
+  { label: "Mời shop", href: "/shop/invitations", icon: Store },
+  { label: "Quản lý người dùng", href: "/shop/users", icon: UsersRound },
+  { label: "Vận chuyển", icon: Truck },
   { label: "Thông báo", icon: Bell },
   { label: "Báo cáo", icon: BarChart3 },
   { label: "Cài đặt", icon: Settings },
@@ -47,14 +53,41 @@ function isActivePath(pathname: string, href: string, exact?: boolean) {
   return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function subscribeToStorage(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
+function getAdminSession() {
+  return (
+    localStorage.getItem("user_role") === "admin" &&
+    Boolean(localStorage.getItem("admin_access_token"))
+  );
+}
+
 export function MerchantShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isAdminSession = useSyncExternalStore(
+    subscribeToStorage,
+    getAdminSession,
+    () => false
+  );
   const navigationId = useId();
 
   const isMonitoring = pathname ? /\/monitoring\/?$/.test(pathname) : false;
   const isProductsPage = pathname === "/shop/products";
+  const isAdminArea =
+    pathname === "/shop/invitations" || pathname === "/shop/users";
+
+  function signOutAdmin() {
+    localStorage.removeItem("admin_access_token");
+    localStorage.removeItem("admin_refresh_token");
+    localStorage.removeItem("user_role");
+    router.replace("/admin");
+  }
 
   return (
     <div className={styles.shell}>
@@ -133,7 +166,13 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
         {/* Scrollable Navigation - CHỈ cuộn phần main menu */}
         <nav className={`${styles.navigation} custom-scrollbar`} aria-label="Điều hướng chủ shop">
-          {navigation.map((item) => {
+          {navigation.filter((item) => {
+            if (!("href" in item)) return true;
+            return (
+              (item.href !== "/shop/invitations" && item.href !== "/shop/users") ||
+              isAdminSession
+            );
+          }).map((item) => {
             const Icon = item.icon;
             if (!("href" in item)) {
               return (
@@ -163,7 +202,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                 <span>{item.label}</span>
               </Link>
             );
-          })}
+            })}
         </nav>
 
         {/* Fixed Footer */}
@@ -256,6 +295,17 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               )}
               <span>Chốt đơn ngay</span>
             </Link>
+            {isAdminArea && (
+              <button
+                aria-label="Đăng xuất quản trị"
+                className={styles.iconButton}
+                title="Đăng xuất quản trị"
+                type="button"
+                onClick={signOutAdmin}
+              >
+                <LogOut size={17} aria-hidden="true" />
+              </button>
+            )}
             <div className={styles.profile} aria-label="Tài khoản đang xem">
               <span className={styles.avatar} aria-hidden="true">
                 <CircleUserRound size={21} aria-hidden="true" />

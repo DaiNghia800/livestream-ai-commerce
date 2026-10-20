@@ -132,7 +132,7 @@ export function RegisterForm() {
       </div>
 
       <div className="field">
-        <label htmlFor="register-email">Email doanh nghiệp</label>
+        <label htmlFor="register-email">Email</label>
         <div className="input-icon-wrap">
           <Mail size={18} className="input-icon-left" aria-hidden="true" />
           <input

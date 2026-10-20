@@ -147,6 +147,16 @@ export interface AppConfig {
 }
 
 const port = parseInt(process.env.PORT || "8000", 10);
+const secretKey =
+  process.env.SECRET_KEY ||
+  "change-me-use-a-long-random-string-in-production";
+
+if (
+  process.env.NODE_ENV === "production" &&
+  (!process.env.SECRET_KEY || process.env.SECRET_KEY.length < 32)
+) {
+  throw new Error("Production requires SECRET_KEY with at least 32 characters.");
+}
 
 export const config: AppConfig = {
   port,
@@ -156,9 +166,7 @@ export const config: AppConfig = {
     process.env.DATABASE_URL ||
     "postgresql://postgres:postgres@localhost:5432/commerce_db",
   apiPrefix: process.env.API_PREFIX || "/api",
-  secretKey:
-    process.env.SECRET_KEY ||
-    "change-me-use-a-long-random-string-in-production",
+  secretKey,
   accessTokenMinutes: parseInt(process.env.ACCESS_TOKEN_MINUTES || "30", 10),
   refreshTokenDays: parseInt(process.env.REFRESH_TOKEN_DAYS || "30", 10),
   awsRegion: process.env.AWS_REGION || undefined,
