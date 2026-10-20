@@ -68,7 +68,7 @@ export function StudioStreamPreview({
   showSafezone = true,
   onToggleSafezone,
   isMirrorVideo = false,
-  isLeftSidebarOpen = false,
+  isLeftSidebarOpen = true,
   isRightSidebarOpen = true,
   onToggleLeftSidebar,
   onToggleRightSidebar,

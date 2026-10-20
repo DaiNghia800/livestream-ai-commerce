@@ -49,7 +49,7 @@ export function StudioSessionBar({
   likesCount = "14.2K",
   chatCount = "—",
   aiOrdersCount = "—",
-  isLeftSidebarOpen = false,
+  isLeftSidebarOpen = true,
   onToggleLeftSidebar,
   isRightSidebarOpen = true,
   onToggleRightSidebar,

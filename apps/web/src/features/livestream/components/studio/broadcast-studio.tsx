@@ -116,7 +116,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   }, [isDemoSession, liveChatMessages]);
 
   // 2.3 Điều khiển Bố cục Studio phong cách TikTok Live Studio (Đóng/Mở Sidebars)
-  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
 
