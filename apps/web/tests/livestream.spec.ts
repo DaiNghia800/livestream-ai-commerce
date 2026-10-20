@@ -261,7 +261,11 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
   expect(micBox!.height).toBeLessThanOrEqual(32);
 
   if (testInfo.project.name !== "mobile") {
-    // 2. Desktop: Test left sidebar controls
+    // 2. Desktop: Left sidebar is closed by default
+    await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
+
+    // Open via keyboard shortcut '['
+    await page.keyboard.press("[");
     await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
 
     // Verify left sidebar select elements have studio-select class
@@ -284,10 +288,6 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
     // 4. Test Left sidebar collapse via keyboard shortcut '['
     await page.keyboard.press("[");
     await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
-
-    // Re-open via keyboard shortcut '['
-    await page.keyboard.press("[");
-    await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
   }
 
   // Ensure no horizontal overflow

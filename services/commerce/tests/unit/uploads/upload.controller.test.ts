@@ -354,5 +354,21 @@ describe("UploadController Unit Tests", () => {
       });
       consoleErrorSpy.mockRestore();
     });
+
+    it("hoạt động bình thường và fallback chuỗi rỗng khi không có header Content-Type", async () => {
+      const buffer = Buffer.from("image-bytes");
+      mockReq = {
+        body: buffer,
+        params: { fileName: "img.png" },
+        header: vi.fn().mockReturnValue(undefined),
+      };
+      mockLocalStorage.saveUpload.mockResolvedValueOnce(undefined);
+
+      await controller.uploadProductImageLocally(mockReq as Request, mockRes as Response);
+
+      expect(mockLocalStorage.saveUpload).toHaveBeenCalledWith("img.png", "", buffer);
+      expect(statusSpy).toHaveBeenCalledWith(204);
+      expect(endSpy).toHaveBeenCalled();
+    });
   });
 });

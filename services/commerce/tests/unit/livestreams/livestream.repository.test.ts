@@ -431,6 +431,182 @@ describe("LivestreamRepository - Unit Tests", () => {
 
       expect(result).toBeNull();
     });
+
+    it("REPO-PG-015 - update modifies specified fields and returns mapped row", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Edited Session Title",
+        description: "Updated Description",
+        coverImageKey: "covers/test.png",
+        status: "draft",
+        channelArn: null,
+        playbackUrl: null,
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: null,
+        scheduledAt: now,
+        startedAt: null,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.update(mockRow.id, {
+        title: "Edited Session Title",
+        description: "Updated Description",
+        coverImageKey: "covers/test.png",
+        scheduledAt: now.toISOString(),
+      });
+
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.title).toBe("Edited Session Title");
+      expect(result?.description).toBe("Updated Description");
+      expect(result?.coverImageKey).toBe("covers/test.png");
+      expect(result?.scheduledAt).toBe(now.toISOString());
+    });
+
+    it("REPO-PG-016 - update returns findById when no fields are passed in DTO", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Existing Title",
+        description: null,
+        coverImageKey: null,
+        status: "draft",
+        channelArn: null,
+        playbackUrl: null,
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.update(mockRow.id, {});
+      expect(result?.id).toBe(mockRow.id);
+      expect(result?.title).toBe("Existing Title");
+    });
+
+    it("REPO-PG-017 - update returns null when livestream row does not exist", async () => {
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [],
+      } as any);
+
+      const result = await repo.update("missing-id", {
+        title: "Non-existent",
+      });
+      expect(result).toBeNull();
+    });
+
+    it("REPO-PG-018 - delete returns true when row is deleted", async () => {
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
+      } as any);
+
+      const result = await repo.delete("11111111-1111-4111-8111-111111111111");
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result).toBe(true);
+    });
+
+    it("REPO-PG-019 - delete returns false when row is not found", async () => {
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rowCount: 0,
+        rows: [],
+      } as any);
+
+      const result = await repo.delete("missing-id");
+      expect(result).toBe(false);
+    });
+
+    it("REPO-PG-020 - updateIvsChatRoom updates chatRoomArn and chatRoomId and returns mapped livestream", async () => {
+      const now = new Date();
+      const mockRow = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Live With Chat",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: "arn:aws:ivs:channel/123",
+        playbackUrl: "https://playback.live-video.net/123.m3u8",
+        chatRoomArn: "arn:aws:ivschat:room/abc",
+        chatRoomId: "room-abc",
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.updateIvsChatRoom(
+        mockRow.id,
+        "arn:aws:ivschat:room/abc",
+        "room-abc"
+      );
+
+      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(result?.chatRoomArn).toBe("arn:aws:ivschat:room/abc");
+      expect(result?.chatRoomId).toBe("room-abc");
+
+      // Trường hợp không tìm thấy row trả về null
+      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [] } as any);
+      const notFound = await repo.updateIvsChatRoom("missing", "arn", "id");
+      expect(notFound).toBeNull();
+    });
+
+    it("REPO-PG-021 - findActiveLiveByMerchantId returns active live session row when found", async () => {
+      const now = new Date();
+      const mockLiveRow = {
+        id: "22222222-2222-4222-8222-222222222222",
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Active Live Session",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: "arn:aws:ivs:channel/456",
+        playbackUrl: "https://playback.live-video.net/456.m3u8",
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: null,
+        scheduledAt: null,
+        startedAt: now,
+        endedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockLiveRow],
+      } as any);
+
+      const result = await repo.findActiveLiveByMerchantId(
+        "a0000000-0000-0000-0000-000000000001",
+        "exclude-id"
+      );
+
+      expect(result).toBeDefined();
+      expect(result?.id).toBe(mockLiveRow.id);
+      expect(result?.status).toBe("live");
+    });
   });
 
   describe("InMemoryLivestreamRepository", () => {
@@ -709,6 +885,180 @@ describe("LivestreamRepository - Unit Tests", () => {
 
       const notFound = await repo.updateStatus("missing-id", "live");
       expect(notFound).toBeNull();
+    });
+
+    it("REPO-MEM-010 - update updates fields in memory and sets updatedAt or returns null if not found", async () => {
+      const created = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Initial Title",
+        description: "Initial Desc",
+        coverImageKey: null,
+        status: "draft",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const updated = await repo.update(created.id, {
+        title: "Updated In-Mem Title",
+        description: "Updated In-Mem Desc",
+        coverImageKey: "covers/mem.png",
+        scheduledAt: "2026-10-30T10:00:00.000Z",
+      });
+
+      expect(updated).not.toBeNull();
+      expect(updated?.title).toBe("Updated In-Mem Title");
+      expect(updated?.description).toBe("Updated In-Mem Desc");
+      expect(updated?.coverImageKey).toBe("covers/mem.png");
+      expect(updated?.scheduledAt).toBe("2026-10-30T10:00:00.000Z");
+
+      const notFound = await repo.update("non-existent-id", {
+        title: "Anything",
+      });
+      expect(notFound).toBeNull();
+    });
+
+    it("REPO-MEM-011 - delete removes item from memory and returns true, or false if not found", async () => {
+      const created = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Session to delete",
+        status: "draft",
+      });
+
+      const deleted = await repo.delete(created.id);
+      expect(deleted).toBe(true);
+
+      const found = await repo.findById(created.id);
+      expect(found).toBeNull();
+
+      const deleteAgain = await repo.delete(created.id);
+      expect(deleteAgain).toBe(false);
+    });
+
+    it("REPO-MEM-012 - findConflictingSchedule detects conflicting schedule within buffer minutes", async () => {
+      const merchantId = "a0000000-0000-0000-0000-000000000001";
+      const existing = await repo.create({
+        merchantId,
+        title: "Phiên 1",
+        status: "scheduled",
+        scheduledAt: "2026-10-25T19:30:00.000Z",
+        channelArn: null,
+        playbackUrl: null,
+        coverImageKey: null,
+        description: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      // 1. Conflict within 30 min (+10 min)
+      const conflict1 = await repo.findConflictingSchedule(
+        merchantId,
+        "2026-10-25T19:40:00.000Z",
+        30
+      );
+      expect(conflict1?.id).toBe(existing.id);
+
+      // 2. Conflict within 30 min (-15 min)
+      const conflict2 = await repo.findConflictingSchedule(
+        merchantId,
+        "2026-10-25T19:15:00.000Z",
+        30
+      );
+      expect(conflict2?.id).toBe(existing.id);
+
+      // 3. No conflict outside 30 min (+45 min)
+      const noConflict = await repo.findConflictingSchedule(
+        merchantId,
+        "2026-10-25T20:15:00.000Z",
+        30
+      );
+      expect(noConflict).toBeNull();
+
+      // 4. Ignore itself when excludeId is passed
+      const selfConflict = await repo.findConflictingSchedule(
+        merchantId,
+        "2026-10-25T19:30:00.000Z",
+        30,
+        existing.id
+      );
+      expect(selfConflict).toBeNull();
+    });
+
+    it("REPO-MEM-013 - findActiveLiveByMerchantId returns active live session", async () => {
+      const merchantId = "a0000000-0000-0000-0000-000000000001";
+      const liveSession = await repo.create({
+        merchantId,
+        title: "Phiên đang live",
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        coverImageKey: null,
+        description: null,
+        scheduledAt: null,
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+      });
+
+      const found = await repo.findActiveLiveByMerchantId(merchantId);
+      expect(found?.id).toBe(liveSession.id);
+
+      // Ignore when excludeId is the live session itself
+      const excluded = await repo.findActiveLiveByMerchantId(merchantId, liveSession.id);
+      expect(excluded).toBeNull();
+    });
+
+    it("REPO-MEM-014 - findConflictingSchedule and findActiveLiveByMerchantId handle skipped branch conditions", async () => {
+      const merchantId = "a0000000-0000-0000-0000-000000000001";
+      const otherMerchantId = "b0000000-0000-0000-0000-000000000002";
+
+      // 1. findConflictingSchedule returns null if target scheduledAt is invalid
+      const invalidTarget = await repo.findConflictingSchedule(merchantId, "invalid-date");
+      expect(invalidTarget).toBeNull();
+
+      // 2. Tạo phiên thuộc shop khác, phiên đã ended, phiên không có scheduledAt, phiên có scheduledAt lỗi
+      await repo.create({
+        merchantId: otherMerchantId,
+        title: "Shop khác live",
+        status: "scheduled",
+        scheduledAt: "2026-10-25T19:30:00.000Z",
+      });
+
+      await repo.create({
+        merchantId,
+        title: "Phiên đã kết thúc",
+        status: "ended",
+        scheduledAt: "2026-10-25T19:30:00.000Z",
+      });
+
+      const noSched = await repo.create({
+        merchantId,
+        title: "Phiên không có lịch",
+        status: "draft",
+        scheduledAt: null,
+      });
+
+      // Kiểm tra với target schedule hợp lệ: không phiên nào trên đây gây xung đột
+      const conflictResult = await repo.findConflictingSchedule(
+        merchantId,
+        "2026-10-25T19:30:00.000Z",
+        30
+      );
+      expect(conflictResult).toBeNull();
+
+      // Phiên có scheduledAt invalid date string trong DB
+      (noSched as any).scheduledAt = "invalid-date-string";
+      const conflictResult2 = await repo.findConflictingSchedule(
+        merchantId,
+        "2026-10-25T19:30:00.000Z",
+        30
+      );
+      expect(conflictResult2).toBeNull();
+
+      // 3. findActiveLiveByMerchantId bỏ qua item thuộc merchant khác hoặc không live
+      const notFoundForOther = await repo.findActiveLiveByMerchantId("c0000000-0000-0000-0000-000000000003");
+      expect(notFoundForOther).toBeNull();
     });
   });
 });

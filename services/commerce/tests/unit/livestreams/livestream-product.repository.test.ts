@@ -208,6 +208,32 @@ describe("LivestreamProductRepository - Unit Tests", () => {
       const notDeleted = await repo.removeProduct("ls-1", "p-2");
       expect(notDeleted).toBe(false);
     });
+
+    it("REPO-LP-PG-010 - productExists checks product and product_skus table", async () => {
+      // 1. Product không tồn tại -> false
+      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [] } as any);
+      const exists1 = await repo.productExists("prod-none");
+      expect(exists1).toBe(false);
+
+      // 2. Product tồn tại, không có variantId -> true
+      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [{ "?column?": 1 }] } as any);
+      const exists2 = await repo.productExists("prod-1");
+      expect(exists2).toBe(true);
+
+      // 3. Product tồn tại, có variantId và sku tồn tại -> true
+      vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [{ "?column?": 1 }] } as any)
+        .mockResolvedValueOnce({ rows: [{ "?column?": 1 }] } as any);
+      const exists3 = await repo.productExists("prod-1", "sku-1");
+      expect(exists3).toBe(true);
+
+      // 4. Product tồn tại nhưng variantId không tồn tại -> false
+      vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [{ "?column?": 1 }] } as any)
+        .mockResolvedValueOnce({ rows: [] } as any);
+      const exists4 = await repo.productExists("prod-1", "sku-none");
+      expect(exists4).toBe(false);
+    });
   });
 
   describe("InMemoryLivestreamProductRepository", () => {
@@ -312,6 +338,39 @@ describe("LivestreamProductRepository - Unit Tests", () => {
       const list = await repo.findByLivestreamId("ls-sort");
       expect(list[0].productId).toBe("p-1");
       expect(list[1].productId).toBe("p-2");
+    });
+
+    it("REPO-LP-MEM-006 - setValidProductIds and productExists", async () => {
+      // Khi chưa thiết lập validProductIds, mặc định coi như sản phẩm tồn tại (true)
+      expect(await repo.productExists("prod-any")).toBe(true);
+
+      // Thiết lập danh sách ID hợp lệ
+      repo.setValidProductIds(["prod-1", "prod-2"]);
+      expect(await repo.productExists("prod-1")).toBe(true);
+      expect(await repo.productExists("prod-2")).toBe(true);
+      expect(await repo.productExists("prod-not-found")).toBe(false);
+    });
+
+    it("REPO-LP-MEM-007 - findByLivestreamId sorts by createdAt tiebreak when isFeatured and displayOrder are identical", async () => {
+      const p1 = await repo.addProduct({
+        livestreamId: "ls-tie",
+        productId: "p-tie-1",
+        displayOrder: 1,
+        isFeatured: false,
+      });
+      const p2 = await repo.addProduct({
+        livestreamId: "ls-tie",
+        productId: "p-tie-2",
+        displayOrder: 1,
+        isFeatured: false,
+      });
+
+      (p1 as any).createdAt = "2026-10-20T10:00:00.000Z";
+      (p2 as any).createdAt = "2026-10-20T10:05:00.000Z";
+
+      const list = await repo.findByLivestreamId("ls-tie");
+      expect(list[0].productId).toBe("p-tie-1");
+      expect(list[1].productId).toBe("p-tie-2");
     });
   });
 });
