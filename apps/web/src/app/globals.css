@@ -499,7 +499,11 @@ input.studio-chat-input:focus {
 }
 
 .auth-left-inner-compact .auth-register-form {
-  gap: 0.38rem;
+  gap: 0.5rem;
+}
+
+.auth-left-inner-compact .auth-register-form .auth-submit {
+  margin-top: 0.35rem;
 }
 
 .auth-left-inner-compact .auth-heading h1 {
@@ -844,7 +848,7 @@ input.studio-chat-input:focus {
 
 .auth-form {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.8rem;
   flex: 1;
 }
 
@@ -854,7 +858,7 @@ input.studio-chat-input:focus {
 
 .auth-heading h1 {
   font-size: clamp(1.55rem, 1.8vw, 1.9rem);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.4rem;
   letter-spacing: -0.06em;
   font-weight: 700;
   color: #171b26;
@@ -1806,11 +1810,11 @@ dialog::backdrop {
   }
 
   .auth-form {
-    gap: 0.55rem;
+    gap: 0.7rem;
   }
 
   .auth-left-inner-compact .auth-register-form {
-    gap: 0.38rem;
+    gap: 0.5rem;
   }
 
   .auth-right {
@@ -2016,3 +2020,75 @@ dialog::backdrop {
 .scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.65);
 }
+.customer-account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.customer-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.customer-avatar {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-subtle);
+  color: var(--color-primary);
+}
+
+.customer-user-copy {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.customer-user-copy strong,
+.customer-user-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-user-copy strong {
+  font-size: 0.875rem;
+}
+
+.customer-user-copy small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.customer-logout,
+.customer-login-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 0.5rem 0.75rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.customer-logout {
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.customer-logout:hover,
+.customer-login-link:hover {
+  background: var(--color-subtle);
+}
+

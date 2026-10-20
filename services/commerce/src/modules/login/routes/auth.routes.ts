@@ -15,6 +15,7 @@ export function createAuthRouter(
 
   router.post("/register", controller.register);
   router.post("/login", controller.login);
+  router.post("/accept-shop-invitation", controller.acceptShopInvitation);
 
   return router;
 }
