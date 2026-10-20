@@ -166,11 +166,13 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
         {/* Scrollable Navigation - CHỈ cuộn phần main menu */}
         <nav className={`${styles.navigation} custom-scrollbar`} aria-label="Điều hướng chủ shop">
-          {navigation.filter((item) =>
-            item.href === "/shop/invitations" || item.href === "/shop/users"
-              ? isAdminSession
-              : true
-          ).map((item) => {
+          {navigation.filter((item) => {
+            if (!("href" in item)) return true;
+            return (
+              (item.href !== "/shop/invitations" && item.href !== "/shop/users") ||
+              isAdminSession
+            );
+          }).map((item) => {
             const Icon = item.icon;
             if (!("href" in item)) {
               return (
