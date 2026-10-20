@@ -1,5 +1,6 @@
 import { Info, Radio, Archive } from "lucide-react";
 import type { LivestreamStatus } from "../../types/livestream";
+import { formatFriendlyIvsChannel } from "../../api/get-livestreams";
 
 interface IvsChannelInfoProps {
   status: LivestreamStatus;
@@ -14,6 +15,8 @@ export function IvsChannelInfo({
   channelName,
   resolution,
 }: IvsChannelInfoProps) {
+  const displayChannel = formatFriendlyIvsChannel(ivsChannel);
+
   // Case DRAFT or SCHEDULED: System allocates IVS Channel from pool when live broadcast starts at Studio
   if (status === "DRAFT" || status === "SCHEDULED") {
     return (
@@ -26,7 +29,7 @@ export function IvsChannelInfo({
             <span className="font-semibold text-on-surface">Cấu hình truyền dẫn Video đám mây</span>
             {ivsChannel ? (
               <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-900">
-                Gán trước: {ivsChannel}
+                Gán trước: {displayChannel}
               </span>
             ) : (
               <span className="rounded bg-surface-container px-1.5 py-0.5 font-mono text-[10px] font-medium text-outline">
@@ -54,10 +57,10 @@ export function IvsChannelInfo({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-900">
-                Amazon IVS Channel:
+                Kênh phát AWS:
               </span>
               <span className="rounded bg-emerald-100 px-2 py-0.5 font-mono text-xs font-bold text-emerald-900">
-                {ivsChannel || "IVS-ACTIVE-POOL"}
+                {displayChannel !== "Chưa cấu hình" ? displayChannel : "IVS-ACTIVE-POOL"}
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-200/80 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-700 animate-pulse" />

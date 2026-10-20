@@ -19,6 +19,7 @@ export interface PostCommentPayload {
   avatarUrl?: string | null;
   content: string;
   role?: "host" | "moderator" | "buyer";
+  skipIvsBroadcast?: boolean;
 }
 
 export function mapBackendCommentToStudioChatMessage(
@@ -41,8 +42,14 @@ export function mapBackendCommentToStudioChatMessage(
     userAvatar: item.avatarUrl || undefined,
     content: item.content,
     timestamp,
+    createdAt: item.createdAt,
     badge: item.role === "host" ? "Chủ shop" : undefined,
   };
+}
+
+export interface GetCommentsOptions {
+  limit?: number;
+  before?: string;
 }
 
 /**
@@ -50,15 +57,18 @@ export function mapBackendCommentToStudioChatMessage(
  */
 export async function getLivestreamComments(
   livestreamId: string,
-  limit: number = 100
+  options: GetCommentsOptions = {}
 ): Promise<StudioChatMessage[]> {
   if (!isValidUuid(livestreamId)) {
     return [];
   }
 
+  const limit = options.limit ?? 50;
+  const beforeParam = options.before ? `&before=${encodeURIComponent(options.before)}` : "";
+
   try {
     const res = await fetch(
-      `${COMMERCE_API_BASE_URL}/api/livestreams/${livestreamId}/comments?limit=${limit}`,
+      `${COMMERCE_API_BASE_URL}/api/livestreams/${livestreamId}/comments?limit=${limit}${beforeParam}`,
       {
         method: "GET",
         headers: {

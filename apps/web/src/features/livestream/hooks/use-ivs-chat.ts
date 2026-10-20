@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatRoom, ChatMessage, ChatEvent } from "amazon-ivs-chat-messaging";
 import { getIvsChatToken, isValidUuid } from "../api/get-livestreams";
-import { postLivestreamComment } from "../api/livestream-comments";
+import { postLivestreamComment, getLivestreamComments } from "../api/livestream-comments";
 import type { StudioChatMessage } from "../types/studio";
 
 export type IvsChatConnectionState =
@@ -38,11 +38,14 @@ export function useIvsChat({
     useState<IvsChatConnectionState>("DISCONNECTED");
   const [chatMessages, setChatMessages] = useState<StudioChatMessage[]>([]);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+  const [hasMoreEarlier, setHasMoreEarlier] = useState(true);
 
   const roomRef = useRef<ChatRoom | null>(null);
   const isConnectingRef = useRef(false);
   const connectionStateRef = useRef<IvsChatConnectionState>(connectionState);
   const onMessageReceivedRef = useRef(onMessageReceived);
+  const recentSeenRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     connectionStateRef.current = connectionState;
@@ -52,8 +55,103 @@ export function useIvsChat({
     onMessageReceivedRef.current = onMessageReceived;
   }, [onMessageReceived]);
 
-  // TikTok-style: comments are ephemeral — no history loaded on mount.
-  // Chat only shows messages received during the current session.
+  /**
+   * Tự động nạp lịch sử bình luận từ PostgreSQL khi load lại trang
+   */
+  useEffect(() => {
+    if (!livestreamId || !isValidUuid(livestreamId)) return;
+
+    let isMounted = true;
+    getLivestreamComments(livestreamId, { limit: 50 })
+      .then((historicalMsgs) => {
+        if (!isMounted) return;
+        if (historicalMsgs.length < 50) {
+          setHasMoreEarlier(false);
+        }
+        // Studio Chat hiển thị tin mới nhất ở trên đầu mảng (newest-first)
+        const newestFirst = [...historicalMsgs].reverse();
+        setChatMessages(newestFirst);
+
+        // Đánh dấu vào cache recentSeen để tránh hiển thị trùng nếu IVS phát lại
+        const now = Date.now();
+        newestFirst.forEach((msg) => {
+          const key = `${msg.userId || "anon"}:${msg.content.trim().toLowerCase()}`;
+          recentSeenRef.current.set(key, now);
+        });
+      })
+      .catch((err) => {
+        console.warn("[useIvsChat] Failed to load initial comment history:", err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [livestreamId]);
+
+  /**
+   * Tải tiếp các tin nhắn cũ hơn khi người dùng cuộn xem lịch sử
+   */
+  const loadEarlierMessages = useCallback(async () => {
+    if (!livestreamId || !isValidUuid(livestreamId)) return;
+    if (isLoadingEarlier || !hasMoreEarlier) return;
+
+    // Tin nhắn cũ nhất hiện tại nằm ở cuối mảng chatMessages
+    const oldestMsg = chatMessages[chatMessages.length - 1];
+    if (!oldestMsg || !oldestMsg.createdAt) {
+      setHasMoreEarlier(false);
+      return;
+    }
+
+    setIsLoadingEarlier(true);
+    try {
+      const olderMsgs = await getLivestreamComments(livestreamId, {
+        limit: 20,
+        before: oldestMsg.createdAt,
+      });
+
+      if (olderMsgs.length < 20) {
+        setHasMoreEarlier(false);
+      }
+
+      if (olderMsgs.length > 0) {
+        const olderNewestFirst = [...olderMsgs].reverse();
+        setChatMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const uniqueOlder = olderNewestFirst.filter((m) => !existingIds.has(m.id));
+          return [...prev, ...uniqueOlder];
+        });
+      }
+    } catch (err) {
+      console.warn("[useIvsChat] Failed to load earlier comments:", err);
+    } finally {
+      setIsLoadingEarlier(false);
+    }
+  }, [livestreamId, isLoadingEarlier, hasMoreEarlier, chatMessages]);
+
+  /**
+   * Kiểm tra tin nhắn trùng lặp (cùng người gửi + nội dung trong vòng 4s)
+   * Ngăn hiện tượng nhân đôi tin nhắn giữa WebSocket message và REST event broadcast
+   */
+  const isDuplicateMessage = useCallback((msg: StudioChatMessage): boolean => {
+    const now = Date.now();
+    const map = recentSeenRef.current;
+
+    // Dọn dẹp cache cũ hơn 10 giây
+    for (const [key, timestamp] of map.entries()) {
+      if (now - timestamp > 10000) {
+        map.delete(key);
+      }
+    }
+
+    const key = `${msg.userId || "anon"}:${msg.content.trim().toLowerCase()}`;
+    const lastSeen = map.get(key);
+    if (lastSeen && now - lastSeen < 4000) {
+      return true;
+    }
+
+    map.set(key, now);
+    return false;
+  }, []);
 
   /**
    * Kết nối vào IVS Chat Room qua WebSocket
@@ -161,6 +259,10 @@ export function useIvsChat({
           status: msg.attributes?.orderStatus as StudioChatMessage["status"],
         };
 
+        if (isDuplicateMessage(studioMsg)) {
+          return;
+        }
+
         setChatMessages((prev) => {
           if (prev.some((m) => m.id === studioMsg.id)) {
             return prev;
@@ -202,6 +304,10 @@ export function useIvsChat({
             status: evt.attributes.orderStatus as StudioChatMessage["status"],
           };
 
+          if (isDuplicateMessage(studioMsg)) {
+            return;
+          }
+
           setChatMessages((prev) => {
             if (prev.some((m) => m.id === studioMsg.id)) {
               return prev;
@@ -221,7 +327,7 @@ export function useIvsChat({
       setConnectionState("CONNECTED");
       isConnectingRef.current = false;
     }
-  }, [livestreamId, userId, username, role]);
+  }, [livestreamId, userId, username, role, isDuplicateMessage]);
 
   /**
    * Ngắt kết nối phòng chat
@@ -248,13 +354,15 @@ export function useIvsChat({
       const cleanContent = content.trim();
       if (!cleanContent) return;
 
-      // 1. Đẩy vào Amazon SQS queue (comment.created) — không lưu DB
-      if (isValidUuid(livestreamId)) {
+      // 1. Chỉ đẩy vào Amazon SQS queue (comment.created) nếu là khách hàng (buyer) để AI chốt đơn.
+      // Chủ shop (HOST) và Quản trị viên (MODERATOR) không cần đẩy vào SQS, tiết kiệm 1 request HTTP.
+      if (isValidUuid(livestreamId) && role !== "HOST" && role !== "MODERATOR") {
         void postLivestreamComment(livestreamId, {
           userId,
           username,
           content: cleanContent,
-          role: role === "HOST" ? "host" : role === "MODERATOR" ? "moderator" : "buyer",
+          role: "buyer",
+          skipIvsBroadcast: true,
         });
       }
 
@@ -317,6 +425,9 @@ export function useIvsChat({
     connectionState,
     chatMessages,
     chatError,
+    isLoadingEarlier,
+    hasMoreEarlier,
+    loadEarlierMessages,
     connect,
     disconnect,
     sendMessage,

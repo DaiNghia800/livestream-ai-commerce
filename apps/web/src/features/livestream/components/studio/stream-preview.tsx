@@ -16,6 +16,7 @@ import {
   Heart,
   MessageCircle,
   Share2,
+  Radio,
 } from "lucide-react";
 import { PinnedProductOverlay } from "./pinned-product-overlay";
 import type { StudioProductItem } from "../../types/studio";
@@ -36,6 +37,9 @@ export interface StudioStreamPreviewProps {
   pinnedProduct?: StudioProductItem | null;
   isMicActive?: boolean;
   isEnded?: boolean;
+  broadcastState?: "IDLE" | "CONNECTING" | "LIVE" | "ERROR";
+  onResumeLive?: () => void;
+  isResuming?: boolean;
   aspectRatio?: "16:9" | "9:16";
   onChangeAspectRatio?: (ratio: "16:9" | "9:16") => void;
   showSafezone?: boolean;
@@ -57,11 +61,14 @@ export function StudioStreamPreview({
   pinnedProduct = null,
   isMicActive = false,
   isEnded = false,
+  broadcastState = "IDLE",
+  onResumeLive,
+  isResuming = false,
   aspectRatio = "16:9",
   showSafezone = true,
   onToggleSafezone,
   isMirrorVideo = false,
-  isLeftSidebarOpen = true,
+  isLeftSidebarOpen = false,
   isRightSidebarOpen = true,
   onToggleLeftSidebar,
   onToggleRightSidebar,
@@ -231,30 +238,54 @@ export function StudioStreamPreview({
               </div>
             ) : (
               /* Idle State */
-              <div className="relative z-10 flex flex-col items-center gap-2 max-w-sm">
-                <div className="h-12 w-12 rounded-full bg-slate-900 border border-slate-700/80 flex items-center justify-center text-cyan-400 mb-1 shadow-lg">
-                  <Camera className="h-6 w-6" aria-hidden="true" />
+              isLive ? (
+                <div className="relative z-10 flex flex-col items-center gap-2.5 max-w-sm px-4">
+                  <div className="h-12 w-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-0.5 shadow-lg">
+                    <Radio className="h-6 w-6 animate-pulse" aria-hidden="true" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-amber-300">
+                    Luồng phát video đang tạm dừng
+                  </h4>
+                  <p className="text-[11px] text-slate-300 leading-relaxed text-center">
+                    Phiên phát sóng vẫn đang hoạt động. Vui lòng kết nối lại Camera để tiếp tục đẩy luồng video lên AWS IVS.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onResumeLive || onRequestCamera}
+                    disabled={isResuming}
+                    className="mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-950/40 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    <Radio className={`h-4 w-4 ${isResuming ? "animate-spin" : ""}`} aria-hidden="true" />
+                    <span>{isResuming ? "Đang kết nối lại..." : "TIẾP TỤC PHÁT SÓNG"}</span>
+                  </button>
+                  <span className="text-[10px] text-slate-400 mt-0.5">
+                    (Kênh AWS IVS sẽ tự động nhận lại video và kích hoạt Live Channels)
+                  </span>
                 </div>
-                <h4 className="text-xs sm:text-sm font-bold text-slate-200">
-                  {isLive
-                    ? "Camera thiết bị chưa kích hoạt (Phiên đang LIVE Demo)"
-                    : "Xem trước Khung hình TikTok Live Studio"}
-                </h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Khởi động camera để kiểm tra góc máy, ánh sáng và sản phẩm trước khi phát trực tiếp.
-                </p>
-                <button
-                  type="button"
-                  onClick={onRequestCamera}
-                  className="mt-1.5 inline-flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 cursor-pointer"
-                >
-                  <Camera className="h-4 w-4" aria-hidden="true" />
-                  <span>Mở Camera của thiết bị</span>
-                </button>
-                <span className="text-[10px] text-slate-500 mt-1">
-                  (Video chỉ chạy cục bộ, sẵn sàng đồng bộ lên AWS IVS)
-                </span>
-              </div>
+              ) : (
+                <div className="relative z-10 flex flex-col items-center gap-2 max-w-sm">
+                  <div className="h-12 w-12 rounded-full bg-slate-900 border border-slate-700/80 flex items-center justify-center text-cyan-400 mb-1 shadow-lg">
+                    <Camera className="h-6 w-6" aria-hidden="true" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-200">
+                    Xem trước Khung hình TikTok Live Studio
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Khởi động camera để kiểm tra góc máy, ánh sáng và sản phẩm trước khi phát trực tiếp.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onRequestCamera}
+                    className="mt-1.5 inline-flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Camera className="h-4 w-4" aria-hidden="true" />
+                    <span>Mở Camera của thiết bị</span>
+                  </button>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    (Video chỉ chạy cục bộ, sẵn sàng đồng bộ lên AWS IVS)
+                  </span>
+                </div>
+              )
             )}
           </div>
         )}
