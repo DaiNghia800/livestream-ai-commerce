@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { config } from "../../../src/config.js";
 import type { Response } from "express";
 import type { PoolClient } from "pg";
 import { PaymentController } from "../../../src/modules/payment/controllers/payment.controller.js";
@@ -48,11 +49,13 @@ function fakeRes() {
 }
 
 function fakeReq(overrides: Record<string, unknown> = {}) {
+  config.bankWebhookSecret = "unit-bank-webhook-secret";
   return {
     body: {},
     params: {},
     query: {},
-    header: () => undefined,
+    header: (name: string) =>
+      name === "x-bank-webhook-secret" ? config.bankWebhookSecret : undefined,
     socket: {},
     ...overrides,
   } as never;
@@ -234,13 +237,19 @@ describe("payment.repository — chốt chặn trạng thái", () => {
   }
 
   it("markCodCollected trả false khi không có khoản COD nào đang chờ", async () => {
-    // Đơn chuyển khoản trước, hoặc đã thu rồi. Guard nằm trong câu
-    // UPDATE nên gọi lại ở mỗi lần hoàn tất đơn đều vô hại.
+    // Đơn chuyển khoản trước, hoặc đã thu rồi.
     expect(await markCodCollected(clientAffecting(0), "o-1")).toBe(false);
   });
 
-  it("markCodCollected trả true khi thu được", async () => {
-    expect(await markCodCollected(clientAffecting(1), "o-1")).toBe(true);
+  it("markCodCollected ghi bút toán rồi tính lại tổng tiền", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "p-1", remaining: "100000.00" }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id: "p-1" }] });
+    expect(await markCodCollected({ query } as never, "o-1")).toBe(true);
+    expect(String(query.mock.calls[1][0])).toContain("payment_transactions");
+    expect(query.mock.calls[1][1]).toContain("manual-cod");
   });
 
   it("markPaymentFailed trả false khi khoản thu không còn PENDING", async () => {

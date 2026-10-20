@@ -47,6 +47,11 @@ import {
 } from "../repositories/order.repository.js";
 import { bumpRisk } from "../repositories/customer-risk.repository.js";
 import { markCodCollected } from "../../payment/repositories/payment.repository.js";
+import { tachDiaChi } from "../../shipping/address/normalize-address.js";
+import {
+  attachAddressToOrder,
+  insertAddress,
+} from "../../shipping/repositories/shipment.repository.js";
 import type { Order, OrderStatus } from "../types/order.types.js";
 
 export interface ShippingInfo {
@@ -131,6 +136,24 @@ export class OrderLifecycleService {
       }
 
       await saveShippingInfo(client, { orderId: order.id, ...shipping });
+
+      // Chỉ gắn địa chỉ dùng được khi đủ tỉnh/phường/số nhà. Giữ
+      // nguyên chuỗi khách gõ trong orders.shipping_address để shop
+      // có thể sửa khi tách không chắc chắn.
+      const address = tachDiaChi(shipping.shippingAddress);
+      if (address.daChuanHoa) {
+        const addressId = await insertAddress(client, {
+          recipientName: shipping.recipientName,
+          recipientPhone: shipping.recipientPhone,
+          provinceName: address.provinceName,
+          districtName: address.districtName,
+          wardName: address.wardName,
+          streetLine: address.streetLine,
+          isNewFormat: address.isNewFormat,
+          normalizedAt: new Date(),
+        });
+        await attachAddressToOrder(client, order.id, addressId);
+      }
 
       // BẪY-07: flash sale 10 phút cuối. Khách chốt lúc đầu phiên phải
       // được hưởng giá tốt nhất, nếu không họ sẽ huỷ rồi chốt lại — mà

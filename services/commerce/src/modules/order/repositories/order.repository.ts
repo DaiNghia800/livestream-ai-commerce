@@ -461,32 +461,40 @@ export async function loadOrder(
   orderId: string
 ): Promise<Order> {
   const orderResult = await client.query(
-    `SELECT id,
-            order_code    AS "orderCode",
-            customer_id   AS "customerId",
-            merchant_id   AS "merchantId",
-            livestream_id AS "livestreamId",
-            status,
-            source,
-            total_amount  AS "totalAmount",
-            held_until    AS "heldUntil",
-            confirm_token AS "confirmToken",
-            created_at    AS "createdAt"
-       FROM orders
-      WHERE id = $1`,
+    `SELECT o.id,
+            o.order_code    AS "orderCode",
+            o.customer_id   AS "customerId",
+            o.merchant_id   AS "merchantId",
+            o.livestream_id AS "livestreamId",
+            o.status,
+            o.source,
+            o.total_amount  AS "totalAmount",
+            o.held_until    AS "heldUntil",
+            o.confirm_token AS "confirmToken",
+            o.recipient_name AS "recipientName",
+            o.recipient_phone AS "recipientPhone",
+            o.shipping_address AS "shippingAddress",
+            (a.normalized_at IS NOT NULL) AS "addressNormalized",
+            o.created_at    AS "createdAt"
+       FROM orders o LEFT JOIN addresses a ON a.id = o.address_id
+      WHERE o.id = $1`,
     [orderId]
   );
 
   const itemsResult = await client.query(
-    `SELECT id,
-            sku_id        AS "skuId",
+    `SELECT oi.id,
+            oi.sku_id        AS "skuId",
+            s.sku_code      AS "skuCode",
+            p.name          AS "productName",
             quantity,
             requested_qty AS "requestedQty",
             is_partial    AS "isPartial",
             unit_price    AS "unitPrice"
-       FROM order_items
-      WHERE order_id = $1
-      ORDER BY created_at`,
+       FROM order_items oi
+       JOIN product_skus s ON s.id = oi.sku_id
+       JOIN products p ON p.id = s.product_id
+      WHERE oi.order_id = $1
+      ORDER BY oi.created_at`,
     [orderId]
   );
 

@@ -4,6 +4,7 @@ import { createEventTransport } from "./modules/order/events/event-transport.js"
 import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
 import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
 import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
+import { SyncShipmentsJob } from "./modules/shipping/jobs/sync-shipments.job.js";
 import { createDraftOrderService } from "./modules/order/services/draft-order.factory.js";
 import { PurchaseRequestService } from "./modules/order/services/purchase-request.service.js";
 import { pool, runMigrations } from "./shared/database/database.js";
@@ -49,6 +50,14 @@ async function bootstrap() {
   );
   expireRequestsJob.start();
 
+  // Lưới an toàn cho webhook vận chuyển. Webhook là đường chính,
+  // nhưng khai sai URL, đường hầm đổi địa chỉ, hay service nằm xuống
+  // vài phút là mất sự kiện — mà phần lớn hãng chỉ thử lại vài lần
+  // rồi thôi. Thiếu job này thì không ai biết cho tới lúc khách gọi
+  // điện hỏi hàng đâu.
+  const syncShipmentsJob = new SyncShipmentsJob(pool);
+  syncShipmentsJob.start();
+
   const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
     console.log(`[Commerce Service] API Prefix: ${config.apiPrefix}`);
@@ -66,6 +75,7 @@ async function bootstrap() {
     expireOrdersJob.stop();
     publishOutboxJob.stop();
     expireRequestsJob.stop();
+    syncShipmentsJob.stop();
     server.close(() => {
       void pool.end().finally(() => process.exit(0));
     });
