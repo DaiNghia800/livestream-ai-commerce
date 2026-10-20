@@ -196,3 +196,81 @@ docker image ls livestream-ai-worker:midterm
 ```
 
 Các ví dụ chỉ dùng dữ liệu synthetic; JSON output chứa comment theo contract nên không dùng dữ liệu khách thật khi trình chiếu. Thời gian build, kích thước image và kết quả chạy phải đo thực tế, không suy ra từ test host. Nếu Docker daemon không truy cập được thì chưa thể kết luận Docker verification đạt. Full offline pytest vẫn chạy trong môi trường dev theo phần kiểm thử ở trên; image demo không chứa test suite. A7 không thêm Docker Hub publishing, SQS, Lambda hoặc Commerce integration.
+
+## AWS-2: SQS Lambda adapter offline — chưa deploy
+
+Entry point là **`lambda_handler.handler`**, dự kiến dùng Python 3.13. Handler đọc từng JSON string trong `Records[].body`, gọi đúng `process_comment_event(event, use_ai=False)` và trả `batchItemFailures`. Không gọi CLI, AWS SDK, Commerce, database hoặc Gemini. API key trong environment không bật được AI; package offline không chứa Gemini client. Docker image A7 vẫn là demo CLI, không phải Lambda deployment image.
+
+`purchase_candidate`, `needs_clarification` và `no_purchase` đều là xử lý nghiệp vụ thành công. Adapter không tạo order, reservation hoặc proposal; không đổi output/contract của processor. Kết quả nghiệp vụ chỉ xuất hiện trong sanitized log, không gửi lại Frontend hay Commerce.
+
+### Failure và logging
+
+Mỗi record được xử lý độc lập. JSON sai, event không hợp lệ, classified technical error và unexpected programming exception đều làm record thất bại. Response chỉ liệt kê đúng **SQS `messageId`**, không dùng event/comment ID:
+
+```json
+{"batchItemFailures": [{"itemIdentifier": "actual-sqs-message-id"}]}
+```
+
+Nếu envelope không có `Records` dạng list, record không phải object, hoặc thiếu/không hợp lệ `messageId`, handler raise exception với thông báo cố định trước khi xử lý batch. Không bịa ID và không acknowledge thành công. Batch rỗng trả danh sách failures rỗng.
+
+Log JSON chỉ gồm `event_id`, `comment_id`, `sqs_message_id`, `decision`, `latency_ms`, `error_type`, `failure_kind`. ID chỉ được log nếu là chuỗi opaque 1–128 ký tự trong tập ASCII chữ/số/`_ . : -`; giá trị khác được redact thành null, không sửa ID xử lý/acknowledgment. `latency_ms` đo thời gian xử lý record bằng monotonic clock, không phải Gemini API latency.
+
+- `error_type` chỉ giữ mã hiện có trong processor/AI contracts. Body không phải string dùng `invalid_type`, thiếu body dùng `missing_field`, JSON không hợp lệ dùng `invalid_format`. NaN/Infinity bị từ chối.
+- `failure_kind` là metadata log nội bộ, **không phải public error/reason code mới**: `invalid_input`, `transient`, `technical`, `unexpected`; thành công là null. Các lỗi `ai_timeout`, `ai_network`, `ai_rate_limit`, `ai_transient` được phân biệt với lỗi input và configuration/auth/response.
+- Unexpected exception hoặc error label không được nhận biết có `error_type=null`, `failure_kind=unexpected`, record vẫn thất bại. Không log exception message/traceback, raw comment, customer identity, API keys hay toàn bộ processor result.
+
+Adapter không tự retry, sleep hoặc xóa message. Duplicate delivery có thể được parse và log lại; hiện không có durable deduplication hoặc exactly-once guarantee. Luồng chỉ tính intent và log nên không phát sinh external business side effect. Các task tạo proposal/order sau này cần idempotency riêng.
+
+### Build ZIP từ Git root
+
+```powershell
+$lambdaZip = Join-Path ([IO.Path]::GetTempPath()) ('ai-worker-offline-' + [guid]::NewGuid().ToString('N') + '.zip')
+if (Test-Path -LiteralPath $lambdaZip) { throw 'ZIP target already exists' }
+python -X utf8 -B services/ai-worker/scripts/build_lambda_zip.py --output "$lambdaZip"
+```
+
+Script resolve source theo vị trí của chính nó nên chạy được từ working directory khác. `--output` cần parent directory tồn tại và file chưa tồn tại; không ghi đè. Exit 0 khi build được, 2 khi CLI/file input sai. ZIP dùng metadata thời gian cố định, quyền file Linux `0644`, chỉ chứa bảy module ở root:
+
+```text
+lambda_handler.py
+process_comment.py
+parse_intent.py
+intent_policy.py
+quantity_parser.py
+product_codes.py
+ai_errors.py
+```
+
+Không cần pip install vào artifact. `requirements.txt` hiện tại phục vụ dev/test và Gemini, không phải danh sách dependencies của ZIP offline. `.env`, credentials, tests, caches, Gemini/AWS SDK và các service khác không được đóng gói. ZIP build xong chưa chứng minh đã deploy hoặc trigger hoạt động.
+
+### Kiểm thử local
+
+Các lệnh sau dùng môi trường dev đã có dependencies Worker; root B1 tests cần dependency test-only được pin trong `tests/contracts/requirements.txt`. Chạy từng suite và kiểm tra exit code trước khi tiếp tục:
+
+```powershell
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+
+$baseTemp = Join-Path ([IO.Path]::GetTempPath()) ('aws2-focused-' + [guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $baseTemp) { throw 'Temporary path already exists' }
+python -B -m pytest services/ai-worker/tests/test_lambda_handler.py services/ai-worker/tests/test_lambda_package.py -q --tb=short -p no:cacheprovider --basetemp="$baseTemp"
+
+$baseTemp = Join-Path ([IO.Path]::GetTempPath()) ('aws2-regression-' + [guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $baseTemp) { throw 'Temporary path already exists' }
+python -B -m pytest services/ai-worker/tests -q --tb=short -p no:cacheprovider --basetemp="$baseTemp"
+
+# Separate command: current CI does not run root contract tests.
+$baseTemp = Join-Path ([IO.Path]::GetTempPath()) ('aws2-contracts-' + [guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $baseTemp) { throw 'Temporary path already exists' }
+python -B -m pytest tests/contracts -q --tb=short -p no:cacheprovider --basetemp="$baseTemp"
+```
+
+Tests bao gồm batch trộn, error classification, fake clock, log redaction, duplicate delivery và API-key-present offline guard. Package tests chạy handler thật hai lần từ ZIP trong subprocess `-I -S -B`, không có site-packages; chặn network, sleep và import remote clients trong process con. Không có AWS/Gemini call trong pytest.
+
+### Prerequisites trước deployment riêng
+
+Thông tin do project owner xác nhận cho staging: account `553288148257`, region `ap-southeast-1`, Standard queue `liveorder-dev-realtime-comments`, hiện **chưa có DLQ**. AWS-2 chỉ chuẩn bị code/artifact, không xác minh hoặc thay đổi các tài nguyên này; credentials mặc định của máy có thể thuộc account khác.
+
+Trước khi attach consumer cần approval riêng: xác minh account/role và queue ARN; cấu hình DLQ/redrive hữu hạn; execution role scoped đúng queue và log group; bật `ReportBatchItemFailures` trên event-source mapping. Nếu không bật response type này, partial failure response không bảo vệ record lỗi khỏi bị acknowledge. Không attach adapter vào queue hiện tại khi chưa duyệt failure routing; lỗi input vĩnh viễn vẫn được báo failed và sẽ lặp tới khi redrive hoặc message hết retention.
+
+Baseline đề xuất cho giai đoạn offline: batch size 1, batch window 0, Lambda timeout 10 giây, visibility timeout tối thiểu 60 giây, trigger maximum concurrency 2, log retention 7 ngày và alarm DLQ/queue age/errors. Reserved concurrency cần phù hợp quota và tổng concurrency của triggers. Các giá trị này chưa được áp dụng. Budget, quyền publish Commerce và log redaction ở producer cần owner duyệt. Gemini live, catalog/SKU resolution, size ambiguity, B1 runtime và tự động tạo đơn đều thuộc task riêng.
