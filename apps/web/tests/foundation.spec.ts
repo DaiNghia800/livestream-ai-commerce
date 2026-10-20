@@ -43,7 +43,10 @@ test("navigation and combined filters work without horizontal overflow", async (
   await expect(
     page.getByRole("button", { name: "Thử gửi bình luận" }),
   ).toBeDisabled();
-  await page.getByRole("link", { name: "Kênh chủ shop" }).click();
+  await expect(
+    page.getByRole("link", { name: "Kênh chủ shop" }),
+  ).toHaveCount(0);
+  await page.goto("/shop");
   
   if (testInfo.project.name === "mobile") {
     await page.getByRole("button", { name: "Mở menu quản lý" }).click();
