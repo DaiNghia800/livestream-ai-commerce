@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { LogOut, UserRound } from "lucide-react";
 import { Brand } from "./brand";
 
@@ -11,20 +11,46 @@ type AuthUser = {
   email: string;
 };
 
+function subscribeToAuthUser(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
+function getAuthUserSnapshot(): string | null {
+  return localStorage.getItem("auth_user");
+}
+
+function getServerAuthUserSnapshot(): null {
+  return null;
+}
+
+function parseAuthUser(snapshot: string | null): AuthUser | null {
+  if (!snapshot) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(snapshot);
+    if (
+      typeof parsed === "object" && parsed !== null &&
+      "full_name" in parsed && typeof parsed.full_name === "string" &&
+      "email" in parsed && typeof parsed.email === "string"
+    ) {
+      return { full_name: parsed.full_name, email: parsed.email };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function CustomerShell({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem("auth_user");
-    if (!storedUser) return;
-
-    try {
-      setUser(JSON.parse(storedUser) as AuthUser);
-    } catch {
-      localStorage.removeItem("auth_user");
-    }
-  }, []);
+  const userSnapshot = useSyncExternalStore(
+    subscribeToAuthUser,
+    getAuthUserSnapshot,
+    getServerAuthUserSnapshot
+  );
+  const user = parseAuthUser(userSnapshot);
 
   function signOut() {
     localStorage.removeItem("access_token");
