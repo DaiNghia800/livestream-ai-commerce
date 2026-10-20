@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
@@ -10,6 +11,9 @@ import {
   ShoppingBag,
   MessageSquare,
   Layers,
+  AlertTriangle,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { mockLivestreams } from "../../mocks/livestream.mock";
 import { StudioSessionBar } from "./studio-session-bar";
@@ -26,6 +30,7 @@ import {
   updateLivestreamStatus,
   mapBackendLivestreamToFrontend,
   getIvsStreamConfig,
+  formatFriendlyIvsChannel,
   type IvsStreamConfig,
 } from "../../api/get-livestreams";
 import type { StudioProductItem } from "../../types/studio";
@@ -50,7 +55,12 @@ export interface BroadcastStudioProps {
 }
 
 export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
+  const router = useRouter();
   const isDemoSession = livestreamId === "LIVE-2025-08";
+
+  // 0. Quản lý cảnh báo bảo vệ phiên Live khi rời trang
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  const [pendingNavigationUrl, setPendingNavigationUrl] = useState<string | null>(null);
 
   // 1. Quản lý thông tin phiên (từ DB hoặc fallback mock cho phiên demo)
   const [session, setSession] = useState<Livestream | null>(() => {
@@ -76,13 +86,19 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     broadcastState,
     startBroadcast,
     stopBroadcast,
+    isReconnecting,
+    reconnectNotice,
   } = useIvsBroadcast();
+  const [showWebBroadcastTip, setShowWebBroadcastTip] = useState(true);
 
   // 2.2.1 AWS IVS Chat Room & WebSocket Real-time Messaging
   const {
     connectionState: chatConnectionState,
     chatMessages: liveChatMessages,
     sendMessage: sendChatMessage,
+    isLoadingEarlier,
+    hasMoreEarlier,
+    loadEarlierMessages,
   } = useIvsChat({
     livestreamId,
     userId: session?.merchantId || "merchant-host",
@@ -244,9 +260,9 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         const featured = data.find((item) => item.isFeatured);
         const pinned = featured
           ? allProducts.find(
-              (product) =>
-                getProductUuid(product.liveProductId ?? product.id) === featured.productId
-            ) ?? null
+            (product) =>
+              getProductUuid(product.liveProductId ?? product.id) === featured.productId
+          ) ?? null
           : null;
         setPinnedProduct(pinned);
         setPinError("");
@@ -261,6 +277,45 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       current = false;
     };
   }, [allProducts, livestreamId]);
+
+  // Khóa khung nhìn 100vh không cuộn (No-scroll viewport lock) khi vào Studio mà KHÔNG sửa đổi layout chung MerchantShell
+  useEffect(() => {
+    const main = document.getElementById("main-content");
+    const content = main?.parentElement;
+    if (!main || !content) return;
+
+    const prevMainStyle = main.getAttribute("style") || "";
+    const prevContentStyle = content.getAttribute("style") || "";
+
+    main.style.width = "100%";
+    main.style.maxWidth = "none";
+    main.style.margin = "0";
+    main.style.padding = "0";
+    main.style.flex = "1";
+    main.style.minHeight = "0";
+    main.style.minWidth = "0";
+    main.style.display = "flex";
+    main.style.flexDirection = "column";
+    main.style.overflow = "hidden";
+
+    content.style.height = "100vh";
+    content.style.overflow = "hidden";
+    content.style.display = "flex";
+    content.style.flexDirection = "column";
+
+    return () => {
+      if (prevMainStyle) {
+        main.setAttribute("style", prevMainStyle);
+      } else {
+        main.removeAttribute("style");
+      }
+      if (prevContentStyle) {
+        content.setAttribute("style", prevContentStyle);
+      } else {
+        content.removeAttribute("style");
+      }
+    };
+  }, []);
 
   const [prevProductsRef, setPrevProductsRef] = useState(session?.products);
   if (session && session.products !== prevProductsRef) {
@@ -465,6 +520,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   };
 
   const [liveToastMessage, setLiveToastMessage] = useState<string | null>(null);
+  const [liveErrorMessage, setLiveErrorMessage] = useState<string | null>(null);
   const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
 
   // Thêm sản phẩm trực tiếp từ kho vào phiên ngay tại Studio
@@ -536,6 +592,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   // Bắt đầu Livestream
   const handleStartLive = async () => {
     setIsStarting(true);
+    setLiveErrorMessage(null);
+    const prevStatus = currentStatus;
     setCurrentStatus("STARTING");
     try {
       await updateLivestreamStatus(livestreamId, "live");
@@ -569,15 +627,15 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       }
 
       if (stream && conf?.ingestEndpoint && conf?.streamKey) {
-        try {
-          await startBroadcast({
-            ingestEndpoint: conf.ingestEndpoint,
-            streamKey: conf.streamKey,
-            localStream: stream,
-          });
-        } catch (streamErr) {
-          console.warn("[Studio] IVS Web Broadcast connection note:", streamErr);
-        }
+        await startBroadcast({
+          ingestEndpoint: conf.ingestEndpoint,
+          streamKey: conf.streamKey,
+          localStream: stream,
+        });
+      } else if (!stream) {
+        throw new Error("Không có tín hiệu Camera/Micro. Vui lòng bật Camera trước khi phát trực tiếp.");
+      } else if (!conf?.ingestEndpoint || !conf?.streamKey) {
+        throw new Error("Không thể lấy cấu hình Ingest Endpoint hoặc Stream Key từ AWS IVS.");
       }
 
       setCurrentStatus("LIVE");
@@ -587,9 +645,65 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           : "Đã bắt đầu phát sóng phòng TikTok Live Studio!"
       );
       setTimeout(() => setLiveToastMessage(null), 6000);
-    } catch (err) {
-      console.warn("Failed to update status on server, falling back to local:", err);
-      setCurrentStatus("LIVE");
+    } catch (err: unknown) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Không thể bắt đầu phát sóng. Vui lòng kiểm tra lại dịch vụ.";
+      console.warn("[Studio] Failed to update status on server:", errMsg);
+      setCurrentStatus(prevStatus);
+      setLiveErrorMessage(errMsg);
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  // Tiếp tục phát sóng lại (Resume Live sau khi F5 hoặc gián đoạn kết nối)
+  const handleResumeBroadcast = async () => {
+    setIsStarting(true);
+    setLiveErrorMessage(null);
+    try {
+      let conf = ivsConfig;
+      if (!conf) {
+        conf = await getIvsStreamConfig(livestreamId);
+        setIvsConfig(conf);
+      }
+
+      let stream = localStream;
+      if (!stream && typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: selectedCameraId
+              ? { deviceId: { exact: selectedCameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+              : { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
+          });
+          setLocalStream(stream);
+          setCameraStatus("active");
+          setCameraEnabled(true);
+          setMicEnabled(true);
+        } catch (mediaErr) {
+          console.warn("[Studio] Could not acquire camera on resume broadcast:", mediaErr);
+        }
+      }
+
+      if (stream && conf?.ingestEndpoint && conf?.streamKey) {
+        await startBroadcast({
+          ingestEndpoint: conf.ingestEndpoint,
+          streamKey: conf.streamKey,
+          localStream: stream,
+        });
+        setLiveToastMessage("Đã tiếp tục phát sóng thành công lên AWS IVS!");
+        setTimeout(() => setLiveToastMessage(null), 5000);
+      } else if (!stream) {
+        throw new Error("Không có tín hiệu Camera/Micro. Vui lòng cho phép quyền Camera để tiếp tục.");
+      } else if (!conf?.ingestEndpoint || !conf?.streamKey) {
+        throw new Error("Không thể lấy cấu hình Ingest Endpoint hoặc Stream Key từ AWS IVS.");
+      }
+    } catch (err: unknown) {
+      const errMsg =
+        err instanceof Error ? err.message : "Không thể tiếp tục phát sóng. Vui lòng thử lại.";
+      setLiveErrorMessage(errMsg);
     } finally {
       setIsStarting(false);
     }
@@ -610,9 +724,71 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
   };
 
+  // 2.5 Bảo vệ phiên live: Cảnh báo khi người dùng reload / đóng tab / đổi URL
+  useEffect(() => {
+    if (currentStatus !== "LIVE") return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "Phiên livestream đang phát trực tiếp. Rời khỏi trang sẽ ngắt kết nối video lên AWS.";
+      return e.returnValue;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [currentStatus]);
+
+  // 2.6 Bảo vệ phiên live: Bắt các liên kết điều hướng nội bộ trong web app khi đang LIVE
+  useEffect(() => {
+    if (currentStatus !== "LIVE") return;
+
+    const handleClickLink = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement)?.closest("a");
+      if (!target) return;
+
+      // Nếu link mở tab mới (target="_blank"), cho phép hoạt động tự nhiên
+      if (target.target === "_blank") return;
+
+      const href = target.getAttribute("href");
+      // Nếu link dẫn đi trang khác ngoài Studio
+      if (href && !href.startsWith("#") && !href.includes(`/studio`)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPendingNavigationUrl(href);
+        setIsLeaveConfirmOpen(true);
+      }
+    };
+
+    document.addEventListener("click", handleClickLink, true);
+    return () => document.removeEventListener("click", handleClickLink, true);
+  }, [currentStatus]);
+
+  const handleOpenPendingInNewTab = () => {
+    if (pendingNavigationUrl) {
+      window.open(pendingNavigationUrl, "_blank", "noopener,noreferrer");
+    }
+    setIsLeaveConfirmOpen(false);
+    setPendingNavigationUrl(null);
+  };
+
+  const handleCancelLeave = () => {
+    setIsLeaveConfirmOpen(false);
+    setPendingNavigationUrl(null);
+  };
+
+  const handleConfirmLeaveAndStopLive = async () => {
+    const dest = pendingNavigationUrl;
+    setIsLeaveConfirmOpen(false);
+    setPendingNavigationUrl(null);
+    await handleEndLive();
+    if (dest) {
+      router.push(dest);
+    }
+  };
+
   if (isLoadingSession) {
     return (
-      <div className="max-w-2xl mx-auto my-16 p-12 bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg flex flex-col items-center justify-center gap-3">
+      <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-8 bg-[#0B1220] text-center gap-3">
         <div className="w-8 h-8 border-3 border-cyan-400 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-medium text-slate-300">Đang tải phòng TikTok Live Studio...</p>
       </div>
@@ -621,24 +797,26 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
 
   if (!session) {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg text-slate-100">
-        <div className="h-12 w-12 rounded-full bg-rose-950 text-rose-400 flex items-center justify-center mx-auto mb-4 border border-rose-800">
-          <AlertCircle className="h-6 w-6" aria-hidden="true" />
-        </div>
-        <h2 className="text-lg font-bold text-white">
-          Không tìm thấy phiên Livestream
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md mx-auto">
-          Mã phiên <strong className="font-mono text-cyan-300">#{livestreamId}</strong> không tồn tại trong danh sách hoặc đã bị xóa.
-        </p>
-        <div className="mt-6">
-          <Link
-            href="/shop/livestream"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Quay về danh sách Livestream</span>
-          </Link>
+      <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-6 bg-[#0B1220] text-slate-100">
+        <div className="max-w-md w-full bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg p-8">
+          <div className="h-12 w-12 rounded-full bg-rose-950 text-rose-400 flex items-center justify-center mx-auto mb-4 border border-rose-800">
+            <AlertCircle className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <h2 className="text-lg font-bold text-white">
+            Không tìm thấy phiên Livestream
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md mx-auto">
+            Mã phiên <strong className="font-mono text-cyan-300">#{livestreamId}</strong> không tồn tại trong danh sách hoặc đã bị xóa.
+          </p>
+          <div className="mt-6">
+            <Link
+              href="/shop/livestream"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Quay về danh sách Livestream</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -646,33 +824,35 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
 
   if (currentStatus === "DRAFT") {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg text-slate-100">
-        <div className="h-12 w-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-4 border border-slate-700">
-          <FileEdit className="h-6 w-6" aria-hidden="true" />
-        </div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-semibold mb-3">
-          <span>PHIÊN BẢN NHÁP (DRAFT)</span>
-        </div>
-        <h2 className="text-lg font-bold text-white">
-          Phiên chưa sẵn sàng lên sóng
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md mx-auto leading-relaxed">
-          Phiên <strong>{session.title}</strong> hiện đang là bản nháp và chưa được cấu hình lịch phát sóng hoặc danh mục sản phẩm. Kênh phát Amazon IVS chỉ được cấp phát khi phiên được lên lịch chính thức.
-        </p>
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <Link
-            href="/shop/livestream"
-            className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg hover:bg-slate-700 transition"
-          >
-            Quay về danh sách
-          </Link>
-          <Link
-            href={`/shop/livestream/${session.id}/edit`}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
-          >
-            <FileEdit className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Chỉnh sửa &amp; Lên lịch phiên</span>
-          </Link>
+      <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-6 bg-[#0B1220] text-slate-100">
+        <div className="max-w-md w-full bg-slate-900 rounded-xl border border-slate-800 text-center shadow-lg p-8">
+          <div className="h-12 w-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-4 border border-slate-700">
+            <FileEdit className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-semibold mb-3">
+            <span>PHIÊN BẢN NHÁP (DRAFT)</span>
+          </div>
+          <h2 className="text-lg font-bold text-white">
+            Phiên chưa sẵn sàng lên sóng
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1.5 max-w-md mx-auto leading-relaxed">
+            Phiên <strong>{session.title}</strong> hiện đang là bản nháp và chưa được cấu hình lịch phát sóng hoặc danh mục sản phẩm. Kênh phát Amazon IVS chỉ được cấp phát khi phiên được lên lịch chính thức.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <Link
+              href="/shop/livestream"
+              className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg hover:bg-slate-700 transition"
+            >
+              Quay về danh sách
+            </Link>
+            <Link
+              href={`/shop/livestream/${session.id}/edit`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+            >
+              <FileEdit className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Chỉnh sửa &amp; Lên lịch phiên</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -684,14 +864,40 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   const cameraReady = cameraStatus === "active";
   const isMicActive = Boolean(
     localStream &&
-      micEnabled &&
-      localStream.getAudioTracks().some((t) => t.enabled && t.readyState === "live"),
+    micEnabled &&
+    localStream.getAudioTracks().some((t) => t.enabled && t.readyState === "live"),
   );
   const micReady = isMicActive;
   const canStartLive = Boolean(session.title && hasProducts && !isEnded);
 
   return (
-    <div className="relative flex flex-col h-[calc(100dvh-104px)] min-h-[580px] lg:h-[calc(100dvh-104px)] lg:min-h-[600px] lg:max-h-[calc(100dvh-104px)] w-full rounded-xl sm:rounded-2xl border border-slate-800 shadow-2xl bg-[#0B1220] text-slate-100 overflow-hidden font-sans">
+    <div
+      id="broadcast-studio-root"
+      className="relative flex flex-col h-full w-full flex-1 min-h-0 bg-[#0B1220] text-slate-100 overflow-hidden font-sans"
+    >
+      <style>{`
+        body:has(#broadcast-studio-root) {
+          overflow: hidden !important;
+        }
+        body:has(#broadcast-studio-root) #main-content {
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          flex: 1 1 0% !important;
+          min-height: 0 !important;
+          min-width: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+        }
+        body:has(#broadcast-studio-root) div[class*="content"] {
+          height: 100vh !important;
+          overflow: hidden !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+      `}</style>
       {/* Toast Notification khi Bắt đầu phát sóng */}
       {liveToastMessage && (
         <div className="absolute top-3 right-3 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-[#1E293B] border border-emerald-500/40 text-emerald-300 rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
@@ -701,6 +907,29 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             type="button"
             onClick={() => setLiveToastMessage(null)}
             className="ml-2 hover:opacity-80 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Toast Notification khi Tự động khôi phục luồng phát do chuyển tab */}
+      {reconnectNotice && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 bg-[#1E293B] border border-cyan-500/60 text-cyan-200 rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+          <span>{reconnectNotice}</span>
+        </div>
+      )}
+
+      {/* Error Toast Notification khi Bắt đầu phát sóng thất bại (ví dụ: đang có phiên khác live) */}
+      {liveErrorMessage && (
+        <div className="absolute top-3 right-3 z-50 flex items-start gap-2.5 px-4 py-3 bg-[#1E293B] border border-red-500/60 text-red-200 rounded-xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200 max-w-md">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0 mt-0.5 animate-pulse" />
+          <span className="flex-1 leading-relaxed">{liveErrorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setLiveErrorMessage(null)}
+            className="ml-2 hover:opacity-80 font-bold text-red-400 p-0.5"
           >
             ✕
           </button>
@@ -746,9 +975,14 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         <div className="flex-1 min-w-0">
           <StudioStreamStatus
             isLive={isLive}
-            channelName={ivsConfig?.channelArn ? "AWS IVS ACTIVE" : session.ivsChannel}
+            channelName={
+              ivsConfig?.channelArn
+                ? formatFriendlyIvsChannel(ivsConfig.channelArn)
+                : formatFriendlyIvsChannel(session.ivsChannel)
+            }
             hasVideoSignal={cameraReady}
             broadcastState={broadcastState}
+            isReconnecting={isReconnecting}
           />
         </div>
         <button
@@ -760,16 +994,46 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         </button>
       </div>
 
+      {/* 2.1 Mẹo phát sóng Web Broadcast vs OBS */}
+      {showWebBroadcastTip && isLive && broadcastState === "LIVE" && (
+        <div className="flex items-center justify-between gap-3 px-3.5 py-1.5 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border-b border-amber-500/20 text-xs text-amber-200/90 shrink-0 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wide shrink-0">
+              💡 Mẹo phát sóng
+            </span>
+            <span className="truncate text-[11px] text-slate-300">
+              Bạn đang phát qua webcam trình duyệt. Hãy <strong>kéo tab này ra một cửa sổ riêng</strong> (hoặc dùng <strong>OBS Studio</strong>) để tránh trình duyệt tạm dừng video khi mở tab khác.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleOpenIvsModal}
+              className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium cursor-pointer"
+            >
+              Cấu hình OBS
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowWebBroadcastTip(false)}
+              className="text-slate-400 hover:text-slate-200 text-xs font-bold px-1 cursor-pointer"
+              title="Đóng thông báo"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Tab Switcher (Visible on < 1024px) */}
       <div className="lg:hidden flex items-center bg-[#0B1220] border-b border-slate-800 text-xs shrink-0">
         <button
           type="button"
           onClick={() => setMobileTab("stage")}
-          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
-            mobileTab === "stage"
+          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "stage"
               ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
-          }`}
+            }`}
         >
           <Radio className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Khu vực Live</span>
@@ -777,11 +1041,10 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         <button
           type="button"
           onClick={() => setMobileTab("chat")}
-          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
-            mobileTab === "chat"
+          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "chat"
               ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
-          }`}
+            }`}
         >
           <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Tin nhắn</span>
@@ -789,11 +1052,10 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         <button
           type="button"
           onClick={() => setMobileTab("products")}
-          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
-            mobileTab === "products"
+          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "products"
               ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
-          }`}
+            }`}
         >
           <ShoppingBag className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Sản phẩm ({unpinnedProducts.length})</span>
@@ -801,11 +1063,10 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         <button
           type="button"
           onClick={() => setMobileTab("tools")}
-          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${
-            mobileTab === "tools"
+          className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "tools"
               ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
               : "text-slate-400 hover:text-slate-200"
-          }`}
+            }`}
         >
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Nguồn phát</span>
@@ -818,11 +1079,9 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             3.1 LEFT SIDEBAR: Nguồn phát & Cảnh (Sources & Scenes)
             ======================================================== */}
         <div
-          className={`${
-            isLeftSidebarOpen ? "w-64 xl:w-72 2xl:w-80" : "w-0 overflow-hidden border-none"
-          } transition-all duration-300 ease-in-out shrink-0 ${
-            mobileTab === "tools" ? "flex w-full" : "hidden lg:flex"
-          }`}
+          className={`${isLeftSidebarOpen ? "w-64 xl:w-72 2xl:w-80" : "w-0 overflow-hidden border-none"
+            } transition-all duration-300 ease-in-out shrink-0 ${mobileTab === "tools" ? "flex w-full" : "hidden lg:flex"
+            }`}
         >
           <StudioLeftSidebar
             isOpen={isLeftSidebarOpen || mobileTab === "tools"}
@@ -852,13 +1111,41 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             Tự động mở rộng 100% khi đóng 1 hoặc cả 2 sidebar!
             ======================================================== */}
         <main
-          className={`flex-1 min-w-0 flex flex-col bg-[#080B10] overflow-hidden transition-all duration-300 ease-in-out ${
-            mobileTab !== "stage" ? "hidden lg:flex" : "flex"
-          }`}
+          className={`flex-1 min-w-0 flex flex-col bg-[#080B10] overflow-hidden transition-all duration-300 ease-in-out ${mobileTab !== "stage" ? "hidden lg:flex" : "flex"
+            }`}
           aria-label="Khu vực màn hình Livestream chính"
         >
           {/* Non-scrolling Stage Viewport */}
           <div className="flex-1 min-h-0 p-1.5 sm:p-2.5 overflow-hidden flex flex-col gap-2">
+            {/* Grace Period Reconnection Banner (Khi phiên đang LIVE nhưng video chưa đẩy lên AWS, vd sau khi F5) */}
+            {isLive && broadcastState !== "LIVE" && (
+              <div className="shrink-0 flex items-center justify-between gap-3 p-3 bg-amber-950/70 border border-amber-500/40 rounded-xl text-amber-200 text-xs shadow-lg animate-in fade-in duration-200">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="relative flex h-3 w-3 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+                  </span>
+                  <div className="min-w-0">
+                    <span className="font-bold text-white block">
+                      Luồng phát đang tạm dừng kết nối (Grace Period)
+                    </span>
+                    <span className="text-[11px] text-amber-300/80 truncate block">
+                      Bạn vừa tải lại trang hoặc ngắt kết nối. Kênh AWS IVS đang chờ nhận lại luồng video.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isStarting}
+                  onClick={handleResumeBroadcast}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-lg shadow-md transition active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  <Radio className={`w-3.5 h-3.5 ${isStarting ? "animate-spin" : ""}`} />
+                  <span>{isStarting ? "Đang kết nối lại..." : "TIẾP TỤC PHÁT SÓNG"}</span>
+                </button>
+              </div>
+            )}
+
             {/* Pre-live Checklist (Chỉ xuất hiện trước khi phát LIVE) */}
             {!isLive && !isEnded && (
               <div className="shrink-0">
@@ -887,6 +1174,9 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
                 pinnedProduct={pinnedProduct}
                 isMicActive={isMicActive}
                 isEnded={isEnded}
+                broadcastState={broadcastState}
+                onResumeLive={handleResumeBroadcast}
+                isResuming={isStarting}
                 aspectRatio={aspectRatio}
                 onChangeAspectRatio={setAspectRatio}
                 showSafezone={showSafezone}
@@ -912,6 +1202,9 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
               cameraEnabled={cameraEnabled && cameraStatus === "active"}
               micEnabled={micEnabled && Boolean(localStream)}
               isScreenSharing={isScreenSharing}
+              broadcastState={broadcastState}
+              onResumeLive={handleResumeBroadcast}
+              isResuming={isStarting}
               onToggleMic={handleToggleMic}
               onToggleCamera={handleToggleCamera}
               onToggleScreenShare={handleToggleScreenShare}
@@ -927,13 +1220,11 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             Tự động gập mở mượt mà khi bấm nút
             ======================================================== */}
         <div
-          className={`${
-            isRightSidebarOpen
+          className={`${isRightSidebarOpen
               ? "w-full lg:w-[380px] xl:w-[420px] 2xl:w-[460px]"
               : "w-0 overflow-hidden border-none"
-          } transition-all duration-300 ease-in-out shrink-0 ${
-            mobileTab === "stage" || mobileTab === "tools" ? "hidden lg:flex" : "flex"
-          }`}
+            } transition-all duration-300 ease-in-out shrink-0 ${mobileTab === "stage" || mobileTab === "tools" ? "hidden lg:flex" : "flex"
+            }`}
         >
           <StudioProductsPanel
             livestreamId={session.id}
@@ -952,6 +1243,9 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             chatMessages={allChatMessages}
             connectionState={chatConnectionState}
             onSendMessage={sendChatMessage}
+            isLoadingEarlier={isLoadingEarlier}
+            hasMoreEarlier={hasMoreEarlier}
+            onLoadEarlier={loadEarlierMessages}
             isEnded={isEnded}
             isExpandedMode={false}
             onCloseSidebar={() => setIsRightSidebarOpen(false)}
@@ -987,6 +1281,74 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         }))}
         onAddProducts={handleAddProductsFromPicker}
       />
+
+      {/* Modal Cảnh báo khi đang LIVE mà bấm chuyển trang */}
+      {isLeaveConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-[#151F31] rounded-2xl border border-amber-500/40 shadow-2xl overflow-hidden flex flex-col text-slate-100 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-[#0B1220]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">
+                    Phiên phát sóng đang trực tiếp!
+                  </h3>
+                  <p className="text-[11px] text-amber-300/80 font-medium">
+                    Cảnh báo ngắt luồng AWS IVS
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelLeave}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                aria-label="Đóng cảnh báo"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-3 text-xs leading-relaxed text-slate-300">
+              <p>
+                Bạn đang phát sóng trực tiếp từ webcam trình duyệt. Nếu bạn rời khỏi màn hình Studio này để chuyển sang <strong className="text-white font-mono">{pendingNavigationUrl}</strong>, trình duyệt sẽ <strong>tắt camera và ngắt kết nối luồng phát trên AWS ngay lập tức</strong>.
+              </p>
+              <div className="p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-xl text-cyan-200 text-[11px] leading-relaxed">
+                💡 <strong>Khuyên dùng:</strong> Hãy chọn <strong>&quot;Mở trong Tab mới&quot;</strong> để vừa giữ phiên live hoạt động trên AWS, vừa thoải mái xem danh sách tổng quan hoặc quản lý đơn hàng.
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-3.5 border-t border-slate-800 bg-[#0B1220] flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                type="button"
+                onClick={handleCancelLeave}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition cursor-pointer order-2 sm:order-1"
+              >
+                Ở lại phòng Live
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenPendingInNewTab}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-md transition cursor-pointer order-1 sm:order-2"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Mở trong Tab mới (Khuyên dùng)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLeaveAndStopLive}
+                className="px-3 py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs font-semibold rounded-lg border border-rose-800/80 transition cursor-pointer order-3"
+              >
+                Rời đi &amp; Dừng live
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

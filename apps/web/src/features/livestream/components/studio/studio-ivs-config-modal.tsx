@@ -211,6 +211,11 @@ export function StudioIvsConfigModal({
                   <li>Nhấn <strong>OK</strong> và bấm <strong>Start Streaming</strong> trong OBS để phát video lên AWS!</li>
                 </ol>
               </div>
+
+              {/* Lợi ích khi dùng OBS Studio (Chuẩn TikTok) */}
+              <div className="p-3 bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/20 rounded-xl text-emerald-300 text-[11px] leading-relaxed">
+                <span className="font-bold text-emerald-400">💡 Chuẩn vận hành TikTok Shop:</span> Khi phát bằng OBS Studio, video chạy độc lập ở tầng hệ điều hành nên bạn có thể thoải mái chuyển tab, theo dõi đơn hàng hay lướt web mà luồng AWS IVS không bao giờ bị trình duyệt tạm dừng.
+              </div>
             </>
           )}
         </div>

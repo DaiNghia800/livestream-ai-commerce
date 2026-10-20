@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { AlertCircle, CirclePlus, RefreshCw, Video } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
 import { mockLivestreams } from "../../mocks/livestream.mock";
@@ -17,6 +18,11 @@ interface LivestreamTableProps {
   pageSize?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  onDeleteSession?: (session: Livestream) => void;
+  deletingSessionId?: string | null;
+  selectedIds?: string[];
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
 }
 
 export function LivestreamTable({
@@ -32,8 +38,31 @@ export function LivestreamTable({
   pageSize = 10,
   onPageChange,
   onPageSizeChange,
+  onDeleteSession,
+  deletingSessionId,
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
 }: LivestreamTableProps) {
   const displayTotalCount = totalCount !== undefined ? totalCount : items.length;
+
+  const selectableItems = items.filter(
+    (item) => item.status !== "LIVE" && item.status !== "STARTING"
+  );
+  const selectableIds = selectableItems.map((item) => item.id);
+  const isAllSelected =
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.includes(id));
+  const isIndeterminate =
+    !isAllSelected &&
+    selectableIds.some((id) => selectedIds.includes(id));
+
+  const headerCheckboxRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = isIndeterminate;
+    }
+  }, [isIndeterminate]);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-xs">
@@ -51,9 +80,13 @@ export function LivestreamTable({
             <tr className="border-b border-outline-variant bg-surface-container-low/60 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
               <th scope="col" className="py-3 px-3.5 w-10 text-center">
                 <input
+                  ref={headerCheckboxRef}
                   type="checkbox"
-                  aria-label="Chọn tất cả phiên phát"
-                  className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-1 focus:ring-primary/40"
+                  checked={isAllSelected}
+                  onChange={onToggleSelectAll}
+                  disabled={selectableIds.length === 0}
+                  aria-label="Chọn tất cả phiên phát có thể thao tác trên trang này"
+                  className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-1 focus:ring-primary/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 />
               </th>
               <th scope="col" className="py-3 px-3.5 min-w-[280px]">
@@ -173,7 +206,14 @@ export function LivestreamTable({
             {/* Normal State: List of rows */}
             {!isError && items.length > 0 && (
               items.map((item) => (
-                <LivestreamTableRow key={item.id} item={item} />
+                <LivestreamTableRow
+                  key={item.id}
+                  item={item}
+                  onDelete={onDeleteSession}
+                  isDeleting={deletingSessionId === item.id}
+                  isSelected={selectedIds.includes(item.id)}
+                  onToggleSelect={onToggleSelect}
+                />
               ))
             )}
           </tbody>

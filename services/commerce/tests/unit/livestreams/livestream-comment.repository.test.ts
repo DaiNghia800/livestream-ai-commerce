@@ -100,6 +100,26 @@ describe("LivestreamCommentRepository Unit Tests", () => {
         20,
       ]);
     });
+
+    it("findByLivestreamId hỗ trợ phân trang với con trỏ before", async () => {
+      const querySpy = vi.spyOn(pool, "query").mockResolvedValue({
+        rows: [],
+      } as any);
+
+      const beforeCursor = "2026-10-20T00:00:00.000Z";
+      await repo.findByLivestreamId("live-1", { before: beforeCursor, limit: 30 });
+      expect(querySpy).toHaveBeenCalledWith(
+        expect.stringContaining("created_at < $2"),
+        ["live-1", beforeCursor, 30]
+      );
+
+      // Mặc định limit = 100 khi không truyền limit trong options object
+      await repo.findByLivestreamId("live-1", { before: beforeCursor });
+      expect(querySpy).toHaveBeenCalledWith(
+        expect.stringContaining("created_at < $2"),
+        ["live-1", beforeCursor, 100]
+      );
+    });
   });
 
   describe("InMemoryLivestreamCommentRepository", () => {
@@ -150,6 +170,36 @@ describe("LivestreamCommentRepository Unit Tests", () => {
 
       const listEmpty = await repo.findByLivestreamId("live-not-exist");
       expect(listEmpty).toHaveLength(0);
+    });
+
+    it("tìm kiếm comment theo livestreamId với con trỏ before trong bộ nhớ", async () => {
+      // Giả lập 3 comment có thời gian khác nhau
+      const c1 = await repo.create("live-page", { userId: "u1", username: "A", content: "Cmt 1" });
+      c1.createdAt = "2026-10-01T10:00:00.000Z";
+
+      const c2 = await repo.create("live-page", { userId: "u2", username: "B", content: "Cmt 2" });
+      c2.createdAt = "2026-10-01T10:01:00.000Z";
+
+      const c3 = await repo.create("live-page", { userId: "u3", username: "C", content: "Cmt 3" });
+      c3.createdAt = "2026-10-01T10:02:00.000Z";
+
+      // Lấy các comment trước thời điểm c3 (phải trả về c1 và c2 được sắp xếp theo thời gian tăng dần)
+      const olderComments = await repo.findByLivestreamId("live-page", {
+        before: "2026-10-01T10:02:00.000Z",
+        limit: 10,
+      });
+
+      expect(olderComments).toHaveLength(2);
+      expect(olderComments[0].id).toBe(c1.id);
+      expect(olderComments[1].id).toBe(c2.id);
+
+      // Thử với limit = 1
+      const limitedOlder = await repo.findByLivestreamId("live-page", {
+        before: "2026-10-01T10:02:00.000Z",
+        limit: 1,
+      });
+      expect(limitedOlder).toHaveLength(1);
+      expect(limitedOlder[0].id).toBe(c2.id); // c2 gần c3 nhất
     });
   });
 });

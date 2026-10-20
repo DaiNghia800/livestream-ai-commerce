@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
+import { formatFriendlyIvsChannel } from "../../api/get-livestreams";
 
 interface DetailSessionInfoProps {
   session: Livestream;
@@ -169,7 +170,9 @@ export function DetailSessionInfo({ session }: DetailSessionInfoProps) {
               <Radio className="h-3.5 w-3.5 text-secondary" aria-hidden="true" />
               <span>Kênh phát:</span>
               <strong className="text-on-surface font-semibold font-mono">
-                {session.ivsChannel ? `${session.ivsChannel} (${session.resolution || "1080p60"})` : session.channelName || "Chưa cấu hình IVS"}
+                {session.ivsChannel
+                  ? `${formatFriendlyIvsChannel(session.ivsChannel)} (${session.resolution || "1080p60"})`
+                  : session.channelName || "Chưa cấu hình IVS"}
               </strong>
             </div>
           </div>

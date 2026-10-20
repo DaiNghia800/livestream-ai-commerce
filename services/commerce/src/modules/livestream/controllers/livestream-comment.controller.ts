@@ -26,10 +26,10 @@ export class LivestreamCommentController {
         return;
       }
 
-      const comments = await this.service.getComments(
-        id,
-        queryParsed.data.limit
-      );
+      const comments = await this.service.getComments(id, {
+        limit: queryParsed.data.limit,
+        before: queryParsed.data.before,
+      });
 
       if (comments === null) {
         res.status(404).json({

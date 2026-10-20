@@ -88,4 +88,39 @@ describe("POST /api/livestreams - PostgreSQL Integration Tests", () => {
         expect(stored).not.toBeNull();
         expect(stored?.coverImageKey).toBe(coverKey);
     });
+
+    it("TC-CL-024 - Return 409 Conflict when scheduledAt conflicts with an existing schedule within 30 minutes", async (ctx) => {
+        if (!dbConnected) {
+            ctx.skip();
+            return;
+        }
+        const merchantId = "99999999-9999-4999-8999-999999999999";
+        const baseTime = "2026-11-20T19:30:00.000Z";
+
+        // Create first scheduled session
+        const first = await request(liveApp)
+            .post("/api/livestreams")
+            .set("X-Merchant-Id", merchantId)
+            .send({
+                title: "Phiên Live Đầu Tiên",
+                scheduledAt: baseTime,
+                status: "scheduled",
+            });
+        expect(first.status).toBe(201);
+
+        // Attempt to create second session at 19:40 (10 minutes later -> conflict)
+        const conflictRes = await request(liveApp)
+            .post("/api/livestreams")
+            .set("X-Merchant-Id", merchantId)
+            .send({
+                title: "Phiên Live Bị Trùng",
+                scheduledAt: "2026-11-20T19:40:00.000Z",
+                status: "scheduled",
+            });
+
+        expect(conflictRes.status).toBe(409);
+        expect(conflictRes.body.error).toBe("ScheduleConflictError");
+        expect(conflictRes.body.message).toContain("Phiên Live Đầu Tiên");
+        expect(conflictRes.body.message).toContain("tối thiểu 30 phút");
+    });
 });

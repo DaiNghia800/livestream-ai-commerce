@@ -82,7 +82,10 @@ export class SqsService implements ISqsService {
         },
       });
 
-      await this.client.send(command);
+      const result = await this.client.send(command);
+      console.log(
+        `[SqsService] Pushed to real AWS SQS: sqs_message_id=${result.MessageId}, comment_id=${event.comment_id}, content="${event.content}"`
+      );
       return true;
     } catch (error) {
       console.error("[SqsService] Failed to send message to SQS:", error);
