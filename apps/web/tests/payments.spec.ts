@@ -102,6 +102,18 @@ test("transaction detail lists every incoming transfer", async ({ page }) => {
   await expect(page.getByText("FT99")).toBeVisible();
 });
 
+test("recording a manual refund requires explicit confirmation", async ({ page }) => {
+  await stubApi(page);
+  await page.goto(`/shop/payments/${PAYMENT_PAID.txnRef}`);
+  await page.getByRole("button", { name: "Ghi nhận đã hoàn bên ngoài" }).click();
+  const confirm = page.getByRole("button", { name: "Xác nhận đã hoàn" });
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Tôi đã kiểm tra giao dịch hoàn tiền thành công" }).check();
+  await expect(confirm).toBeEnabled();
+  await page.getByRole("button", { name: "Quay lại" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("the gateway picker only offers sandbox providers", async ({ page }) => {
   await stubApi(page);
   await page.goto(`/shop/payments/${PAYMENT_UNDERPAID.txnRef}`);

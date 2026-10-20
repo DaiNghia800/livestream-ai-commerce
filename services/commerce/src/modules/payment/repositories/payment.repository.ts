@@ -110,6 +110,19 @@ export async function findPaymentByTxnRefForUpdate(
   return (result.rows[0] as Payment | undefined) ?? null;
 }
 
+export async function findPaymentByTxnRef(
+  client: PoolClient,
+  txnRef: string
+): Promise<Payment | null> {
+  const result = await client.query(
+    `SELECT ${PAYMENT_COLUMNS}
+       FROM payments p JOIN orders o ON o.id = p.order_id
+      WHERE p.txn_ref = $1`,
+    [txnRef]
+  );
+  return (result.rows[0] as Payment | undefined) ?? null;
+}
+
 export async function loadPayment(
   client: PoolClient,
   paymentId: string
@@ -218,16 +231,28 @@ export async function markCodCollected(
   client: PoolClient,
   orderId: string
 ): Promise<boolean> {
-  const result = await client.query(
-    `UPDATE payments
-        SET status = 'PAID',
-            paid_amount = amount,
-            paid_at = NOW(),
-            updated_at = NOW()
-      WHERE order_id = $1 AND method = 'COD' AND status = 'PENDING'`,
+  const result = await client.query<{ id: string; remaining: string }>(
+    `SELECT id, (amount - paid_amount)::text AS remaining FROM payments
+      WHERE order_id = $1 AND method = 'COD' AND status = 'PENDING'
+      FOR UPDATE`,
     [orderId]
   );
-  return (result.rowCount ?? 0) > 0;
+  const payment = result.rows[0];
+  if (!payment) return false;
+
+  // Tiền mặt shop thực nhận cũng phải có bút toán như tiền từ ngân
+  // hàng/hãng. Mã cố định theo payment khiến thao tác lặp không ghi đôi.
+  if (Number(payment.remaining) > 0) {
+    await insertTransaction(client, {
+      paymentId: payment.id,
+      provider: "manual-cod",
+      providerTxnId: `manual-${payment.id}`,
+      amount: payment.remaining,
+      rawPayload: { orderId, source: "manual-completion" },
+    });
+  }
+  await recalcPaidAmount(client, payment.id);
+  return true;
 }
 
 export async function markPaymentFailed(
@@ -255,7 +280,8 @@ export async function markPaymentRefunded(
             refund_amount = $2,
             failure_reason = $3,
             updated_at = NOW()
-      WHERE id = $1 AND status = 'PAID'`,
+      WHERE id = $1 AND status = 'PAID'
+        AND paid_amount > 0 AND paid_amount = $2::numeric`,
     [params.paymentId, params.amount, params.reason]
   );
   return (result.rowCount ?? 0) > 0;

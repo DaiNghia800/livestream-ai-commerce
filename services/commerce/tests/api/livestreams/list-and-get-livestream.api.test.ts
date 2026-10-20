@@ -607,6 +607,47 @@ describe("Livestream API - List and Get Detail Tests", () => {
       expect(res.status).toBe(500);
       expect(res.body.error).toBe("InternalServerError");
     });
+
+    it("TC-ST-009 - Update status to 'live' when another stream is already 'live' -> HTTP 409 Conflict", async () => {
+      // 1. Create an already LIVE stream for the merchant
+      await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Phiên Đang Phát",
+        description: null,
+        coverImageKey: null,
+        status: "live",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+      });
+
+      // 2. Create a second stream in 'scheduled' status
+      const scheduledStream = await mockLiveRepo.create({
+        merchantId: VALID_MERCHANT_ID,
+        title: "Phiên Muốn Bật Live",
+        description: null,
+        coverImageKey: null,
+        status: "scheduled",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      // 3. Attempt to transition the second stream to 'live'
+      const res = await request(app)
+        .patch(`/api/livestreams/${scheduledStream.id}/status`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("MerchantAlreadyLiveError");
+      expect(res.body.message).toContain("Phiên Đang Phát");
+      expect(res.body.message).toContain("chưa kết thúc");
+    });
   });
 
   // =========================================================================

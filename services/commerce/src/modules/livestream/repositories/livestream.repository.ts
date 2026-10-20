@@ -21,14 +21,33 @@ export interface CreateLivestreamDto {
   endedAt: string | null;
 }
 
+export interface UpdateLivestreamDto {
+  title?: string;
+  description?: string | null;
+  coverImageKey?: string | null;
+  scheduledAt?: string | null;
+}
+
 export interface ILivestreamRepository {
   create(dto: CreateLivestreamDto): Promise<Livestream>;
   findById(id: string): Promise<Livestream | null>;
   findMany(query: LivestreamListQuery): Promise<LivestreamListResult>;
+  update(id: string, dto: UpdateLivestreamDto): Promise<Livestream | null>;
   updateStatus(id: string, status: LivestreamStatus): Promise<Livestream | null>;
   updateIvsChannel(id: string, channelArn: string, playbackUrl: string): Promise<Livestream | null>;
   updateIvsChatRoom(id: string, chatRoomArn: string, chatRoomId: string): Promise<Livestream | null>;
   updateReplayUrl(id: string, replayUrl: string): Promise<Livestream | null>;
+  delete(id: string): Promise<boolean>;
+  findConflictingSchedule(
+    merchantId: string,
+    scheduledAt: string,
+    bufferMinutes?: number,
+    excludeId?: string
+  ): Promise<Livestream | null>;
+  findActiveLiveByMerchantId(
+    merchantId: string,
+    excludeId?: string
+  ): Promise<Livestream | null>;
 }
 
 export class PostgresLivestreamRepository implements ILivestreamRepository {
@@ -355,6 +374,86 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
     };
   }
 
+  async update(id: string, dto: UpdateLivestreamDto): Promise<Livestream | null> {
+    const setClauses: string[] = [];
+    const values: any[] = [id];
+    let idx = 2;
+
+    if (dto.title !== undefined) {
+      setClauses.push(`title = $${idx++}`);
+      values.push(dto.title);
+    }
+    if (dto.description !== undefined) {
+      setClauses.push(`description = $${idx++}`);
+      values.push(dto.description);
+    }
+    if (dto.coverImageKey !== undefined) {
+      setClauses.push(`cover_image_key = $${idx++}`);
+      values.push(dto.coverImageKey);
+    }
+    if (dto.scheduledAt !== undefined) {
+      setClauses.push(`scheduled_at = $${idx++}`);
+      values.push(dto.scheduledAt);
+    }
+
+    if (setClauses.length === 0) {
+      return this.findById(id);
+    }
+
+    setClauses.push("updated_at = NOW()");
+
+    const query = `
+      UPDATE livestreams
+      SET ${setClauses.join(", ")}
+      WHERE id = $1
+      RETURNING
+        id,
+        merchant_id AS "merchantId",
+        title,
+        description,
+        cover_image_key AS "coverImageKey",
+        status,
+        channel_arn AS "channelArn",
+        playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
+        scheduled_at AS "scheduledAt",
+        started_at AS "startedAt",
+        ended_at AS "endedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt";
+    `;
+
+    const result = await pool.query(query, values);
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey || null,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const query = `DELETE FROM livestreams WHERE id = $1 RETURNING id;`;
+    const result = await pool.query(query, [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async findMany(query: LivestreamListQuery): Promise<LivestreamListResult> {
     const page = query.page && query.page > 0 ? query.page : 1;
     const limit = query.limit && query.limit > 0 ? query.limit : 10;
@@ -457,6 +556,121 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
       page,
       limit,
       totalPages,
+    };
+  }
+
+  async findConflictingSchedule(
+    merchantId: string,
+    scheduledAt: string,
+    bufferMinutes: number = 30,
+    excludeId?: string
+  ): Promise<Livestream | null> {
+    const query = `
+      SELECT
+        id,
+        merchant_id AS "merchantId",
+        title,
+        description,
+        cover_image_key AS "coverImageKey",
+        status,
+        channel_arn AS "channelArn",
+        playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
+        scheduled_at AS "scheduledAt",
+        started_at AS "startedAt",
+        ended_at AS "endedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM livestreams
+      WHERE merchant_id = $1
+        AND status IN ('scheduled', 'draft')
+        AND scheduled_at IS NOT NULL
+        AND ($2::uuid IS NULL OR id != $2)
+        AND ABS(EXTRACT(EPOCH FROM (scheduled_at - $3::timestamptz))) < ($4 * 60)
+      ORDER BY scheduled_at ASC
+      LIMIT 1
+    `;
+
+    const res = await pool.query(query, [
+      merchantId,
+      excludeId || null,
+      scheduledAt,
+      bufferMinutes,
+    ]);
+
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
+    };
+  }
+
+  async findActiveLiveByMerchantId(
+    merchantId: string,
+    excludeId?: string
+  ): Promise<Livestream | null> {
+    const query = `
+      SELECT
+        id,
+        merchant_id AS "merchantId",
+        title,
+        description,
+        cover_image_key AS "coverImageKey",
+        status,
+        channel_arn AS "channelArn",
+        playback_url AS "playbackUrl",
+        chat_room_arn AS "chatRoomArn",
+        chat_room_id AS "chatRoomId",
+        replay_url AS "replayUrl",
+        scheduled_at AS "scheduledAt",
+        started_at AS "startedAt",
+        ended_at AS "endedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM livestreams
+      WHERE merchant_id = $1
+        AND status = 'live'
+        AND ($2::uuid IS NULL OR id != $2)
+      LIMIT 1
+    `;
+
+    const res = await pool.query(query, [merchantId, excludeId || null]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      merchantId: row.merchantId,
+      title: row.title,
+      description: row.description,
+      coverImageKey: row.coverImageKey,
+      status: row.status,
+      channelArn: row.channelArn,
+      playbackUrl: row.playbackUrl,
+      chatRoomArn: row.chatRoomArn || null,
+      chatRoomId: row.chatRoomId || null,
+      replayUrl: row.replayUrl || null,
+      scheduledAt: row.scheduledAt ? new Date(row.scheduledAt).toISOString() : null,
+      startedAt: row.startedAt ? new Date(row.startedAt).toISOString() : null,
+      endedAt: row.endedAt ? new Date(row.endedAt).toISOString() : null,
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
     };
   }
 }
@@ -619,6 +833,65 @@ export class InMemoryLivestreamRepository implements ILivestreamRepository {
     };
     this.items.set(id, updated);
     return updated;
+  }
+
+  async update(id: string, dto: UpdateLivestreamDto): Promise<Livestream | null> {
+    const item = this.items.get(id);
+    if (!item) return null;
+    const updated: Livestream = {
+      ...item,
+      title: dto.title !== undefined ? dto.title : item.title,
+      description: dto.description !== undefined ? dto.description : item.description,
+      coverImageKey: dto.coverImageKey !== undefined ? dto.coverImageKey : item.coverImageKey,
+      scheduledAt: dto.scheduledAt !== undefined ? dto.scheduledAt : item.scheduledAt,
+      updatedAt: new Date().toISOString(),
+    };
+    this.items.set(id, updated);
+    return updated;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.items.delete(id);
+  }
+
+  async findConflictingSchedule(
+    merchantId: string,
+    scheduledAt: string,
+    bufferMinutes: number = 30,
+    excludeId?: string
+  ): Promise<Livestream | null> {
+    const targetTime = new Date(scheduledAt).getTime();
+    if (isNaN(targetTime)) return null;
+    const bufferMs = bufferMinutes * 60 * 1000;
+
+    for (const item of this.items.values()) {
+      if (item.merchantId !== merchantId) continue;
+      if (excludeId && item.id === excludeId) continue;
+      if (item.status !== "scheduled" && item.status !== "draft") continue;
+      if (!item.scheduledAt) continue;
+
+      const itemTime = new Date(item.scheduledAt).getTime();
+      if (isNaN(itemTime)) continue;
+
+      if (Math.abs(itemTime - targetTime) < bufferMs) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  async findActiveLiveByMerchantId(
+    merchantId: string,
+    excludeId?: string
+  ): Promise<Livestream | null> {
+    for (const item of this.items.values()) {
+      if (item.merchantId !== merchantId) continue;
+      if (excludeId && item.id === excludeId) continue;
+      if (item.status === "live") {
+        return item;
+      }
+    }
+    return null;
   }
 }
 

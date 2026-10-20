@@ -68,7 +68,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         {children}
       </main>
       <footer>
-        LiveOrder AI · Bản mẫu giao diện · Chưa kết nối dịch vụ bán hàng
+        LiveOrder AI · Môi trường thử nghiệm
       </footer>
     </>
   );

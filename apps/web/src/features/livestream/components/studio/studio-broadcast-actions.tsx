@@ -21,6 +21,9 @@ export interface StudioBroadcastActionsProps {
   cameraEnabled?: boolean;
   micEnabled?: boolean;
   isScreenSharing?: boolean;
+  broadcastState?: import("../../hooks/use-ivs-broadcast").BroadcastState;
+  onResumeLive?: () => void;
+  isResuming?: boolean;
   onToggleMic?: () => void;
   onToggleCamera?: () => void;
   onToggleScreenShare?: () => void;
@@ -69,11 +72,10 @@ export function StudioBroadcastActions({
             type="button"
             disabled={isEnded}
             onClick={onToggleMic}
-            className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
-              micEnabled
+            className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${micEnabled
                 ? "bg-[#151F31] hover:bg-slate-800 text-slate-200 border-slate-700/80"
                 : "bg-slate-900/80 hover:bg-slate-800 text-slate-400 border-slate-800"
-            }`}
+              }`}
             title={micEnabled ? "Tắt Microphone" : "Bật Microphone"}
           >
             {micEnabled ? (
@@ -89,11 +91,10 @@ export function StudioBroadcastActions({
             type="button"
             disabled={isEnded}
             onClick={onToggleCamera}
-            className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
-              cameraEnabled
+            className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${cameraEnabled
                 ? "bg-[#151F31] hover:bg-slate-800 text-slate-200 border-slate-700/80"
                 : "bg-slate-900/80 hover:bg-slate-800 text-slate-400 border-slate-800"
-            }`}
+              }`}
             title={cameraEnabled ? "Tắt Camera" : "Bật Camera"}
           >
             {cameraEnabled ? (
@@ -109,11 +110,10 @@ export function StudioBroadcastActions({
             type="button"
             disabled={isEnded}
             onClick={onToggleScreenShare}
-            className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
-              isScreenSharing
+            className={`h-8 sm:h-8.5 px-2.5 sm:px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold border transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${isScreenSharing
                 ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
                 : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-800"
-            }`}
+              }`}
             title="Chia sẻ màn hình làm nguồn phát video"
           >
             <ScreenShare className={`h-3.5 w-3.5 shrink-0 ${isScreenSharing ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
@@ -134,11 +134,10 @@ export function StudioBroadcastActions({
               type="button"
               disabled={!canStartLive || isStarting}
               onClick={onStartLive}
-              className={`h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-lg flex items-center gap-1.5 font-bold text-xs shadow-xs transition active:scale-95 whitespace-nowrap shrink-0 ${
-                canStartLive && !isStarting
+              className={`h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-lg flex items-center gap-1.5 font-bold text-xs shadow-xs transition active:scale-95 whitespace-nowrap shrink-0 ${canStartLive && !isStarting
                   ? "bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-rose-950/30"
                   : "bg-slate-800/70 text-slate-500 border border-slate-800 cursor-not-allowed"
-              }`}
+                }`}
             >
               <Radio className={`h-3.5 w-3.5 shrink-0 ${isStarting ? "animate-spin" : ""}`} aria-hidden="true" />
               <span>

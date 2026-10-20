@@ -70,6 +70,77 @@ export interface AppConfig {
     callbackUrl: string;
   };
   mockGatewaySecret: string;
+  allowMockPayment: boolean;
+  /** Bí mật chung cho webhook chuyển khoản đã xác minh từ ngân hàng. */
+  bankWebhookSecret: string;
+
+  // ── Vận chuyển — TOÀN BỘ là môi trường thử ──────────────────────
+  /** Hãng dùng khi màn hình không nêu rõ. */
+  defaultCarrier: string;
+  mockCarrierSecret: string;
+  /** Kho gửi hàng. Mọi hãng đều bắt khai điểm lấy. */
+  shipFrom: {
+    name: string;
+    phone: string;
+    address: string;
+    provinceName: string;
+    districtName: string;
+    wardName: string;
+  };
+  ghn: {
+    token: string;
+    shopId: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromWardName: string;
+    fromDistrictName: string;
+    fromProvinceName: string;
+  };
+  ghtk: {
+    token: string;
+    partnerCode: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromName: string;
+    fromPhone: string;
+    fromAddress: string;
+    fromProvince: string;
+    fromDistrict: string;
+    fromWard: string;
+  };
+  vtp: {
+    username: string;
+    password: string;
+    baseUrl: string;
+    webhookSecret: string;
+    senderWarehouseId: string;
+    fromName: string;
+    fromPhone: string;
+    fromAddress: string;
+  };
+  goship: {
+    username: string;
+    password: string;
+    clientId: string;
+    clientSecret: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromName: string;
+    fromPhone: string;
+    fromStreet: string;
+    fromProvince: string;
+    fromDistrict: string;
+    fromWard: string;
+  };
+  ahamove: {
+    apiKey: string;
+    mobile: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromAddress: string;
+    fromName: string;
+    fromPhone: string;
+  };
   s3PublicBaseUrl?: string;
   commercePublicUrl: string;
   productImageUploadDir: string;
@@ -187,6 +258,95 @@ export const config: AppConfig = {
   },
 
   mockGatewaySecret: process.env.MOCK_GATEWAY_SECRET || "sandbox-only-secret",
+  allowMockPayment:
+    process.env.NODE_ENV !== "production" || process.env.ENABLE_MOCK_PAYMENT === "true",
+  bankWebhookSecret: process.env.BANK_WEBHOOK_SECRET || "",
+
+  // Mặc định là hãng giả chạy ngay trong máy: kéo repo về là chạy
+  // được trọn luồng vận chuyển mà không cần đăng ký tài khoản thử ở
+  // bất kỳ hãng nào. Bốn hãng thật đều đòi tài khoản, có hãng còn
+  // phải chờ nhân viên kinh doanh gọi lại.
+  defaultCarrier: process.env.SHIPPING_CARRIER || "mock",
+  mockCarrierSecret:
+    process.env.MOCK_CARRIER_SECRET || "sandbox-only-carrier-secret",
+
+  shipFrom: {
+    name: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    phone: process.env.SHIP_FROM_PHONE || "0900000000",
+    address: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    provinceName: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+    districtName: process.env.SHIP_FROM_DISTRICT || "",
+    wardName: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+  },
+
+  ghn: {
+    token: process.env.GHN_TOKEN || "",
+    shopId: process.env.GHN_SHOP_ID || "",
+    // Chỉ staging. assertSandbox() từ chối mọi host khác.
+    baseUrl: process.env.GHN_BASE_URL || "https://dev-online-gateway.ghn.vn",
+    webhookSecret: process.env.GHN_WEBHOOK_SECRET || "",
+    fromWardName: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+    fromDistrictName: process.env.SHIP_FROM_DISTRICT || "",
+    fromProvinceName: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+  },
+
+  ghtk: {
+    token: process.env.GHTK_TOKEN || "",
+    partnerCode: process.env.GHTK_PARTNER_CODE || "",
+    // Môi trường thử của GHTK dùng tên miền ghtklab.com.
+    baseUrl: process.env.GHTK_BASE_URL || "https://services-staging.ghtklab.com",
+    webhookSecret: process.env.GHTK_WEBHOOK_SECRET || "",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+    fromAddress: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    fromProvince: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+    fromDistrict: process.env.SHIP_FROM_DISTRICT || "",
+    fromWard: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+  },
+
+  vtp: {
+    username: process.env.VTP_USERNAME || "",
+    password: process.env.VTP_PASSWORD || "",
+    baseUrl: process.env.VTP_BASE_URL || "https://partnerdev.viettelpost.vn",
+    webhookSecret: process.env.VTP_WEBHOOK_SECRET || "",
+    senderWarehouseId: process.env.VTP_WAREHOUSE_ID || "",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+    fromAddress: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+  },
+
+  // Nhà tổng hợp: một tích hợp phủ nhiều hãng, và là cách duy nhất
+  // có nhiều hãng mà vẫn chỉ chạy sandbox.
+  goship: {
+    username: process.env.GOSHIP_USERNAME || "",
+    password: process.env.GOSHIP_PASSWORD || "",
+    clientId: process.env.GOSHIP_CLIENT_ID || "",
+    clientSecret: process.env.GOSHIP_CLIENT_SECRET || "",
+    baseUrl: process.env.GOSHIP_BASE_URL || "https://sandbox.goship.io/api/v2",
+    // Goship KHÔNG có ô khoá webhook riêng trên cổng quản trị: họ
+    // ký gói tin bằng chính Client Secret. Để tự suy ra thay vì bắt
+    // khai hai lần — khai lệch nhau là mọi gói tin bị từ chối với
+    // lỗi 401 mà không ai nghĩ tới nguyên nhân này.
+    webhookSecret:
+      process.env.GOSHIP_WEBHOOK_SECRET || process.env.GOSHIP_CLIENT_SECRET || "",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+    fromStreet: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    fromProvince: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+    fromDistrict: process.env.SHIP_FROM_DISTRICT || "",
+    fromWard: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+  },
+
+  ahamove: {
+    apiKey: process.env.AHAMOVE_API_KEY || "",
+    mobile: process.env.AHAMOVE_MOBILE || "",
+    baseUrl:
+      process.env.AHAMOVE_BASE_URL || "https://partner-apistg.ahamove.com",
+    webhookSecret: process.env.AHAMOVE_WEBHOOK_SECRET || "",
+    fromAddress: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+  },
   s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL || undefined,
   commercePublicUrl: process.env.COMMERCE_PUBLIC_URL || `http://localhost:${port}`,
   productImageUploadDir:

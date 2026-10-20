@@ -24,6 +24,93 @@ export interface CreateLivestreamParams {
   status?: "draft" | "scheduled";
 }
 
+export interface UpdateLivestreamParams {
+  id: string;
+  merchantId: string;
+  title?: string;
+  description?: string | null;
+  scheduledAt?: string | null;
+  coverImageKey?: string | null;
+}
+
+export class LivestreamNotFoundError extends Error {
+  constructor(message = "Livestream not found") {
+    super(message);
+    this.name = "LivestreamNotFoundError";
+  }
+}
+
+export class UnauthorizedLivestreamAccessError extends Error {
+  constructor(message = "You do not have permission to modify this livestream") {
+    super(message);
+    this.name = "UnauthorizedLivestreamAccessError";
+  }
+}
+
+export class InvalidLivestreamEditStatusError extends Error {
+  constructor(status: string) {
+    super(
+      `Cannot edit livestream in '${status}' status. Only draft or scheduled livestreams can be edited.`
+    );
+    this.name = "InvalidLivestreamEditStatusError";
+  }
+}
+
+export class InvalidLivestreamDeleteStatusError extends Error {
+  constructor(status: string) {
+    super(
+      `Cannot delete livestream in '${status}' status. Please end or cancel the stream before deleting.`
+    );
+    this.name = "InvalidLivestreamDeleteStatusError";
+  }
+}
+
+export class LivestreamHasOrdersError extends Error {
+  constructor(
+    message = "Cannot delete livestream session because it has associated customer orders"
+  ) {
+    super(message);
+    this.name = "LivestreamHasOrdersError";
+  }
+}
+
+export class LivestreamScheduleConflictError extends Error {
+  constructor(
+    public readonly conflictingLivestream: {
+      id: string;
+      title: string;
+      scheduledAt: string;
+    },
+    public readonly bufferMinutes: number = 30
+  ) {
+    const formattedDate = new Date(conflictingLivestream.scheduledAt).toLocaleString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    super(
+      `Đã có phiên '${conflictingLivestream.title}' lên lịch lúc ${formattedDate}. Hai phiên live của cùng shop phải cách nhau tối thiểu ${bufferMinutes} phút.`
+    );
+    this.name = "LivestreamScheduleConflictError";
+  }
+}
+
+export class MerchantAlreadyLiveError extends Error {
+  constructor(
+    public readonly activeLivestream: {
+      id: string;
+      title: string;
+    }
+  ) {
+    super(
+      `Gian hàng đang có phiên phát trực tiếp '${activeLivestream.title}' chưa kết thúc. Vui lòng kết thúc phiên cũ trước khi bắt đầu phiên mới.`
+    );
+    this.name = "MerchantAlreadyLiveError";
+  }
+}
+
 export class LivestreamService {
   constructor(
     private readonly repository: ILivestreamRepository,
@@ -39,6 +126,27 @@ export class LivestreamService {
     }
     if (cleanTitle.length > 255) {
       throw new Error("title cannot exceed 255 characters");
+    }
+
+    if (params.scheduledAt) {
+      const scheduledTime = new Date(params.scheduledAt).getTime();
+      if (!isNaN(scheduledTime)) {
+        const conflict = await this.repository.findConflictingSchedule(
+          params.merchantId,
+          params.scheduledAt,
+          30
+        );
+        if (conflict && conflict.scheduledAt) {
+          throw new LivestreamScheduleConflictError(
+            {
+              id: conflict.id,
+              title: conflict.title,
+              scheduledAt: conflict.scheduledAt,
+            },
+            30
+          );
+        }
+      }
     }
 
     const initialStatus = params.status || "draft";
@@ -87,6 +195,19 @@ export class LivestreamService {
     }
     if (existing.status === "ended" && status === "live") {
       throw new Error("Cannot restart an ended livestream");
+    }
+
+    if (status === "live") {
+      const activeLive = await this.repository.findActiveLiveByMerchantId(
+        existing.merchantId,
+        id
+      );
+      if (activeLive) {
+        throw new MerchantAlreadyLiveError({
+          id: activeLive.id,
+          title: activeLive.title,
+        });
+      }
     }
 
     let updated = await this.repository.updateStatus(id, status);
@@ -231,6 +352,129 @@ export class LivestreamService {
       roomArn: room.roomArn,
       roomId: room.roomId,
     };
+  }
+
+  /**
+   * Cập nhật thông tin phiên livestream (tiêu đề, mô tả, ảnh bìa, lịch phát)
+   */
+  async updateLivestream(params: UpdateLivestreamParams): Promise<Livestream> {
+    const livestream = await this.repository.findById(params.id);
+    if (!livestream) {
+      throw new LivestreamNotFoundError(`Livestream ${params.id} not found`);
+    }
+
+    if (livestream.merchantId !== params.merchantId) {
+      throw new UnauthorizedLivestreamAccessError();
+    }
+
+    if (livestream.status !== "draft" && livestream.status !== "scheduled") {
+      throw new InvalidLivestreamEditStatusError(livestream.status);
+    }
+
+    if (params.title !== undefined) {
+      const cleanTitle = params.title.trim();
+      if (!cleanTitle) {
+        throw new Error("title cannot be empty or only whitespace");
+      }
+      if (cleanTitle.length > 255) {
+        throw new Error("title cannot exceed 255 characters");
+      }
+    }
+
+    if (params.scheduledAt !== undefined && params.scheduledAt !== null) {
+      const scheduledTime = new Date(params.scheduledAt).getTime();
+      if (isNaN(scheduledTime)) {
+        throw new Error("scheduledAt must be a valid ISO-8601 timestamp");
+      }
+      const nowWithBuffer = Date.now() - 5 * 60 * 1000;
+      if (scheduledTime < nowWithBuffer) {
+        throw new Error("scheduledAt cannot be in the past");
+      }
+
+      const conflict = await this.repository.findConflictingSchedule(
+        livestream.merchantId,
+        params.scheduledAt,
+        30,
+        params.id
+      );
+      if (conflict && conflict.scheduledAt) {
+        throw new LivestreamScheduleConflictError(
+          {
+            id: conflict.id,
+            title: conflict.title,
+            scheduledAt: conflict.scheduledAt,
+          },
+          30
+        );
+      }
+    }
+
+    const updated = await this.repository.update(params.id, {
+      title: params.title !== undefined ? params.title.trim() : undefined,
+      description: params.description,
+      scheduledAt: params.scheduledAt,
+      coverImageKey: params.coverImageKey,
+    });
+
+    if (!updated) {
+      throw new LivestreamNotFoundError(`Livestream ${params.id} not found`);
+    }
+
+    return updated;
+  }
+
+  /**
+   * Xóa phiên livestream (chỉ chủ shop được xóa; cấm xóa phiên đang live)
+   */
+  async deleteLivestream(params: {
+    id: string;
+    merchantId: string;
+  }): Promise<void> {
+    const livestream = await this.repository.findById(params.id);
+    if (!livestream) {
+      throw new LivestreamNotFoundError(`Livestream ${params.id} not found`);
+    }
+
+    if (livestream.merchantId !== params.merchantId) {
+      throw new UnauthorizedLivestreamAccessError(
+        "You do not have permission to delete this livestream"
+      );
+    }
+
+    if (livestream.status === "live") {
+      throw new InvalidLivestreamDeleteStatusError(livestream.status);
+    }
+
+    // Dọn dẹp kênh IVS và phòng chat ngầm trên AWS nếu có
+    if (livestream.channelArn && this.ivsService) {
+      this.ivsService.deleteChannel(livestream.channelArn).catch((err) => {
+        console.warn(
+          `[LivestreamService] Error deleting IVS channel for deleted livestream ${params.id}:`,
+          err
+        );
+      });
+    }
+    if (livestream.chatRoomArn && this.ivsChatService) {
+      this.ivsChatService.deleteRoom(livestream.chatRoomArn).catch((err) => {
+        console.warn(
+          `[LivestreamService] Error deleting IVS chat room for deleted livestream ${params.id}:`,
+          err
+        );
+      });
+    }
+
+    try {
+      const deleted = await this.repository.delete(params.id);
+      if (!deleted) {
+        throw new LivestreamNotFoundError(`Livestream ${params.id} not found`);
+      }
+    } catch (err: any) {
+      // Postgres error code 23503: foreign_key_violation (bảng orders ON DELETE RESTRICT)
+      if (err?.code === "23503" || (typeof err?.message === "string" && err.message.includes("foreign key"))) {
+        throw new LivestreamHasOrdersError();
+      }
+      throw err;
+    }
   }
 }
 

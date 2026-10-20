@@ -93,11 +93,10 @@ export function StudioProductList({
       {/* Vùng cuộn riêng của danh sách sản phẩm với custom scrollbar */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 min-h-0 overflow-y-auto pr-1 pt-0.5 studio-scrollbar ${
-          viewMode === "grid"
+        className={`flex-1 min-h-0 overflow-y-auto pr-1 pt-0.5 studio-scrollbar ${viewMode === "grid"
             ? "grid grid-cols-2 gap-1.5 content-start"
             : "space-y-1.5"
-        }`}
+          }`}
       >
         {products.map((item) => {
           const isOutOfStock = item.stock <= 0;
@@ -141,11 +140,10 @@ export function StudioProductList({
                       type="button"
                       disabled={disabled || isOutOfStock}
                       onClick={() => onPinProduct(item)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-0.5 transition shrink-0 active:scale-95 shadow-xs ${
-                        isOutOfStock
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-0.5 transition shrink-0 active:scale-95 shadow-xs ${isOutOfStock
                           ? "bg-slate-800 text-slate-500 cursor-not-allowed"
                           : "bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer"
-                      }`}
+                        }`}
                       title={isOutOfStock ? "Đã hết hàng" : `Ghim ${item.name}`}
                     >
                       <ArrowUpToLine className="h-2.5 w-2.5" />
@@ -221,11 +219,10 @@ export function StudioProductList({
                   type="button"
                   disabled={disabled || isOutOfStock}
                   onClick={() => onPinProduct(item)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0 active:scale-95 shadow-xs ${
-                    isOutOfStock
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0 active:scale-95 shadow-xs ${isOutOfStock
                       ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
                       : "bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer"
-                  }`}
+                    }`}
                   title={isOutOfStock ? "Sản phẩm đã hết hàng" : `Ghim ${item.name} lên live`}
                 >
                   <ArrowUpToLine className="h-3 w-3" aria-hidden="true" />

@@ -14,6 +14,9 @@ import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js
 import { createOrderRouter } from "./modules/order/routes/order.routes.js";
 import { createPurchaseRequestRouter } from "./modules/order/routes/purchase-request.routes.js";
 import { createPaymentRouter } from "./modules/payment/routes/payment.routes.js";
+import { createShipmentRouter } from "./modules/shipping/routes/shipment.routes.js";
+import { createShippingWebhookRouter } from "./modules/shipping/routes/shipping-webhook.routes.js";
+import { createTrackingRouter } from "./modules/shipping/routes/tracking.routes.js";
 import {
   IProductRepository,
 } from "./modules/product/repositories/product.repository.js";
@@ -50,7 +53,23 @@ export function createApp(
     );
 
   app.use(cors());
-  app.use(express.json());
+  app.use(
+    express.json({
+      /*
+       * Giữ lại thân gói tin NGUYÊN BẢN cho việc xác thực chữ ký.
+       *
+       * Hãng vận chuyển ký trên đúng chuỗi byte họ gửi đi. Ký lại từ
+       * object đã parse thì sai, vì mỗi ngôn ngữ serialize một kiểu:
+       * json_encode của PHP escape tiếng Việt thành \uXXXX, còn
+       * JSON.stringify của Node giữ nguyên UTF-8. Hai chuỗi byte khác
+       * nhau cho ra hai chữ ký khác nhau, và mọi webhook bị từ chối
+       * 401 dù khoá hoàn toàn đúng.
+       */
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    })
+  );
 
   // Handle malformed JSON body from clients gracefully without dumping unhandled stack traces
   app.use(
@@ -109,6 +128,9 @@ export function createApp(
   apiRouter.use("/orders", createOrderRouter());
   apiRouter.use("/purchase-requests", createPurchaseRequestRouter());
   apiRouter.use("/payments", createPaymentRouter());
+  apiRouter.use("/shipments", createShipmentRouter());
+  apiRouter.use("/webhooks/shipping", createShippingWebhookRouter());
+  apiRouter.use("/tracking", createTrackingRouter());
   apiRouter.use(
     "/uploads",
     createUploadRouter(customS3Service, localProductImageStorage)

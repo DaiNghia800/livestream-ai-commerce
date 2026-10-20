@@ -29,6 +29,43 @@ export const CreateLivestreamRequestSchema = z
 
 export type CreateLivestreamInput = z.infer<typeof CreateLivestreamRequestSchema>;
 
+export const UpdateLivestreamRequestSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1, { message: "title cannot be empty or only whitespace" })
+      .max(255, { message: "title cannot exceed 255 characters" })
+      .optional(),
+    description: z.string().nullable().optional(),
+    scheduledAt: z
+      .string()
+      .datetime({ message: "scheduledAt must be a valid ISO-8601 timestamp" })
+      .refine(
+        (val) => {
+          const scheduledTime = new Date(val).getTime();
+          // Dung sai 5 phút cho độ lệch đồng hồ máy chủ / mạng
+          const nowWithBuffer = Date.now() - 5 * 60 * 1000;
+          return scheduledTime >= nowWithBuffer;
+        },
+        { message: "scheduledAt cannot be in the past" }
+      )
+      .nullable()
+      .optional(),
+    coverImageKey: z
+      .string()
+      .trim()
+      .max(1024, { message: "coverImageKey cannot exceed 1024 characters" })
+      .nullable()
+      .optional(),
+  })
+  .strict({
+    message:
+      "Forbidden fields provided. Only title, description, scheduledAt, and coverImageKey can be updated.",
+  });
+
+export type UpdateLivestreamInput = z.infer<typeof UpdateLivestreamRequestSchema>;
+
 export const ListLivestreamsQuerySchema = z.object({
   status: z
     .enum(["all", "draft", "scheduled", "live", "ended", "cancelled"])

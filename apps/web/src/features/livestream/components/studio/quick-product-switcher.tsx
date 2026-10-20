@@ -133,11 +133,10 @@ export function QuickProductSwitcher({
               return (
                 <div
                   key={item.id}
-                  className={`p-2.5 sm:p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
-                    isPinned
+                  className={`p-2.5 sm:p-3 rounded-xl border transition flex items-center justify-between gap-3 ${isPinned
                       ? "border-cyan-500/40 bg-cyan-500/10"
                       : "border-slate-800 bg-[#0B1220]/70 hover:border-slate-700"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-12 h-12 rounded-lg bg-slate-950 overflow-hidden shrink-0 border border-slate-800">
@@ -184,11 +183,10 @@ export function QuickProductSwitcher({
                         type="button"
                         disabled={disabled || isOutOfStock}
                         onClick={() => onSelectProduct(item)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs ${
-                          isOutOfStock
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs ${isOutOfStock
                             ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
                             : "bg-cyan-600 hover:bg-cyan-500 text-white"
-                        }`}
+                          }`}
                       >
                         <ArrowUpToLine className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>Ghim ngay</span>

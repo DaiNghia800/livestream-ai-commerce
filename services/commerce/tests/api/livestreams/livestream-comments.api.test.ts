@@ -184,12 +184,14 @@ describe("Livestream Comments Endpoints - API Tests", () => {
       expect(sqsEvent.customer_id).toBe(payload.userId);
       expect(sqsEvent.content).toBe(payload.content);
 
-      // 3. TikTok-style: comments are ephemeral (không lưu DB), GET trả về mảng rỗng
+      // 3. Comments are persisted in DB: GET trả về danh sách bình luận đã lưu (để khôi phục khi reload)
       const getRes = await request(app).get(
         `/api/livestreams/${createdSessionId}/comments`
       );
       expect(getRes.status).toBe(200);
-      expect(getRes.body.data).toEqual([]);
+      expect(getRes.body.data).toHaveLength(1);
+      expect(getRes.body.data[0].content).toBe(payload.content);
+      expect(getRes.body.data[0].userId).toBe(payload.userId);
     });
   });
 });

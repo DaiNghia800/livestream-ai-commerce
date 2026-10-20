@@ -28,6 +28,7 @@ import {
   findOrderForPayment,
   findPaymentByOrder,
   findPaymentByTxnRefForUpdate,
+  findPaymentByTxnRef,
   insertPayment,
   insertTransaction,
   listPayments,
@@ -117,6 +118,13 @@ export class PaymentService {
       // bình thường, trả về khoản thu đang có chứ không báo lỗi.
       if (!paymentId) {
         const existing = await findPaymentByOrder(client, order.id);
+        if (existing?.method !== params.method) {
+          throw new InvalidOrderStateError(
+            order.id,
+            existing?.method ?? "UNKNOWN",
+            `đổi hình thức thu sang ${params.method}`
+          );
+        }
         await client.query("COMMIT");
         return existing!;
       }
@@ -229,6 +237,13 @@ export class PaymentService {
         payment.id,
         payment.status,
         "tạo đường dẫn thanh toán"
+      );
+    }
+    if (payment.method !== "ONLINE" || Number(payment.paidAmount) > 0) {
+      throw new InvalidOrderStateError(
+        payment.id,
+        payment.method === "COD" ? "COD" : "PARTIALLY_PAID",
+        "tạo đường dẫn thanh toán toàn bộ số tiền"
       );
     }
 
@@ -358,7 +373,7 @@ export class PaymentService {
     });
   }
 
-  /** Hoàn tiền. Chỉ hoàn được khoản đã thu. */
+  /** Ghi nhận khoản đã hoàn ở kênh ngoài. Chỉ cho ghi toàn bộ số đã thu. */
   async refund(orderId: string, amount: string, reason: string): Promise<Payment> {
     return this.transition(orderId, async (client, payment) => {
       if (
@@ -381,6 +396,17 @@ export class PaymentService {
       if (!payment) {
         throw new PaymentNotFoundError(orderId);
       }
+      return loadPayment(client, payment.id);
+    } finally {
+      client.release();
+    }
+  }
+
+  async getByTxnRef(txnRef: string): Promise<Payment> {
+    const client = await this.pool.connect();
+    try {
+      const payment = await findPaymentByTxnRef(client, txnRef);
+      if (!payment) throw new PaymentNotFoundError(txnRef);
       return loadPayment(client, payment.id);
     } finally {
       client.release();

@@ -78,6 +78,8 @@ export function createLivestreamRouter(
   router.post("/", requireMerchantHeader, controller.create);
   router.get("/", requireMerchantHeader, controller.list);
   router.get("/:id", controller.getById);
+  router.patch("/:id", requireMerchantHeader, controller.update);
+  router.delete("/:id", requireMerchantHeader, controller.delete);
   router.patch("/:id/status", requireMerchantHeader, controller.updateStatus);
   router.get("/:id/stream-config", requireMerchantHeader, controller.getStreamConfig);
 

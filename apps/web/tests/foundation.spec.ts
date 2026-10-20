@@ -57,8 +57,8 @@ test("navigation and combined filters work without horizontal overflow", async (
   );
   await page.screenshot({ path: test.info().outputPath("merchant.png"), fullPage: true });
   await page.getByLabel("Trạng thái", { exact: true }).selectOption("paid");
-  await expect(page.getByText("ORD-8821", { exact: true })).toBeVisible();
-  await expect(page.getByText("ORD-8820", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("#ORD-8821", { exact: true })).toBeVisible();
+  await expect(page.getByText("#ORD-8820", { exact: true })).not.toBeVisible();
   await page.getByLabel("Tìm đơn hàng").fill("không tồn tại");
   await expect(
     page.getByRole("heading", { name: "Không tìm thấy đơn hàng" }),

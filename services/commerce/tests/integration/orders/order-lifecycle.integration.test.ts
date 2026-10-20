@@ -67,6 +67,9 @@ describe("Mở link xác nhận", () => {
     const res = await request(app).get(`/api/orders/confirm/${draft.confirmToken}`);
 
     expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty("customerId");
+    expect(res.body).not.toHaveProperty("merchantId");
+    expect(res.body).not.toHaveProperty("confirmToken");
     const order = await readOrder(draft.id);
     expect(order.status).toBe("PENDING_CONFIRMATION");
     expect(order.confirm_opened_at).not.toBeNull();
@@ -135,6 +138,35 @@ describe("Xác nhận đơn", () => {
     expect(await readReservationStatuses(draft.id)).toEqual(["HOLDING"]);
   });
 
+  it("địa chỉ rõ ràng được chuẩn hoá ngay, địa chỉ mơ hồ vẫn giữ bản gốc", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const clear = await createDraft(sku, 1);
+    const address = "128/4 Nguyễn Thị Minh Khai, Phường Bến Thành, TP. Hồ Chí Minh";
+    const confirmed = await request(app).post(`/api/orders/confirm/${clear.confirmToken}`)
+      .send({ ...shipping, shippingAddress: address });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.addressNormalized).toBe(true);
+    const normalized = await pool.query(
+      `SELECT o.shipping_address, a.province_name, a.ward_name
+         FROM orders o JOIN addresses a ON a.id = o.address_id WHERE o.id = $1`,
+      [clear.id]
+    );
+    expect(normalized.rows[0]).toMatchObject({
+      shipping_address: address,
+      province_name: "TP. Hồ Chí Minh",
+      ward_name: "Phường Bến Thành",
+    });
+
+    const unclear = await createDraft(sku, 1);
+    const fallback = await request(app).post(`/api/orders/confirm/${unclear.confirmToken}`)
+      .send({ ...shipping, shippingAddress: "12 Đường Nhỏ, nơi chưa rõ, tỉnh lạ" });
+    expect(fallback.status).toBe(200);
+    expect(fallback.body.addressNormalized).toBe(false);
+    const row = await pool.query(`SELECT address_id, shipping_address FROM orders WHERE id = $1`, [unclear.id]);
+    expect(row.rows[0].address_id).toBeNull();
+    expect(row.rows[0].shipping_address).toBe("12 Đường Nhỏ, nơi chưa rõ, tỉnh lạ");
+  });
+
   it("xác nhận hai lần coi như thành công, không lỗi", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const draft = await createDraft(sku, 1);
@@ -146,6 +178,19 @@ describe("Xác nhận đơn", () => {
 
     expect(second.status).toBe(200);
     expect(second.body.status).toBe("CONFIRMED");
+  });
+
+  it("không cho mở link hoặc xác nhận sau hạn giữ dù job chưa quét", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const draft = await createDraft(sku, 1);
+    await pool.query(`UPDATE orders SET held_until = NOW() - interval '1 second' WHERE id = $1`, [draft.id]);
+
+    await request(app).get(`/api/orders/confirm/${draft.confirmToken}`);
+    const res = await request(app).post(`/api/orders/confirm/${draft.confirmToken}`).send(shipping);
+
+    expect(res.status).toBe(409);
+    expect((await readOrder(draft.id)).status).toBe("DRAFT");
+    expect(await readReservationStatuses(draft.id)).toEqual(["HOLDING"]);
   });
 
   it("xác nhận bằng token không tồn tại trả 404", async () => {
@@ -325,6 +370,23 @@ describe("Hoàn tất giao hàng", () => {
     expect((await request(app).post(`/api/orders/${draft.id}/complete`).send()).status).toBe(200);
 
     expect(await readStock(pool, sku)).toEqual({ onHand: 8, held: 0, sellable: 8 });
+  });
+
+  it("vận đơn đang hoạt động chặn huỷ và hoàn tất thủ công", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const draft = await createDraft(sku, 2);
+    await request(app).post(`/api/orders/confirm/${draft.confirmToken}`).send(shipping);
+    await request(app).post(`/api/orders/${draft.id}/processing`).send();
+    await pool.query(
+      `INSERT INTO shipments (order_id, carrier, client_order_code, status, weight_gram)
+       VALUES ($1, 'self', $2, 'CREATED', 500)`,
+      [draft.id, crypto.randomUUID()]
+    );
+
+    expect((await request(app).post(`/api/orders/${draft.id}/complete`).send()).status).toBe(409);
+    expect((await request(app).post(`/api/orders/${draft.id}/cancel`).send({ reason: "OTHER" })).status).toBe(409);
+    expect((await readOrder(draft.id)).status).toBe("PROCESSING");
+    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 2, sellable: 8 });
   });
 });
 

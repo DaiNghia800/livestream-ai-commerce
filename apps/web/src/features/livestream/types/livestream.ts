@@ -61,7 +61,7 @@ export interface LivestreamFormData {
     coverImage?: string;
     startDate: string;
     startTime: string;
-    endDate: string;
-    endTime: string;
+    endDate?: string;
+    endTime?: string;
     products: LiveProductItem[];
 }

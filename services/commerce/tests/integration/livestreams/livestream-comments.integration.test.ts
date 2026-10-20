@@ -99,12 +99,14 @@ describe("Livestream Comments - PostgreSQL Integration Tests", () => {
     expect(cmt2Res.status).toBe(201);
     expect(cmt2Res.body.data.role).toBe("host");
 
-    // 6. TikTok-style: Bình luận mang tính tạm thời (ephemeral), không lưu DB -> GET trả về mảng rỗng
+    // 6. Bình luận được lưu trữ vào PostgreSQL để khôi phục khi reload trang -> GET trả về các bình luận đã lưu
     const listRes = await request(app).get(
       `/api/livestreams/${livestreamId}/comments`
     );
     expect(listRes.status).toBe(200);
-    expect(listRes.body.data).toEqual([]);
+    expect(listRes.body.data).toHaveLength(2);
+    expect(listRes.body.data[0].content).toBe("Shop ơi áo này có size L không?");
+    expect(listRes.body.data[1].content).toBe("Dạ còn đầy đủ size S, M, L bạn nhé!");
 
     // 7. Chuyển sang ended -> gửi bình luận phải bị chặn (400)
     await request(app)
