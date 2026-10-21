@@ -116,9 +116,67 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   }, [isDemoSession, liveChatMessages]);
 
   // 2.3 Điều khiển Bố cục Studio phong cách TikTok Live Studio (Đóng/Mở Sidebars)
-  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
+
+  // 2.3.1 Thời lượng phát sóng trực tiếp thời gian thực
+  const [liveElapsedSeconds, setLiveElapsedSeconds] = useState<number>(0);
+  const liveStartTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (currentStatus !== "LIVE") {
+      liveStartTimeRef.current = null;
+      return;
+    }
+
+    if (!liveStartTimeRef.current) {
+      if (session?.startedAt) {
+        const startMs = new Date(session.startedAt).getTime();
+        liveStartTimeRef.current = isNaN(startMs) ? Date.now() : startMs;
+      } else {
+        liveStartTimeRef.current = Date.now();
+      }
+    }
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const diffSec = Math.max(
+        0,
+        Math.floor((now - (liveStartTimeRef.current || now)) / 1000)
+      );
+      setLiveElapsedSeconds(diffSec);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentStatus, session?.startedAt]);
+
+  let activeDuration = "00:00:00";
+  if (currentStatus === "LIVE") {
+    const hours = Math.floor(liveElapsedSeconds / 3600);
+    const minutes = Math.floor((liveElapsedSeconds % 3600) / 60);
+    const seconds = liveElapsedSeconds % 60;
+    activeDuration = [hours, minutes, seconds]
+      .map((v) => String(v).padStart(2, "0"))
+      .join(":");
+  } else if (currentStatus === "ENDED") {
+    if (session?.startedAt && session?.endedAt) {
+      const diffSec = Math.max(
+        0,
+        Math.floor(
+          (new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()) / 1000
+        )
+      );
+      const hours = Math.floor(diffSec / 3600);
+      const minutes = Math.floor((diffSec % 3600) / 60);
+      const seconds = diffSec % 60;
+      activeDuration = [hours, minutes, seconds]
+        .map((v) => String(v).padStart(2, "0"))
+        .join(":");
+    } else {
+      activeDuration = session?.subTimeDisplay?.replace("Thời lượng: ", "") || "00:00:00";
+    }
+  }
 
   // 2.4 Cài đặt Khung hình & Hiển thị (Aspect Ratio: 16:9 PC vs 9:16 TikTok Mobile)
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
@@ -491,12 +549,6 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     }
     setPinError("");
     setPinnedProduct(product);
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (UUID_REGEX.test(livestreamId)) {
-      updateLivestreamProduct(livestreamId, product.id, { isFeatured: true }).catch((err) => {
-        console.warn("[Studio] Error syncing pin status to backend:", err);
-      });
-    }
   };
 
   // Thao tác Gỡ ghim
@@ -941,13 +993,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         sessionId={session.id}
         sessionTitle={session.title}
         status={currentStatus}
-        duration={
-          isLive
-            ? session.subTimeDisplay?.replace("Đã live ", "") || "00:42:18"
-            : isEnded
-              ? session.subTimeDisplay?.replace("Thời lượng: ", "") || "03:30:00"
-              : "00:00:00"
-        }
+        duration={activeDuration}
         viewers={isLive ? session.currentViewers || 1940 : isEnded ? 0 : "—"}
         likesCount="18.5K"
         chatCount={isLive || isEnded ? session.chatCount || 3420 : "—"}

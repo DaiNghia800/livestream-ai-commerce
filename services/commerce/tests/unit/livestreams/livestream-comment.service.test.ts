@@ -3,6 +3,8 @@ import {
   LivestreamCommentService,
   LivestreamNotFoundError,
   InvalidLivestreamStatusError,
+  ProhibitedCommentError,
+  UnauthorizedRoleClaimError,
 } from "../../../src/modules/livestream/services/livestream-comment.service.js";
 import { InMemoryLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { InMemoryLivestreamCommentRepository } from "../../../src/modules/livestream/repositories/livestream-comment.repository.js";
@@ -376,15 +378,305 @@ describe("LivestreamCommentService Unit Tests", () => {
         status: "live",
       });
 
-      const result = await service.addComment(live.id, {
-        userId: "host-1",
-        username: "Chủ shop",
-        content: "Chốt đơn nhiệt tình nha mọi người",
-        role: "host",
-      });
+      const result = await service.addComment(
+        live.id,
+        {
+          userId: "host-1",
+          username: "Chủ shop",
+          content: "Chốt đơn nhiệt tình nha mọi người",
+          role: "host",
+        },
+        live.merchantId
+      );
 
       expect(result).not.toBeNull();
       expect(mockSqsService.sendCommentCreatedEvent).not.toHaveBeenCalled();
     });
   });
+
+  describe("Redis In-Memory Caching", () => {
+    it("lấy bình luận trực tiếp từ Redis khi có cache và không truyền con trỏ before", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Redis Test Live",
+        status: "live",
+      });
+
+      const mockRedisService = {
+        isAvailable: vi.fn().mockReturnValue(true),
+        pushComment: vi.fn().mockResolvedValue(undefined),
+        getRecentComments: vi.fn().mockResolvedValue([
+          {
+            id: "cached-1",
+            livestreamId: live.id,
+            userId: "u-1",
+            username: "User 1",
+            content: "Tin nhắn từ Redis",
+            role: "buyer" as const,
+            avatarUrl: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const redisCommentService = new LivestreamCommentService(
+        livestreamRepo,
+        commentRepo,
+        mockSqsService,
+        mockIvsChatService,
+        mockRedisService
+      );
+
+      const comments = await redisCommentService.getComments(live.id, { limit: 50 });
+      expect(mockRedisService.getRecentComments).toHaveBeenCalledWith(live.id, 50);
+      expect(comments).toHaveLength(1);
+      expect(comments?.[0].content).toBe("Tin nhắn từ Redis");
+    });
+
+    it("đẩy bình luận vào Redis khi thêm comment và Redis đang online", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Redis Push Live",
+        status: "live",
+      });
+
+      const mockRedisService = {
+        isAvailable: vi.fn().mockReturnValue(true),
+        pushComment: vi.fn().mockResolvedValue(undefined),
+        getRecentComments: vi.fn().mockResolvedValue(null),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const redisCommentService = new LivestreamCommentService(
+        livestreamRepo,
+        commentRepo,
+        mockSqsService,
+        mockIvsChatService,
+        mockRedisService
+      );
+
+      const added = await redisCommentService.addComment(live.id, {
+        userId: "buyer-redis",
+        username: "Khách Redis",
+        content: "A001 x1 chốt đơn",
+        role: "buyer",
+      });
+
+      expect(added).not.toBeNull();
+      expect(mockRedisService.pushComment).toHaveBeenCalledTimes(1);
+      expect(mockRedisService.pushComment).toHaveBeenCalledWith(
+        live.id,
+        expect.objectContaining({
+          userId: "buyer-redis",
+          content: "A001 x1 chốt đơn",
+        })
+      );
+    });
+
+    it("tự động fallback về commentRepository nếu Redis trả về rỗng", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Redis Fallback Live",
+        status: "live",
+      });
+
+      // Lưu 1 tin vào database repository
+      await commentRepo.create(live.id, {
+        userId: "db-user",
+        username: "DB User",
+        content: "Tin nhắn trong database",
+        role: "buyer",
+      });
+
+      const mockRedisService = {
+        isAvailable: vi.fn().mockReturnValue(true),
+        pushComment: vi.fn().mockResolvedValue(undefined),
+        getRecentComments: vi.fn().mockResolvedValue(null), // Cache miss
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const redisCommentService = new LivestreamCommentService(
+        livestreamRepo,
+        commentRepo,
+        mockSqsService,
+        mockIvsChatService,
+        mockRedisService
+      );
+
+      const comments = await redisCommentService.getComments(live.id);
+      expect(mockRedisService.getRecentComments).toHaveBeenCalledTimes(1);
+      expect(comments).toHaveLength(1);
+      expect(comments?.[0].content).toBe("Tin nhắn trong database");
+    });
+  });
+
+  describe("Security Guards - Role Spoofing & Prohibited Content", () => {
+    it("chặn đứng và quăng lỗi UnauthorizedRoleClaimError nếu người gửi mạo danh 'host' không có merchantId", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "real-merchant-123",
+        title: "Security Test Live",
+        status: "live",
+      });
+
+      await expect(
+        service.addComment(live.id, {
+          userId: "hacker-1",
+          username: "Fake Host",
+          content: "Tôi là chủ shop uy tín nè",
+          role: "host",
+        })
+      ).rejects.toThrow(UnauthorizedRoleClaimError);
+    });
+
+    it("chặn đứng và quăng lỗi UnauthorizedRoleClaimError nếu merchantId không khớp với chủ phòng live", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "real-merchant-123",
+        title: "Security Test Live",
+        status: "live",
+      });
+
+      await expect(
+        service.addComment(
+          live.id,
+          {
+            userId: "imposter-2",
+            username: "Fake Mod",
+            content: "Tôi là quản trị viên",
+            role: "moderator",
+          },
+          "wrong-merchant-456"
+        )
+      ).rejects.toThrow(UnauthorizedRoleClaimError);
+    });
+
+    it("giữ nguyên role 'host' khi merchantId khớp chính xác với chủ phòng livestream", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "real-merchant-123",
+        title: "Security Test Live",
+        status: "live",
+      });
+
+      const result = await service.addComment(
+        live.id,
+        {
+          userId: "real-host-user",
+          username: "Chủ Shop Thật",
+          content: "Chào mừng các bạn đến phiên live",
+          role: "host",
+        },
+        "real-merchant-123"
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.role).toBe("host");
+    });
+
+    it("chặn bình luận chứa link URL lừa đảo (HTTP/HTTPS) từ buyer", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Anti Phishing Live",
+        status: "live",
+      });
+
+      await expect(
+        service.addComment(live.id, {
+          userId: "buyer-1",
+          username: "Scammer",
+          content: "Bấm vào https://lua-dao.xyz để nhận quà miễn phí",
+        })
+      ).rejects.toThrow(ProhibitedCommentError);
+    });
+
+    it("chặn bình luận chứa link t.me hoặc zalo.me từ buyer", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Anti Scam Live",
+        status: "live",
+      });
+
+      await expect(
+        service.addComment(live.id, {
+          userId: "buyer-1",
+          username: "Scammer",
+          content: "Tham gia nhóm t.me/nhom-keo-don ngay nha mn",
+        })
+      ).rejects.toThrow(ProhibitedCommentError);
+    });
+
+    it("chặn bình luận lôi kéo khách sang Zalo cướp đơn từ buyer", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Anti Poaching Live",
+        status: "live",
+      });
+
+      await expect(
+        service.addComment(live.id, {
+          userId: "buyer-1",
+          username: "Poacher",
+          content: "Kết bạn zalo 0909123456 để lấy giá sỉ rẻ hơn shop",
+        })
+      ).rejects.toThrow(ProhibitedCommentError);
+    });
+
+    it("chặn bình luận lừa đảo chuyển khoản ngân hàng (CK gấp, STK) từ buyer", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Anti Bank Scam Live",
+        status: "live",
+      });
+
+      await expect(
+        service.addComment(live.id, {
+          userId: "scammer-1",
+          username: "HỖ TRỢ CHỐT ĐƠN",
+          content: "Shop hết hàng trên giỏ, khách CK gấp vào STK 190388888 để giữ đơn nhé!",
+          role: "buyer",
+        })
+      ).rejects.toThrow(ProhibitedCommentError);
+    });
+
+    it("cho phép buyer hỏi thông tin thanh toán chuyển khoản hợp lệ", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Valid Inquiries Live",
+        status: "live",
+      });
+
+      const result = await service.addComment(live.id, {
+        userId: "buyer-legit",
+        username: "Khách Hỏi",
+        content: "Shop có cho chuyển khoản không ạ?",
+        role: "buyer",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe("Shop có cho chuyển khoản không ạ?");
+    });
+
+    it("cho phép chủ shop (host) đăng thông báo kèm đường link chính thức", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "real-merchant-123",
+        title: "Host Notice Live",
+        status: "live",
+      });
+
+      const result = await service.addComment(
+        live.id,
+        {
+          userId: "real-host-user",
+          username: "Chủ Shop Thật",
+          content: "Xem thêm chi tiết tại https://myshop.com/info",
+          role: "host",
+        },
+        "real-merchant-123"
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.content).toContain("https://myshop.com/info");
+      expect(result?.role).toBe("host");
+    });
+  });
 });
+

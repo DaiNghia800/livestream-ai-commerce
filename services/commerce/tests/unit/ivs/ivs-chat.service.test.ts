@@ -237,6 +237,16 @@ describe("IvsChatService Unit Tests", () => {
     );
     expect(await service.deleteRoom("arn:aws:ivschat:room/1")).toBe(false);
 
+    // Idempotent delete: ResourceNotFoundException treated as success
+    const notFoundErr = new Error("Resource: arn:aws:ivschat:room/1 not found");
+    notFoundErr.name = "ResourceNotFoundException";
+    const notFoundSend = vi.fn().mockRejectedValue(notFoundErr);
+    const notFoundService = new IvsChatService(
+      { region: "ap-southeast-1" },
+      { send: notFoundSend } as any
+    );
+    expect(await notFoundService.deleteRoom("arn:aws:ivschat:room/1")).toBe(true);
+
     const successSend = vi.fn().mockResolvedValue({});
     const okService = new IvsChatService(
       { region: "ap-southeast-1" },

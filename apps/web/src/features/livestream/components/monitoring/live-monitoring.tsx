@@ -13,6 +13,13 @@ import {
   Radio,
 } from "lucide-react";
 import { getMonitoringContextBySessionId } from "../../mocks/monitoring.mock";
+import { mockLivestreams } from "../../mocks/livestream.mock";
+import {
+  getLivestreamDetail,
+  mapBackendLivestreamToFrontend,
+  isValidUuid,
+} from "../../api/get-livestreams";
+import type { Livestream } from "../../types/livestream";
 import { MonitoringSessionHeader } from "./monitoring-session-header";
 import { MonitoringProductsPanel } from "./monitoring-products-panel";
 import { MonitoringChatPanel } from "./monitoring-chat-panel";
@@ -30,7 +37,36 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const rightColRef = useRef<HTMLDivElement>(null);
 
-  const context = getMonitoringContextBySessionId(livestreamId);
+  const [session, setSession] = useState<Livestream | null>(() => {
+    return mockLivestreams.find((s) => s.id === livestreamId) || null;
+  });
+  const [isLoading, setIsLoading] = useState(!session && isValidUuid(livestreamId));
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSession() {
+      if (!isValidUuid(livestreamId)) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        const detail = await getLivestreamDetail(livestreamId);
+        if (!isMounted) return;
+        const mapped = mapBackendLivestreamToFrontend(detail);
+        setSession(mapped);
+      } catch (err) {
+        console.warn("[LiveMonitoring] Could not load session from API:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [livestreamId]);
+
+  const context = getMonitoringContextBySessionId(livestreamId, session || undefined);
 
   // Reset right column scroll to top whenever the session changes
   useEffect(() => {
@@ -38,6 +74,18 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
       rightColRef.current.scrollTop = 0;
     }
   }, [livestreamId]);
+
+  // Loading indicator for remote sessions
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-12 bg-background min-h-[60vh]">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium text-on-surface-variant">Đang nạp dữ liệu giám sát phiên live...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Session Not Found State
   if (!context) {

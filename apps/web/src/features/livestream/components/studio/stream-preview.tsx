@@ -61,7 +61,6 @@ export function StudioStreamPreview({
   pinnedProduct = null,
   isMicActive = false,
   isEnded = false,
-  broadcastState = "IDLE",
   onResumeLive,
   isResuming = false,
   aspectRatio = "16:9",

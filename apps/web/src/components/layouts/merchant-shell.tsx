@@ -168,8 +168,8 @@ export function MerchantShell({ children }: { children: ReactNode }) {
       <aside
         id={navigationId}
         className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""} ${
-          isProductsPage ? styles.sidebarProduct : ""
-        } ${sidebarCollapsed ? styles.sidebarCollapsed : ""}`}
+          sidebarCollapsed ? styles.sidebarCollapsed : ""
+        }`}
       >
         <div className={styles.sidebarHeader}>
           <div className={styles.brandRow}>
@@ -252,16 +252,12 @@ export function MerchantShell({ children }: { children: ReactNode }) {
           sidebarCollapsed ? styles.contentExpanded : ""
         }`}
       >
-        <header className={`${styles.header} ${isProductsPage ? styles.headerProduct : ""}`}>
+        <header className={styles.header}>
           <label className={styles.search}>
             <span className="sr-only">Tìm kiếm trong khu vực quản lý</span>
             <Search size={18} aria-hidden="true" />
             <input
-              placeholder={
-                isProductsPage
-                  ? "Tìm theo tên, SĐT, hoặc mã đơn..."
-                  : "Tìm theo mã SKU, tên sản phẩm, vị trí kho..."
-              }
+              placeholder="Tìm theo mã SKU, tên sản phẩm, vị trí kho..."
               disabled
             />
           </label>
@@ -270,9 +266,6 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               className={styles.connectionStatus}
               aria-label="Trạng thái kết nối IVS và Gemini"
             >
-              {isProductsPage && (
-                <Wifi className={styles.productConnectionIcon} size={16} aria-hidden="true" />
-              )}
               <span className={styles.connectionLabel}>Trạng thái kết nối</span>
               <span className={styles.connectionDot} aria-hidden="true" />
               <span className={styles.connectionDetails}>
@@ -285,26 +278,18 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               <button
                 aria-label="Đồng bộ kho WMS"
                 className={styles.iconButton}
-                title={isProductsPage ? "AI Bot Tự động hóa" : "Đồng bộ kho WMS"}
+                title="Đồng bộ kho WMS"
                 type="button"
               >
-                {isProductsPage ? (
-                  <Bot size={17} aria-hidden="true" />
-                ) : (
-                  <ArrowLeftRight size={17} aria-hidden="true" />
-                )}
+                <ArrowLeftRight size={17} aria-hidden="true" />
               </button>
               <button
                 aria-label="Cảm biến và thiết bị"
                 className={styles.iconButton}
-                title={isProductsPage ? "Đồng bộ kho đa kênh" : "Cảm biến & Thiết bị"}
+                title="Cảm biến & Thiết bị"
                 type="button"
               >
-                {isProductsPage ? (
-                  <ArrowLeftRight size={17} aria-hidden="true" />
-                ) : (
-                  <Radio size={17} aria-hidden="true" />
-                )}
+                <Radio size={17} aria-hidden="true" />
               </button>
               <button
                 aria-label="Thông báo hệ thống"
@@ -321,11 +306,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               className={styles.checkoutButton}
               href="/shop/orders"
             >
-              {isProductsPage ? (
-                <Radio size={16} aria-hidden="true" />
-              ) : (
-                <ShoppingCart size={16} aria-hidden="true" />
-              )}
+              <ShoppingCart size={16} aria-hidden="true" />
               <span>Chốt đơn ngay</span>
             </Link>
             {isAdminArea && (

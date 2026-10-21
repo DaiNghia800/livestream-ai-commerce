@@ -28,6 +28,10 @@ import {
   ISqsService,
   SqsService,
 } from "../../../shared/queue/sqs.service.js";
+import {
+  IRedisService,
+  RedisService,
+} from "../../../shared/redis/redis.service.js";
 import { config } from "../../../config.js";
 
 export function createLivestreamRouter(
@@ -36,7 +40,8 @@ export function createLivestreamRouter(
   customIvsService?: IIvsService,
   customIvsChatService?: IIvsChatService,
   customCommentRepository?: ILivestreamCommentRepository,
-  customSqsService?: ISqsService
+  customSqsService?: ISqsService,
+  customRedisService?: IRedisService
 ): Router {
   const router = Router();
   const repo = customRepository || new PostgresLivestreamRepository();
@@ -59,6 +64,7 @@ export function createLivestreamRouter(
       queueUrl: config.sqsQueueUrl,
       region: config.awsRegion || "ap-southeast-1",
     });
+  const redis = customRedisService || new RedisService(config.redisUrl);
 
   const service = new LivestreamService(repo, productRepo, ivs, ivsChat);
   const controller = new LivestreamController(service);
@@ -70,7 +76,8 @@ export function createLivestreamRouter(
     repo,
     commentRepo,
     sqs,
-    ivsChat
+    ivsChat,
+    redis
   );
   const commentController = new LivestreamCommentController(commentService);
 

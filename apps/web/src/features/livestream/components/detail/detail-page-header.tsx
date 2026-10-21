@@ -10,6 +10,8 @@ import {
   Activity,
   BarChart3,
   Play,
+  Share2,
+  Check,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
 import { ReplayVideoModal } from "./replay-video-modal";
@@ -20,6 +22,20 @@ interface DetailPageHeaderProps {
 
 export function DetailPageHeader({ session }: DetailPageHeaderProps) {
   const [showReplayModal, setShowReplayModal] = useState(false);
+  const [copiedWatchLink, setCopiedWatchLink] = useState(false);
+
+  const handleCopyWatchLink = async () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      const url = `${window.location.origin}/live/${session.id}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopiedWatchLink(true);
+        setTimeout(() => setCopiedWatchLink(false), 2000);
+      } catch (err) {
+        console.warn("Failed to copy link:", err);
+      }
+    }
+  };
 
   const getStatusBadge = () => {
     switch (session.status) {
@@ -92,6 +108,30 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
 
       {/* Action Toolbar by Status */}
       <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Nút Sao chép link xem Live cho khách */}
+        <button
+          type="button"
+          onClick={handleCopyWatchLink}
+          className={`inline-flex items-center gap-1.5 h-9 px-3 border rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer ${
+            copiedWatchLink
+              ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+              : "bg-white border-outline-variant text-on-surface hover:bg-surface-container-low"
+          }`}
+          title={`Sao chép link xem live gửi khách hàng: /live/${session.id}`}
+        >
+          {copiedWatchLink ? (
+            <>
+              <Check className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+              <span>Đã chép link live</span>
+            </>
+          ) : (
+            <>
+              <Share2 className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span>Chia sẻ link live</span>
+            </>
+          )}
+        </button>
+
         {/* DRAFT: Chỉnh sửa phiên & Vào Studio */}
         {session.status === "DRAFT" && (
           <>
