@@ -65,6 +65,30 @@ function getAdminSession() {
   );
 }
 
+function getProfileSnapshot(): string | null {
+  const profileKey =
+    localStorage.getItem("user_role") === "admin" ? "admin_auth_user" : "auth_user";
+  return localStorage.getItem(profileKey);
+}
+
+function parseProfile(snapshot: string | null): { full_name: string } | null {
+  if (!snapshot) return null;
+  try {
+    const value: unknown = JSON.parse(snapshot);
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "full_name" in value &&
+      typeof value.full_name === "string"
+    ) {
+      return { full_name: value.full_name };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function MerchantShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -75,6 +99,14 @@ export function MerchantShell({ children }: { children: ReactNode }) {
     getAdminSession,
     () => false
   );
+  const profileSnapshot = useSyncExternalStore(
+    subscribeToStorage,
+    getProfileSnapshot,
+    () => null
+  );
+  const profile = parseProfile(profileSnapshot);
+  const profileName = profile?.full_name || (isAdminSession ? "Quản trị viên" : "Chủ cửa hàng");
+  const profileRole = isAdminSession ? "Quản trị viên" : "Chủ cửa hàng";
   const navigationId = useId();
 
   const isMonitoring = pathname ? /\/monitoring\/?$/.test(pathname) : false;
@@ -85,6 +117,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
   function signOutAdmin() {
     localStorage.removeItem("admin_access_token");
     localStorage.removeItem("admin_refresh_token");
+    localStorage.removeItem("admin_auth_user");
     localStorage.removeItem("user_role");
     router.replace("/admin");
   }
@@ -292,8 +325,8 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                 <CircleUserRound size={21} aria-hidden="true" />
               </span>
               <span className={styles.profileCopy}>
-                <strong>Văn Vận Hành</strong>
-                <small>Quản trị viên kho và vận hành</small>
+                <strong>{profileName}</strong>
+                <small>{profileRole}</small>
               </span>
             </div>
           </div>
