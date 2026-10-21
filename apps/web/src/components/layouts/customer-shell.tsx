@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ChevronDown, LogOut, MapPin, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, MapPin, ReceiptText, UserRound } from "lucide-react";
 import { Brand } from "./brand";
 import { AddressBookDialog } from "@/features/orders/address-book-dialog";
 import { ProfileDialog } from "@/features/orders/profile-dialog";
@@ -134,6 +134,19 @@ export function CustomerShell({ children }: { children: ReactNode }) {
                 <li role="none">
                   <button type="button" role="menuitem" className={styles.menuMuc} onClick={() => chon("hoSo")}>
                     <UserRound size={16} aria-hidden="true" /> Thông tin cá nhân
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.menuMuc}
+                    onClick={() => {
+                      setMoMenu(false);
+                      router.push("/orders");
+                    }}
+                  >
+                    <ReceiptText size={16} aria-hidden="true" /> Đơn mua
                   </button>
                 </li>
                 <li role="none">

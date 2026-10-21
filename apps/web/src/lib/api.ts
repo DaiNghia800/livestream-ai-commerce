@@ -456,6 +456,39 @@ export const customerIdentityApi = {
     }),
 };
 
+/** Một đơn trên màn "Đơn mua" của khách. */
+export interface MyOrder {
+  id: string;
+  orderCode: string;
+  status: OrderStatus;
+  totalAmount: string;
+  createdAt: string;
+  /** Có vì người xem chính là chủ đơn. */
+  confirmToken: string | null;
+  livestreamTitle: string | null;
+  recipientName: string | null;
+  shippingAddress: string | null;
+  items: Array<{
+    productName: string;
+    variantName: string | null;
+    skuCode: string;
+    quantity: number;
+    unitPrice: string;
+    imageUrl: string | null;
+  }>;
+  payment: { method: string; status: string } | null;
+  shipment: { status: string; trackingCode: string | null; trackingToken: string | null } | null;
+}
+
+/** Đơn mua của chính người đang đăng nhập; `group` là tab trạng thái. */
+export const myOrdersApi = {
+  list: (group?: string) =>
+    call<{ items: MyOrder[] }>(
+      `/me/orders${group ? `?group=${encodeURIComponent(group)}` : ""}`,
+      { headers: headerXacThuc() },
+    ).then((r) => r.items),
+};
+
 /** Hồ sơ cá nhân: xem và sửa họ tên, số điện thoại của chính mình. */
 export const profileApi = {
   get: () => call<Profile>("/me/profile", { headers: headerXacThuc() }),

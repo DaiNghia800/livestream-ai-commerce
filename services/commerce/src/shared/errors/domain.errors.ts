@@ -115,3 +115,22 @@ export class LivestreamNotOpenError extends DomainError {
     super(`Phiên live ${livestreamId} đang ở trạng thái ${status}, không nhận đơn mới`);
   }
 }
+
+/**
+ * Link xác nhận thuộc về một tài khoản khác với người đang mở.
+ *
+ * LOGIN_REQUIRED: đơn đã nối với tài khoản mà người mở chưa đăng nhập.
+ * FORBIDDEN: đã đăng nhập nhưng không phải chủ đơn.
+ */
+export class OrderAccessError extends DomainError {
+  readonly code = "ORDER_ACCESS";
+
+  constructor(readonly kind: "LOGIN_REQUIRED" | "FORBIDDEN") {
+    super(
+      kind === "LOGIN_REQUIRED"
+        ? "Đơn này thuộc về một tài khoản. Đăng nhập bằng tài khoản đã đặt hàng để xem."
+        : "Đơn này thuộc về tài khoản khác."
+    );
+  }
+}
+
