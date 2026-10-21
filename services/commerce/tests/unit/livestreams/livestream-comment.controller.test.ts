@@ -4,6 +4,7 @@ import { LivestreamCommentController } from "../../../src/modules/livestream/con
 import {
   LivestreamNotFoundError,
   InvalidLivestreamStatusError,
+  ProhibitedCommentError,
 } from "../../../src/modules/livestream/services/livestream-comment.service.js";
 
 describe("LivestreamCommentController Unit Tests", () => {
@@ -233,6 +234,56 @@ describe("LivestreamCommentController Unit Tests", () => {
         expect.objectContaining({ error: "InternalServerError" })
       );
       consoleErrorSpy.mockRestore();
+    });
+
+    it("trả về 400 khi service ném ProhibitedCommentError (chứa link hoặc off-platform)", async () => {
+      mockReq = {
+        params: { id: "live-1" },
+        body: {
+          userId: "u-1",
+          username: "tester",
+          content: "http://phishing.xyz",
+        },
+      };
+      mockService.addComment.mockRejectedValueOnce(
+        new ProhibitedCommentError("Bình luận chứa liên kết không được phép")
+      );
+
+      await controller.createComment(mockReq as Request, mockRes as Response);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        error: "ProhibitedContent",
+        message: "Bình luận chứa liên kết không được phép",
+      });
+    });
+
+    it("chuyển tiếp merchantId từ header X-Merchant-Id sang service.addComment", async () => {
+      mockReq = {
+        params: { id: "live-1" },
+        body: {
+          userId: "u-host",
+          username: "host",
+          content: "Chào cả nhà",
+          role: "host",
+        },
+        header: vi.fn().mockImplementation((name: string) => {
+          if (name.toLowerCase() === "x-merchant-id") return "merchant-123";
+          return undefined;
+        }),
+      };
+      mockService.addComment.mockResolvedValueOnce({
+        id: "c-1",
+        role: "host",
+      });
+
+      await controller.createComment(mockReq as Request, mockRes as Response);
+
+      expect(mockService.addComment).toHaveBeenCalledWith(
+        "live-1",
+        expect.objectContaining({ role: "host" }),
+        "merchant-123"
+      );
     });
   });
 });

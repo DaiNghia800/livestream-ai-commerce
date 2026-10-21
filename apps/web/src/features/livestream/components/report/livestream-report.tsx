@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -9,6 +12,12 @@ import {
 } from "lucide-react";
 import { mockLivestreams } from "../../mocks/livestream.mock";
 import { getLivestreamReport } from "../../mocks/report.mock";
+import {
+  getLivestreamDetail,
+  mapBackendLivestreamToFrontend,
+  isValidUuid,
+} from "../../api/get-livestreams";
+import type { Livestream } from "../../types/livestream";
 import { ReportPageHeader } from "./report-page-header";
 import { ReportKpiGrid } from "./report-kpi-grid";
 import { ReportPerformanceChart } from "./report-performance-chart";
@@ -22,10 +31,70 @@ interface LivestreamReportProps {
 }
 
 export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
-  // 1. Find session in central mock repository
-  const session = mockLivestreams.find((s) => s.id === livestreamId);
+  const [session, setSession] = useState<Livestream | null>(() => {
+    const found = mockLivestreams.find((s) => s.id === livestreamId);
+    if (found) return found;
+    const report = getLivestreamReport(livestreamId);
+    if (report) {
+      return {
+        id: report.sessionId,
+        title: report.sessionTitle,
+        status: "ENDED",
+        thumbnail: "",
+        hostName: "MC",
+        products: (report.topProducts || []).map((p) => ({
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          price: p.price,
+          stock: p.remainingStock,
+          image: p.image,
+          chatOrders: p.soldCount,
+        })),
+        startedAt: report.startedAt,
+        endedAt: report.endedAt,
+        subTimeDisplay: report.durationDisplay,
+      } as Livestream;
+    }
+    return null;
+  });
+  const [isLoading, setIsLoading] = useState(!session && isValidUuid(livestreamId));
 
-  // Case A: Session does not exist in mock data
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSession() {
+      if (!isValidUuid(livestreamId)) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        const detail = await getLivestreamDetail(livestreamId);
+        if (!isMounted) return;
+        const mapped = mapBackendLivestreamToFrontend(detail);
+        setSession(mapped);
+      } catch (err) {
+        console.warn("[LivestreamReport] Could not load session from API:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [livestreamId]);
+
+  // Loading indicator for remote sessions
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto my-16 p-12 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-medium text-on-surface-variant">Đang nạp báo cáo phiên Livestream...</p>
+      </div>
+    );
+  }
+
+  // Case A: Session does not exist
   if (!session) {
     return (
       <div className="max-w-2xl mx-auto my-12 p-8 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs space-y-4">
@@ -167,7 +236,7 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
   }
 
   // Case E: Session is ENDED -> Fetch and render report
-  const reportData = getLivestreamReport(livestreamId);
+  const reportData = getLivestreamReport(livestreamId, session || undefined);
 
   if (!reportData) {
     return (

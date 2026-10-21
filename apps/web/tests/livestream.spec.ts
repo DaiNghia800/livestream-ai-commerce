@@ -238,9 +238,11 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/livestream/LIVE-2025-08/studio");
 
-  // On mobile devices, switch to sources/tools tab to view device selects in sidebar
+  // Left sidebar is closed by default: on mobile switch tab, on desktop click toggle button
   if (testInfo.project.name === "mobile") {
     await page.getByRole("button", { name: /Nguồn phát/ }).click();
+  } else {
+    await page.getByLabel("Đóng mở thanh công cụ trái").click();
   }
 
   // 1. Verify device controls (camera & mic selects in sidebar) are present and compact
@@ -281,12 +283,12 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
     await ratio169.click();
     await expect(ratio169).toHaveClass(/text-cyan-300/);
 
-    // 4. Test Left sidebar collapse via keyboard shortcut '['
-    await page.keyboard.press("[");
+    // 4. Test Left sidebar collapse via button
+    await page.getByLabel("Đóng mở thanh công cụ trái").click();
     await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
 
-    // Re-open via keyboard shortcut '['
-    await page.keyboard.press("[");
+    // Re-open via button
+    await page.getByLabel("Đóng mở thanh công cụ trái").click();
     await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
   }
 
@@ -322,6 +324,56 @@ test("studio chat panel supports viewing messages and sending a chat message", a
   await expect(
     page.getByText("Chào mừng các bạn đến với phiên livestream hôm nay!").first(),
   ).toBeVisible();
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("live monitoring page renders session header, telemetry, and panels", async ({
+  page,
+}, testInfo) => {
+  const consoleErrors = collectConsoleErrors(page);
+  await page.goto("/shop/livestream/LIVE-2025-08/monitoring");
+
+  // Verify header and title
+  await expect(page.getByText("Đại tiệc Flash Sale BST Linen Hè 2025").first()).toBeVisible();
+  if (testInfo.project.name !== "mobile") {
+    await expect(page.getByText("ĐANG PHÁT TRỰC TIẾP").first()).toBeVisible();
+  }
+
+  // Verify sections (on mobile, tabs switch between Chat and Products)
+  if (testInfo.project.name === "mobile") {
+    await expect(
+      page.locator(".lg\\:hidden").getByText("Nguyễn Thu Thảo"),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Sản phẩm" }).click();
+    await expect(
+      page.locator(".lg\\:hidden").getByText("AO01").first(),
+    ).toBeVisible();
+  } else {
+    await expect(
+      page.locator(".lg\\:grid").getByText("AO01").first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".lg\\:grid").getByText("Nguyễn Thu Thảo"),
+    ).toBeVisible();
+    await expect(page.getByText("Chỉ số thời gian thực").first()).toBeVisible();
+  }
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("livestream report page renders kpi summary, products, and order status", async ({
+  page,
+}) => {
+  const consoleErrors = collectConsoleErrors(page);
+  await page.goto("/shop/livestream/LIVE-2025-07/report");
+
+  // Verify header
+  await expect(page.getByText("Báo cáo tổng kết").first()).toBeVisible();
+
+  // Verify KPI section
+  await expect(page.getByText("Lượt xem tích lũy")).toBeVisible();
+  await expect(page.getByText("Đơn đã xác nhận").first()).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
 });

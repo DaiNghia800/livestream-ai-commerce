@@ -139,6 +139,15 @@ export class IvsChatService implements IIvsChatService {
       if (awsErr?.name === "ResourceNotFoundException") {
         return null;
       }
+      if (awsErr?.name === "AccessDeniedException") {
+        // Tài khoản IAM không có quyền ivschat:GetRoom.
+        // Fallback an toàn: Trích xuất roomId từ roomArn để sử dụng mà không làm gián đoạn việc cấp token
+        const roomId = roomArn.split("/").pop() || "chat-room";
+        return {
+          roomArn,
+          roomId,
+        };
+      }
       console.warn("[IvsChatService] Error getting chat room:", err);
       return null;
     }
@@ -226,7 +235,18 @@ export class IvsChatService implements IIvsChatService {
       });
       await this.client.send(command);
       return true;
-    } catch (err) {
+    } catch (err: unknown) {
+      // Idempotency: If the chat room is already deleted or not found on AWS, treat as success
+      if (
+        err instanceof Error &&
+        (err.name === "ResourceNotFoundException" ||
+          (err as any).Code === "ResourceNotFoundException" ||
+          err.message.includes("ResourceNotFound") ||
+          err.message.includes("not found"))
+      ) {
+        return true;
+      }
+
       console.warn("[IvsChatService] Error deleting chat room:", err);
       return false;
     }
