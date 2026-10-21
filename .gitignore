@@ -32,6 +32,7 @@ Thumbs.db
 next-env.d.ts
 
 docs/design/draft-order-reservation/templates/
+docs/test
 
 # Editor
 .vscode/

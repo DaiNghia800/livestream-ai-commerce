@@ -6,10 +6,13 @@ async function bootstrapAdmin(): Promise<void> {
   const fullName = process.env.ADMIN_BOOTSTRAP_FULL_NAME?.trim();
   const password = process.env.ADMIN_BOOTSTRAP_PASSWORD;
 
-  if (!email || !fullName || !password) {
-    throw new Error(
-      "Set ADMIN_BOOTSTRAP_EMAIL, ADMIN_BOOTSTRAP_FULL_NAME, and ADMIN_BOOTSTRAP_PASSWORD before bootstrapping."
-    );
+  const missing = [
+    ["ADMIN_BOOTSTRAP_EMAIL", email],
+    ["ADMIN_BOOTSTRAP_FULL_NAME", fullName],
+    ["ADMIN_BOOTSTRAP_PASSWORD", password],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) {
+    throw new Error(`Set ${missing.join(", ")} before bootstrapping.`);
   }
   if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("ADMIN_BOOTSTRAP_EMAIL must be a valid email address.");
