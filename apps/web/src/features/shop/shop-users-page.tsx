@@ -54,6 +54,10 @@ export function ShopUsersPage() {
 
   useEffect(() => {
     async function loadUsers() {
+      if (localStorage.getItem("user_role") !== "admin") {
+        router.replace(localStorage.getItem("user_role") === "shop_owner" ? "/shop" : "/admin");
+        return;
+      }
       const token = localStorage.getItem("admin_access_token");
       if (!token) {
         router.replace("/admin");
