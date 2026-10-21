@@ -208,6 +208,18 @@ export class LivestreamService {
           title: activeLive.title,
         });
       }
+
+      // Tự động cấp phát IVS Channel & Playback URL nếu phiên live chưa có luồng phát sóng
+      if (!existing.channelArn && this.ivsService) {
+        try {
+          await this.getOrCreateIvsStreamConfig(id);
+        } catch (ivsErr) {
+          console.warn(
+            `[LivestreamService] Auto-provisioning IVS channel failed for live session ${id}:`,
+            ivsErr
+          );
+        }
+      }
     }
 
     let updated = await this.repository.updateStatus(id, status);

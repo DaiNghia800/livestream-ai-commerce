@@ -55,9 +55,34 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Redis — In-Memory Cache cho phòng Live & Khung Chat ──────
+  redis:
+    image: redis:7-alpine
+    container_name: liveorder-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: liveorder-redis-insight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+
 # ── Named Volumes ───────────────────────────────────────────
 volumes:
   postgres_data:
     driver: local
   pgadmin_data:
+    driver: local
+  redis_data:
     driver: local
