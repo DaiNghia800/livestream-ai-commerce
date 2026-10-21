@@ -7,6 +7,9 @@ import {
 } from "./modules/login/repositories/auth.repository.js";
 import { createAuthRouter } from "./modules/login/routes/auth.routes.js";
 import { createAdminUserRouter } from "./modules/login/routes/admin-user.routes.js";
+import { createAddressBookRouter } from "./modules/address-book/routes/address-book.routes.js";
+import { createProfileRouter } from "./modules/profile/routes/profile.routes.js";
+import { createCustomerIdentityRouter } from "./modules/profile/routes/customer-identity.routes.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
@@ -116,6 +119,10 @@ export function createApp(
   const authRepository = customAuthRepository ?? new PostgresAuthRepository();
   apiRouter.use("/auth", createAuthRouter(authRepository));
   apiRouter.use("/admin", createAdminUserRouter(authRepository));
+  // Sổ địa chỉ của chính người đăng nhập; id lấy từ token, không từ URL.
+  apiRouter.use("/me/addresses", createAddressBookRouter(authRepository));
+  apiRouter.use("/me/profile", createProfileRouter(authRepository));
+  apiRouter.use("/me/customer-ids", createCustomerIdentityRouter(authRepository));
   apiRouter.use(
     "/livestreams",
     createLivestreamRouter(

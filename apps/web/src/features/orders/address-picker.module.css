@@ -1,0 +1,8 @@
+/* Popup chọn địa danh — chuyển nguyên từ trang xác nhận sang đây để
+   sổ địa chỉ dùng chung. */
+.picker { display: grid; gap: 12px; min-width: min(100%, 360px); }
+.picker input { width: 100%; padding: 10px 12px; border: 1px solid var(--color-outline); border-radius: 8px; background: var(--color-surface); color: var(--color-on-surface); }
+.pickerList { display: grid; max-height: min(55vh, 400px); overflow-y: auto; border: 1px solid var(--color-outline-variant); border-radius: 8px; }
+.pickerList button { padding: 11px 12px; border: 0; border-bottom: 1px solid var(--color-outline-variant); background: var(--color-surface); color: var(--color-on-surface); text-align: left; cursor: pointer; }
+.pickerList button:last-child { border-bottom: 0; }
+.pickerList button:hover, .pickerList button:focus-visible { background: var(--color-surface-container); }
