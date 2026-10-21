@@ -1,6 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+import ExcelJS from "exceljs";
 import {
   ORDER_DETAIL,
+  SHIP_CHO_LAY,
   SHIP_DETAIL,
   SHIP_TU_GIAO,
   TRACKING_CHUA_CO_MA,
@@ -25,6 +27,16 @@ test("danh sách vận đơn hiện đủ thông tin shop cần nhìn lướt", 
   await page.goto("/shop/shipping");
 
   await expect(page.getByRole("heading", { name: "Vận chuyển" })).toBeVisible();
+  // Mục menu phải là LINK đang active, không phải nút "Sắp có" bị khoá.
+  // Trên máy nhỏ sidebar nằm sau nút mở menu.
+  if (test.info().project.name === "mobile") {
+    await page.getByRole("button", { name: "Mở menu quản lý" }).click();
+  }
+  const mucMenu = page
+    .getByRole("navigation", { name: "Điều hướng chủ shop" })
+    .getByRole("link", { name: "Vận chuyển" });
+  await expect(mucMenu).toHaveAttribute("href", "/shop/shipping");
+  await expect(mucMenu).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "GHN7728491" })).toBeVisible();
   await expect(page.getByText("Giao Hàng Nhanh").first()).toBeVisible();
 
@@ -72,6 +84,70 @@ test("tìm được bằng cả mã vận đơn lẫn tên khách", async ({ pag
   await page.getByPlaceholder(/Tìm mã vận đơn/).fill("8892100");
   await expect(page.getByRole("link", { name: "GHN8892100" })).toBeVisible();
   await expect(page.getByRole("link", { name: "GHN7728491" })).toBeHidden();
+});
+
+test("lọc kết hợp trạng thái và hãng, rồi đặt lại", async ({ page }) => {
+  await stubApi(page);
+  await page.goto("/shop/shipping");
+
+  await page.getByRole("button", { name: /^Bộ lọc/ }).click();
+  await page.getByRole("button", { name: "Giá trị cho Trạng thái" }).click();
+  await page.getByRole("option", { name: "Chờ lấy hàng" }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /^Bộ lọc/ }).click();
+  await page.getByRole("button", { name: "Giá trị cho Đơn vị vận chuyển" }).click();
+  await page.getByRole("option", { name: "Giao Hàng Nhanh" }).click();
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByRole("link", { name: "GHN7728491" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "SELF1A2B3C4D" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "GHN8892100" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^Bộ lọc/ }).click();
+  await page.getByRole("button", { name: "Đặt lại" }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(4);
+});
+
+test("sắp xếp, chọn tối đa 100 dòng mỗi trang và đổi trang", async ({ page }) => {
+  const shipments = Array.from({ length: 25 }, (_, index) => ({
+    ...SHIP_CHO_LAY,
+    id: `ship-bulk-${index}`,
+    trackingCode: `SHIP-${String(index).padStart(2, "0")}`,
+    codAmount: String(100000 + index * 1000),
+  }));
+  await stubApi(page, { shipments });
+  await page.goto("/shop/shipping");
+
+  await expect(page.locator("tbody tr")).toHaveCount(20);
+  await page.getByRole("button", { name: "Trang sau" }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await page.getByLabel("Số dòng mỗi trang").selectOption("10");
+  await expect(page.getByText(/Hiện 1–10 trong/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Sắp xếp danh sách" }).click();
+  await page.getByRole("menuitem", { name: "Thu hộ cao → thấp" }).click();
+  await expect(page.locator("tbody tr").first()).toContainText("SHIP-24");
+  await page.getByLabel("Số dòng mỗi trang").selectOption("100");
+  await expect(page.locator("tbody tr")).toHaveCount(25);
+});
+
+test("xuất Excel vận đơn giữ tên khách, tiền COD và cột đủ rộng", async ({ page }) => {
+  await stubApi(page);
+  await page.goto("/shop/shipping");
+  await page.getByPlaceholder(/Tìm mã vận đơn/).fill(SHIP_CHO_LAY.trackingCode);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Xuất Excel/ }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^van-don-\d{8}-\d{4}\.xlsx$/);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
+  const sheet = workbook.worksheets[0];
+  expect(sheet.rowCount).toBe(2);
+  expect(sheet.getRow(2).getCell(1).value).toBe(SHIP_CHO_LAY.trackingCode);
+  expect(sheet.getRow(2).getCell(3).value).toBe(SHIP_CHO_LAY.recipientName);
+  expect(sheet.getRow(2).getCell(6).value).toBe(598000);
+  expect(sheet.getColumn(3).width).toBeGreaterThan(SHIP_CHO_LAY.recipientName.length);
 });
 
 // ── Màn chi tiết ───────────────────────────────────────────────────
