@@ -72,6 +72,9 @@ export interface BankTransferParams {
   providerTxnId: string;
   amount: string;
   rawPayload?: unknown;
+  /** Only verified provider adapters set these merchant-scoping checks. */
+  expectedMerchantId?: string;
+  expectedPaymentProvider?: string;
 }
 
 export class PaymentService {
@@ -170,6 +173,17 @@ export class PaymentService {
       // tiền đã vào tài khoản thật, phải có người biết để xử lý.
       if (!payment) {
         throw new UnknownTransferError(params.txnRef, params.amount);
+      }
+
+      if (params.expectedMerchantId) {
+        const owner = await client.query<{ merchant_id: string }>(
+          "SELECT merchant_id FROM orders WHERE id = $1",
+          [payment.orderId],
+        );
+        if (owner.rows[0]?.merchant_id !== params.expectedMerchantId ||
+            payment.provider && payment.provider !== params.expectedPaymentProvider) {
+          throw new UnknownTransferError(params.txnRef, params.amount);
+        }
       }
 
       const laMoi = await insertTransaction(client, {

@@ -140,3 +140,21 @@ export function assertSandbox(url: string, gateway: string): void {
     );
   }
 }
+
+/**
+ * Đưa địa chỉ IP về dạng IPv4 mà cổng thanh toán chấp nhận.
+ *
+ * Node trả `::1` cho localhost và `::ffff:1.2.3.4` cho IPv4 đi qua
+ * tầng IPv6 — cả hai đều là IPv6 hợp lệ, nhưng VNPay đưa IP vào chữ
+ * ký và chỉ nhận IPv4. Gửi `::1` thì giao dịch bị từ chối mà thông
+ * báo không hề nhắc tới IP, nên rất khó lần ra.
+ */
+export function chuanHoaIp(ip: string | undefined | null): string {
+  if (!ip) return "127.0.0.1";
+  const s = ip.trim();
+  if (s === "::1" || s === "::") return "127.0.0.1";
+  // Dạng ánh xạ IPv4: ::ffff:203.0.113.5
+  const anhXa = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(s);
+  if (anhXa) return anhXa[1];
+  return s;
+}

@@ -2,16 +2,28 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { pool as defaultPool } from "../../../shared/database/database.js";
 import { PaymentController } from "../controllers/payment.controller.js";
+import { CustomerBankTransferController } from "../controllers/customer-bank-transfer.controller.js";
 import { PaymentService } from "../services/payment.service.js";
+import { CustomerBankTransferService } from "../services/customer-bank-transfer.service.js";
 
 export function createPaymentRouter(customPool?: Pool): Router {
   const router = Router();
-  const controller = new PaymentController(
-    new PaymentService(customPool ?? defaultPool)
+  const pool = customPool ?? defaultPool;
+  const paymentService = new PaymentService(pool);
+  const controller = new PaymentController(paymentService);
+  const customer = new CustomerBankTransferController(
+    new CustomerBankTransferService(pool, paymentService),
+    paymentService,
   );
 
   // Ngân hàng chuyển khoản tay gọi vào.
   router.post("/bank-webhook", controller.bankWebhook);
+  router.post("/sepay-test-webhook", customer.sepayTestWebhook);
+  router.get("/customer/confirm/:token", customer.get);
+  router.post("/customer/confirm/:token", customer.create);
+  router.get("/customer/confirm/:token/status", customer.status);
+  router.get("/customer/confirm/:token/gateways", customer.gateways);
+  router.post("/customer/confirm/:token/checkout", customer.checkout);
 
   // Cổng thanh toán điện tử, toàn bộ sandbox.
   //

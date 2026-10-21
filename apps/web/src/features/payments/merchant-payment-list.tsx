@@ -1,16 +1,26 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Eye } from "lucide-react";
+import { Building2, CircleDollarSign, CreditCard, Download, Eye, ListFilter, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
-import { formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
+import { downloadXlsx } from "@/lib/export-xlsx";
 import { paymentsApi, type Payment } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import zebra from "@/styles/zebra-table.module.css";
+import {
+  CommerceListToolbar,
+  CommercePager,
+  defaultFilterRows,
+  matchesFilters,
+  type ListFilterField,
+  type ListFilterRow,
+  type MatchMode,
+  type SortOption,
+} from "@/features/shared/commerce-list-controls";
 import {
   gatewayLabels,
   paymentMethods,
@@ -18,25 +28,102 @@ import {
   reconcileLabels,
 } from "@/features/orders/labels";
 
-const statusKeys = Object.keys(paymentStatuses) as (keyof typeof paymentStatuses)[];
+const SORT_OPTIONS = [
+  { key: "newest", label: "Mới nhất trước" },
+  { key: "oldest", label: "Cũ nhất trước" },
+  { key: "amountDesc", label: "Phải thu cao → thấp" },
+  { key: "amountAsc", label: "Phải thu thấp → cao" },
+  { key: "paidDesc", label: "Đã nhận cao → thấp" },
+] as const satisfies SortOption<string>[];
+
+type SortKey = (typeof SORT_OPTIONS)[number]["key"];
+
+const PAYMENT_FIELDS: ListFilterField<Payment>[] = [
+  {
+    key: "status",
+    label: "Trạng thái",
+    icon: ListFilter,
+    kind: "multi",
+    options: Object.entries(paymentStatuses).map(([value, meta]) => ({ value, label: meta.label })),
+    pick: (payment) => payment.status,
+  },
+  {
+    key: "method",
+    label: "Hình thức",
+    icon: CreditCard,
+    kind: "multi",
+    options: Object.entries(paymentMethods).map(([value, label]) => ({ value, label })),
+    pick: (payment) => payment.method,
+  },
+  {
+    key: "reconcile",
+    label: "Đối chiếu",
+    icon: Wallet,
+    kind: "multi",
+    options: Object.entries(reconcileLabels).map(([value, meta]) => ({ value, label: meta.label })),
+    pick: (payment) => payment.reconcile,
+  },
+  {
+    key: "provider",
+    label: "Cổng thanh toán",
+    icon: Building2,
+    kind: "multi",
+    options: [
+      { value: "NONE", label: "Chưa chọn cổng" },
+      ...Object.entries(gatewayLabels).map(([value, label]) => ({ value, label })),
+    ],
+    pick: (payment) => payment.provider ?? "NONE",
+  },
+  {
+    key: "amount",
+    label: "Phải thu",
+    icon: CircleDollarSign,
+    kind: "range",
+    pick: (payment) => Number(payment.amount),
+  },
+  {
+    key: "paidAmount",
+    label: "Đã nhận",
+    icon: CircleDollarSign,
+    kind: "range",
+    pick: (payment) => Number(payment.paidAmount),
+  },
+];
 
 export function MerchantPaymentList() {
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
+  const [sort, setSort] = useState<SortKey>("newest");
+  const [rows, setRows] = useState<ListFilterRow[]>(() => defaultFilterRows(["status", "method"]));
+  const [mode, setMode] = useState<MatchMode>("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data, loading, error, reload } = useApi(
-    () => paymentsApi.list({ status: status === "all" ? undefined : status, limit: 200 }),
-    [status],
+    () => paymentsApi.list({ limit: 200 }),
+    [],
   );
   const payments = useMemo(() => data ?? [], [data]);
 
   const filtered = useMemo(() => {
     const key = query.toLocaleLowerCase("vi").trim();
-    if (!key) return payments;
-    return payments.filter((p) =>
-      `${p.txnRef ?? ""} ${p.orderCode ?? ""}`.toLocaleLowerCase("vi").includes(key),
-    );
-  }, [payments, query]);
+    const result = payments.filter((payment) => {
+      const text = `${payment.txnRef ?? ""} ${payment.orderCode ?? ""}`;
+      return (!key || text.toLocaleLowerCase("vi").includes(key))
+        && matchesFilters(payment, rows, mode, PAYMENT_FIELDS);
+    });
+    return [...result].sort((a, b) => {
+      switch (sort) {
+        case "oldest": return a.createdAt.localeCompare(b.createdAt);
+        case "amountDesc": return Number(b.amount) - Number(a.amount);
+        case "amountAsc": return Number(a.amount) - Number(b.amount);
+        case "paidDesc": return Number(b.paidAmount) - Number(a.paidAmount);
+        default: return b.createdAt.localeCompare(a.createdAt);
+      }
+    });
+  }, [payments, query, rows, mode, sort]);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Hai con số shop thật sự cần nhìn mỗi sáng: tiền đã về, và những
   // khoản đang lệch cần người xử lý.
@@ -54,6 +141,29 @@ export function MerchantPaymentList() {
   );
   const choThu = payments.filter((p) => p.status === "PENDING");
 
+  async function xuatExcel() {
+    setExportError(null);
+    try {
+      await downloadXlsx("thanh-toan", "Thanh toán", filtered, [
+        { header: "Nội dung chuyển khoản", value: (p) => p.txnRef ?? "", minWidth: 24 },
+        { header: "Mã đơn", value: (p) => p.orderCode ?? "" },
+        { header: "Hình thức", value: (p) => paymentMethods[p.method] ?? p.method },
+        { header: "Cổng thanh toán", value: (p) => p.provider ? gatewayLabels[p.provider] ?? p.provider : "" },
+        { header: "Trạng thái", value: (p) => paymentStatuses[p.status]?.label ?? p.status },
+        { header: "Đối chiếu", value: (p) => reconcileLabels[p.reconcile]?.label ?? p.reconcile },
+        { header: "Phải thu (₫)", value: (p) => p.amount, kind: "money" },
+        { header: "Đã nhận (₫)", value: (p) => p.paidAmount, kind: "money" },
+        { header: "Đã hoàn (₫)", value: (p) => p.refundAmount, kind: "money" },
+        { header: "Tạo lúc", value: (p) => formatDateTime(p.createdAt), minWidth: 20 },
+        { header: "Thu đủ lúc", value: (p) => p.paidAt ? formatDateTime(p.paidAt) : "", minWidth: 20 },
+        { header: "Hoàn lúc", value: (p) => p.refundedAt ? formatDateTime(p.refundedAt) : "", minWidth: 20 },
+        { header: "Lý do thất bại", value: (p) => p.failureReason ?? "" },
+      ]);
+    } catch {
+      setExportError("Không tạo được tệp Excel. Vui lòng thử lại.");
+    }
+  }
+
   return (
     <>
       <div className="page-head">
@@ -66,14 +176,15 @@ export function MerchantPaymentList() {
           </p>
         </div>
         <div className="head-actions">
-          <Button variant="secondary" disabled title="Xuất đối soát chưa khả dụng">
-            <Download size={17} aria-hidden="true" /> Xuất đối soát · Sắp có
+          <Button variant="secondary" onClick={xuatExcel} disabled={!filtered.length}>
+            <Download size={17} aria-hidden="true" /> Xuất Excel ({filtered.length})
           </Button>
           <Button variant="secondary" onClick={reload}>
             Làm mới
           </Button>
         </div>
       </div>
+      {exportError && <p role="alert">{exportError}</p>}
 
       <div className="metric-grid">
         <Card>
@@ -94,7 +205,7 @@ export function MerchantPaymentList() {
         <Card>
           <h2 className="muted">Tổng khoản thu</h2>
           <strong className="metric-value">{payments.length}</strong>
-          <p className="metric-note">Theo bộ lọc hiện tại</p>
+          <p className="metric-note">Trong tối đa 200 khoản thu đã tải</p>
         </Card>
       </div>
 
@@ -112,40 +223,26 @@ export function MerchantPaymentList() {
         <div className="section-heading">
           <div>
             <h2>Danh sách khoản thu</h2>
-            <p className="muted">Dữ liệu trực tiếp từ dịch vụ thanh toán.</p>
+            <p className="muted">Tìm và lọc trong tối đa 200 khoản thu gần nhất đã tải.</p>
           </div>
         </div>
 
-        <div className="filters">
-          <Input
-            label="Tìm giao dịch"
-            placeholder="Nội dung chuyển khoản hoặc mã đơn…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-
-        <div className="chip-row" role="group" aria-label="Lọc theo trạng thái">
-          <button
-            className="chip"
-            type="button"
-            aria-pressed={status === "all"}
-            onClick={() => setStatus("all")}
-          >
-            Tất cả
-          </button>
-          {statusKeys.map((key) => (
-            <button
-              className="chip"
-              key={key}
-              type="button"
-              aria-pressed={status === key}
-              onClick={() => setStatus(key)}
-            >
-              {paymentStatuses[key].label}
-            </button>
-          ))}
-        </div>
+        <CommerceListToolbar
+          query={query}
+          onQueryChange={(value) => { setQuery(value); setPage(1); }}
+          searchLabel="Tìm giao dịch"
+          placeholder="Tìm theo nội dung chuyển khoản hoặc mã đơn…"
+          sort={sort}
+          sortOptions={SORT_OPTIONS}
+          onSortChange={(value) => { setSort(value); setPage(1); }}
+          fields={PAYMENT_FIELDS}
+          rows={rows}
+          mode={mode}
+          onRowsChange={(value) => { setRows(value); setPage(1); }}
+          onModeChange={(value) => { setMode(value); setPage(1); }}
+          resultCount={filtered.length}
+          itemLabel="khoản thu"
+        />
 
         {loading ? (
           <LoadingState />
@@ -174,7 +271,7 @@ export function MerchantPaymentList() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((payment) => (
+                {visible.map((payment) => (
                   <PaymentRow key={payment.id} payment={payment} />
                 ))}
               </tbody>
@@ -182,8 +279,18 @@ export function MerchantPaymentList() {
           </div>
         ) : (
           <EmptyState
-            title="Chưa có khoản thu nào"
-            description="Khoản thu được tạo sau khi khách xác nhận đơn."
+            title={payments.length ? "Không có khoản thu khớp" : "Chưa có khoản thu nào"}
+            description={payments.length ? "Thử đổi từ khóa hoặc đặt lại bộ lọc." : "Khoản thu được tạo sau khi khách xác nhận đơn."}
+          />
+        )}
+        {!loading && !error && filtered.length > 0 && (
+          <CommercePager
+            page={currentPage}
+            pageSize={pageSize}
+            total={filtered.length}
+            itemLabel="khoản thu"
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
           />
         )}
       </Card>
