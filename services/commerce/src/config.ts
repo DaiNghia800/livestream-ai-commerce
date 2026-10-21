@@ -18,11 +18,10 @@ export interface AppConfig {
   s3BucketName?: string;
   s3MediaBucketName?: string;
   sqsQueueUrl?: string;
+  aiWorkerResultQueueUrl?: string;
   redisUrl: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
-  holdConfirmSeconds: number;
-  holdMaxSeconds: number;
   /** Khoảng cách giữa hai lượt quét đơn hết hạn. */
   expireJobIntervalMs: number;
   /**
@@ -42,7 +41,6 @@ export interface AppConfig {
   /** BẪY-08: từ điểm này trở lên là khách rủi ro cao. */
   riskScoreThreshold: number;
   /** BẪY-08: TTL rút ngắn cho khách rủi ro cao. */
-  holdRiskySeconds: number;
 
   // ── Cổng thanh toán điện tử, TOÀN BỘ là sandbox ─────────────────
   /** Gốc đường dẫn của chính service này, để cổng gọi ngược về. */
@@ -74,6 +72,14 @@ export interface AppConfig {
   allowMockPayment: boolean;
   /** Bí mật chung cho webhook chuyển khoản đã xác minh từ ngân hàng. */
   bankWebhookSecret: string;
+  /** One merchant's isolated SePay Test mode bank account. */
+  customerBankTransfer: {
+    merchantId: string;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+    sepayWebhookSecret: string;
+  };
 
   // ── Vận chuyển — TOÀN BỘ là môi trường thử ──────────────────────
   /** Hãng dùng khi màn hình không nêu rõ. */
@@ -183,12 +189,13 @@ export const config: AppConfig = {
     process.env.S3_BUCKET_NAME ||
     undefined,
   sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
+  aiWorkerResultQueueUrl: process.env.AI_WORKER_RESULT_QUEUE_URL || undefined,
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
-  // 5 phút khi vừa chốt, 15 phút sau khi khách mở link xác nhận,
-  // trần cứng 30 phút để không gia hạn vô hạn.
+  // Đề nghị nằm trong hàng đợi duyệt giữ tồn tối đa chừng này rồi tự
+  // hết hạn. ĐƠN NHÁP thì không giữ tồn và không có hạn: tồn chỉ được
+  // giữ đúng lúc khách bấm xác nhận.
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),
-  holdConfirmSeconds: parseInt(process.env.HOLD_CONFIRM_SECONDS || "900", 10),
-  holdMaxSeconds: parseInt(process.env.HOLD_MAX_SECONDS || "1800", 10),
+  // Khoảng cách giữa hai lượt quét đề nghị quá hạn.
   expireJobIntervalMs: parseInt(process.env.EXPIRE_JOB_INTERVAL_MS || "30000", 10),
   // services/realtime còn rỗng nên mặc định không có URL: publisher
   // chạy ở chế độ ghi log, không sinh ra sự kiện FAILED giả.
@@ -210,9 +217,9 @@ export const config: AppConfig = {
     process.env.MAX_HELD_PER_CUSTOMER_PER_SESSION || "30",
     10
   ),
-  // 0.45 = ba lần chốt rồi bỏ, hoặc một lần nghi gian lận.
+  // 0.45 = một lần shop huỷ vì nghi gian lận (hoặc ba lần bỏ đơn ở
+  // dữ liệu cũ, khi đơn nháp còn hết hạn). Chạm ngưỡng thì chặn COD.
   riskScoreThreshold: parseFloat(process.env.RISK_SCORE_THRESHOLD || "0.45"),
-  holdRiskySeconds: parseInt(process.env.HOLD_RISKY_SECONDS || "180", 10),
 
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:8000",
 
@@ -263,6 +270,13 @@ export const config: AppConfig = {
   allowMockPayment:
     process.env.NODE_ENV !== "production" || process.env.ENABLE_MOCK_PAYMENT === "true",
   bankWebhookSecret: process.env.BANK_WEBHOOK_SECRET || "",
+  customerBankTransfer: {
+    merchantId: process.env.CUSTOMER_BANK_TRANSFER_MERCHANT_ID || "",
+    bankCode: process.env.CUSTOMER_BANK_TRANSFER_BANK_CODE || "",
+    accountNumber: process.env.CUSTOMER_BANK_TRANSFER_ACCOUNT_NUMBER || "",
+    accountName: process.env.CUSTOMER_BANK_TRANSFER_ACCOUNT_NAME || "",
+    sepayWebhookSecret: process.env.SEPAY_TEST_WEBHOOK_SECRET || "",
+  },
 
   // Mặc định là hãng giả chạy ngay trong máy: kéo repo về là chạy
   // được trọn luồng vận chuyển mà không cần đăng ký tài khoản thử ở

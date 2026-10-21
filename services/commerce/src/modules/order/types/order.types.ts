@@ -24,6 +24,12 @@ export interface OrderItem {
   requestedQty: number;
   isPartial: boolean;
   unitPrice: string;
+  /** Phân loại đã chốt, ví dụ "Trắng · M". */
+  variantName?: string | null;
+  /** Ảnh của biến thể, lùi về ảnh sản phẩm khi biến thể chưa có. */
+  imageUrl?: string | null;
+  /** Bình luận gốc đã sinh ra dòng này, nếu đơn đến từ phiên live. */
+  sourceComment?: string | null;
 }
 
 export interface Order {
@@ -42,6 +48,8 @@ export interface Order {
   recipientPhone?: string | null;
   shippingAddress?: string | null;
   addressNormalized?: boolean;
+  /** Tên phiên live đã chốt đơn này. */
+  livestreamTitle?: string | null;
   items: OrderItem[];
 }
 

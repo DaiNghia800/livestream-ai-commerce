@@ -5,14 +5,13 @@
  *   npm run seed:demo    # cửa sổ 2
  *
  * Vì sao cần: phần lớn nghiệp vụ không bấm được từ giao diện. Đơn
- * sinh ra từ bình luận AI, tiền về từ webhook ngân hàng, đơn hết hạn
- * do job nền. Không có script này thì muốn xem màn "khách chuyển
- * thiếu tiền" phải tự gọi curl, và muốn xem đơn hết hạn phải ngồi
- * chờ năm phút.
+ * sinh ra từ bình luận AI, tiền về từ webhook ngân hàng. Không có
+ * script này thì muốn xem màn "khách chuyển thiếu tiền" phải tự gọi
+ * curl.
  *
  * Mọi thứ đi qua HTTP thật, không chèn thẳng vào bảng — trừ ba việc
- * không có API: đặt tồn kho, dựng lịch sử rủi ro khách, và kéo đồng
- * hồ về quá khứ để job quét bắt được.
+ * không có API: đặt tồn kho, dựng lịch sử rủi ro khách, và nới hạn
+ * của đề nghị chờ duyệt để dữ liệu demo sống đủ lâu.
  *
  * Chạy lại được nhiều lần, mỗi lần thêm một lô mới.
  */
@@ -20,7 +19,6 @@
 import crypto from "crypto";
 import { config } from "../src/config.js";
 import { pool } from "../src/shared/database/database.js";
-import { ExpireOrdersJob } from "../src/modules/order/jobs/expire-orders.job.js";
 import { MockGateway } from "../src/modules/payment/gateways/mock.gateway.js";
 
 const BASE = `http://localhost:${config.port}/api`;
@@ -161,36 +159,20 @@ async function congBaoThanhCong(txnRef: string, soTien: string) {
   return post("/payments/mock/ipn", { ...goi, signature: gateway.sign(goi) });
 }
 
-/** Kéo đồng hồ giữ hàng về quá khứ để job quét bắt được ngay. */
-async function dayQuaHan(orderId: string) {
-  await pool.query(
-    `UPDATE orders SET held_until = NOW() - interval '1 minute' WHERE id = $1`,
-    [orderId],
-  );
-}
-
 const ketQua: Array<[string, string]> = [];
 const ghi = (manHinh: string, mo: string) => ketQua.push([manHinh, mo]);
 
 // ── Các kịch bản ────────────────────────────────────────────────────
 
 /**
- * Nới hạn giữ hàng cho dữ liệu demo sống đủ lâu để test tay.
+ * Nới hạn của đề nghị chờ duyệt cho dữ liệu demo sống đủ lâu để test
+ * tay. TTL thật là 5 phút, job nền chạy mỗi 30 giây; để nguyên thì mở
+ * trình duyệt ra là hàng đợi duyệt đã trống trơn.
  *
- * TTL thật là 5 phút, và job nền chạy mỗi 30 giây. Để nguyên thì mở
- * trình duyệt ra là đơn nháp đã thành HẾT HẠN và hàng đợi duyệt trống
- * trơn — không còn gì để kiểm.
+ * Đơn nháp thì không cần: chúng không giữ tồn và không có hạn.
  *
  * CHỈ dùng cho dữ liệu demo. Không đụng tới logic TTL thật.
  */
-async function giuLau(orderId: string, phut = 120) {
-  await pool.query(
-    `UPDATE orders SET held_until = NOW() + make_interval(mins => $2)
-      WHERE id = $1 AND status IN ('DRAFT', 'PENDING_CONFIRMATION')`,
-    [orderId, phut],
-  );
-}
-
 async function giuLauDeNghi(phut = 120) {
   await pool.query(
     `UPDATE purchase_requests SET held_until = NOW() + make_interval(mins => $1)
@@ -228,27 +210,15 @@ async function main() {
 
   const phien = await taoPhien("Phiên demo tối nay");
 
-  // 1. Đơn nháp đang chạy đồng hồ giữ hàng.
+  // 1. Đơn nháp — không giữ tồn, không có hạn, để bao lâu cũng được.
   const sku1 = await taoSku(20);
   const d1 = await chotDon({ skuId: sku1.id, soLuong: 2, phien });
-  await giuLau(d1.id);
-  ghi("Đơn hàng", `${d1.orderCode} · NHÁP, đang đếm ngược giữ hàng`);
-
-  // 1b. Đơn sắp hết hạn — để xem đồng hồ đổi màu khi còn dưới 60 giây.
-  // Đơn này SẼ hết hạn thật sau khoảng một phút, đó là chủ đích.
-  const sku1b = await taoSku(20);
-  const d1b = await chotDon({ skuId: sku1b.id, soLuong: 1, phien });
-  await pool.query(
-    `UPDATE orders SET held_until = NOW() + interval '50 seconds' WHERE id = $1`,
-    [d1b.id],
-  );
-  ghi("Đơn hàng", `${d1b.orderCode} · NHÁP, còn ~50 giây — xem đồng hồ chuyển đỏ`);
+  ghi("Đơn hàng", `${d1.orderCode} · NHÁP, chưa giữ tồn, chờ khách xác nhận`);
 
   // 2. Khách đã mở link xác nhận nhưng chưa điền địa chỉ.
   const sku2 = await taoSku(20);
   const d2 = await chotDon({ skuId: sku2.id, soLuong: 1, phien });
   await call(`/orders/confirm/${d2.confirmToken}`);
-  await giuLau(d2.id);
   ghi("Đơn hàng", `${d2.orderCode} · CHỜ XÁC NHẬN, khách đã mở link`);
 
   // 3. Đã xác nhận, chưa tạo khoản thu — màn chi tiết mời chọn hình thức.
@@ -334,18 +304,20 @@ async function main() {
   await post(`/orders/${d12.id}/cancel`, { reason: "WRONG_ADDRESS" });
   ghi("Đơn hàng", `${d12.orderCode} · ĐÃ HUỶ, đã trả 4 sản phẩm về kho`);
 
-  // 13. Đơn hết hạn giữ hàng.
-  const sku13 = await taoSku(20);
-  const d13 = await chotDon({ skuId: sku13.id, soLuong: 2, phien });
-  await dayQuaHan(d13.id);
-  await new ExpireOrdersJob(pool).runOnce();
-  ghi("Đơn hàng", `${d13.orderCode} · HẾT HẠN GIỮ, job nền đã trả tồn`);
+  // 13. Hết hàng ĐÚNG LÚC xác nhận: hai khách cùng chốt món cuối, người
+  // bấm sau nhận 409 OutOfStock và đơn vẫn là nháp.
+  const sku13 = await taoSku(1);
+  const d13a = await chotDon({ skuId: sku13.id, soLuong: 1, phien });
+  const d13b = await chotDon({ skuId: sku13.id, soLuong: 1, phien });
+  await khachXacNhan(d13a);
+  ghi("Đơn hàng", `${d13a.orderCode} · ĐÃ XÁC NHẬN, giữ được món cuối`);
+  ghi("Đơn hàng", `${d13b.orderCode} · NHÁP, mở link xác nhận sẽ thấy "hết hàng" (409)`);
 
-  // 14. Giữ ĐƯỢC MỘT PHẦN — BẪY-06.
+  // 14. Lúc chốt chỉ còn một phần — BẪY-06.
   const sku14 = await taoSku(3);
   const d14 = await chotDon({ skuId: sku14.id, soLuong: 5, phien });
   await khachXacNhan(d14);
-  ghi("Đơn hàng", `${d14.orderCode} · chỉ giữ được 3/5, dòng hàng có cờ thiếu`);
+  ghi("Đơn hàng", `${d14.orderCode} · lúc chốt chỉ còn 3/5, dòng hàng có cờ thiếu`);
 
   // 15. Khách có lịch sử bom hàng — BẪY-08, không cho COD.
   const khachXau = crypto.randomUUID();
@@ -365,7 +337,6 @@ async function main() {
   const skuB = await taoSku(20);
   const gop1 = await chotDon({ skuId: skuA.id, soLuong: 2, khach: khachGop, phien });
   const gop2 = await chotDon({ skuId: skuB.id, soLuong: 1, khach: khachGop, phien });
-  await giuLau(gop2.id);
   ghi(
     "Đơn hàng",
     `${gop2.orderCode} · GỘP ĐƠN: hai lần chốt ra ${gop1.orderCode === gop2.orderCode ? "MỘT" : "HAI"} đơn, ${gop2.items.length} dòng hàng`,

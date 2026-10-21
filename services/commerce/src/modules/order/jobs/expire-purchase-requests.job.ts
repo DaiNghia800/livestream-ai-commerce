@@ -6,7 +6,7 @@
  * giam sạch kho — và đây là kịch bản RẤT dễ xảy ra, vì nhân viên bận
  * nhất đúng lúc live đông nhất.
  *
- * Cùng khuôn với ExpireOrdersJob: `FOR UPDATE SKIP LOCKED` để nhiều
+ * Khuôn job nền chạy được nhiều bản: `FOR UPDATE SKIP LOCKED` để nhiều
  * worker chạy song song, mỗi đề nghị một transaction riêng, và điều
  * kiện trạng thái nằm ngay trong câu UPDATE mới là thứ bảo đảm đúng
  * đắn — SKIP LOCKED chỉ là tối ưu.

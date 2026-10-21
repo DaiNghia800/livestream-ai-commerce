@@ -425,7 +425,45 @@ describe("Goship — webhook có chữ ký", () => {
 });
 
 describe("Goship — tra cứu", () => {
-  it("đọc được trạng thái hiện tại", async () => {
+  it("tìm theo mã Goship và đọc các mốc lịch sử", async () => {
+    const goi = vi.fn(async (url: string, options?: { method?: string }) => {
+      if (url.endsWith("/login")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: "t", expires_in: 999 }),
+        };
+      }
+      expect(url).toBe(`${GOSHIP.baseUrl}/shipments/search?code=GS1`);
+      expect(options?.method).toBe("GET");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: 200,
+          data: [
+            { id: "GS-OTHER", history: [{ status: 905, updated_time: 1760000000 }] },
+            {
+              id: "GS1",
+              status_code: 904,
+              history: [
+                { status: 903, status_text: "Đã lấy hàng", updated_time: 1759990000 },
+                { status: 904, status_text: "Đang giao hàng", status_desc: "Shipper đang giao", updated_time: 1760000000 },
+              ],
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", goi);
+
+    const moc = await new GoshipCarrier(GOSHIP).getTracking("GS1");
+    expect(moc.map((m) => m.mappedStatus)).toEqual(["PICKED_UP", "OUT_FOR_DELIVERY"]);
+    expect(moc[1].description).toBe("Shipper đang giao");
+    expect(moc[1].occurredAt).toEqual(new Date(1760000000 * 1000));
+  });
+
+  it("mã tra cứu được URL encode", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -436,22 +474,19 @@ describe("Goship — tra cứu", () => {
             json: async () => ({ access_token: "t", expires_in: 999 }),
           };
         }
+        expect(url).toBe(`${GOSHIP.baseUrl}/shipments/search?code=GS%2F1`);
         return {
           ok: true,
           status: 200,
           json: async () => ({
             code: 200,
-            data: {
-              status: 904,
-              status_text: "Đang giao hàng",
-              update_time: 1760000000,
-            },
+            data: [{ id: "GS/1", history: [{ status: 904, status_text: "Đang giao hàng", updated_time: 1760000000 }] }],
           }),
         };
       }),
     );
 
-    const moc = await new GoshipCarrier(GOSHIP).getTracking("GS1");
+    const moc = await new GoshipCarrier(GOSHIP).getTracking("GS/1");
     expect(moc[0].mappedStatus).toBe("OUT_FOR_DELIVERY");
     expect(moc[0].description).toBe("Đang giao hàng");
   });
@@ -467,7 +502,7 @@ describe("Goship — tra cứu", () => {
             json: async () => ({ access_token: "t", expires_in: 999 }),
           };
         }
-        return { ok: true, status: 200, json: async () => ({ code: 200, data: {} }) };
+        return { ok: true, status: 200, json: async () => ({ code: 200, data: [] }) };
       }),
     );
     await expect(new GoshipCarrier(GOSHIP).getTracking("GS1")).resolves.toEqual(
@@ -480,9 +515,10 @@ describe("Goship — những nhánh ít đi tới", () => {
   it("huỷ vận đơn gọi đúng đường dẫn", async () => {
     const goi = giaLapGoship();
     await new GoshipCarrier(GOSHIP).cancelShipment("GS1");
-    expect(
-      goi.mock.calls.some((c) => String(c[0]).endsWith("/shipments/GS1/cancel")),
-    ).toBe(true);
+    expect(goi.mock.calls.some((c) =>
+      String(c[0]).endsWith("/shipments/GS1") &&
+      (c[1] as { method?: string }).method === "DELETE"
+    )).toBe(true);
   });
 
   it("tạo đơn theo hãng được chỉ định", async () => {

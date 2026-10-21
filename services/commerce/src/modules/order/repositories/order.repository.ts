@@ -4,6 +4,11 @@
  * Giống inventory.repository: nhận `PoolClient`, không hàm nào tự COMMIT.
  */
 
+import {
+  SQL_DIA_CHI_GIAO,
+  SQL_SDT_NGUOI_NHAN,
+  SQL_TEN_NGUOI_NHAN,
+} from "../../shipping/repositories/shipment.repository.js";
 import crypto from "crypto";
 import type { PoolClient } from "pg";
 import type { Order, OrderSource } from "../types/order.types.js";
@@ -14,7 +19,6 @@ export interface InsertOrderDto {
   livestreamId: string | null;
   source: OrderSource;
   idempotencyKey: string;
-  holdSeconds: number;
   /** BẪY-08: khách rủi ro cao thì module thanh toán không được cho COD. */
   codBlocked?: boolean;
 }
@@ -152,43 +156,13 @@ export async function findOpenDraftForUpdate(
 }
 
 /**
- * Gia hạn giữ hàng cho cả đơn khi khách chốt thêm mã.
- *
- * Khách vẫn đang mua thì không có lý do gì cắt đồng hồ của những mã đã
- * chốt trước đó. Vẫn chặn trần tính từ lúc tạo đơn.
- *
- * GREATEST bọc ngoài để gia hạn CHỈ ĐẨY TỚI, không bao giờ kéo lùi.
- * Đơn gần chạm trần sẽ cho ra LEAST(...) nhỏ hơn hạn đang có, mà rút
- * ngắn thời gian giữ vì khách mua thêm thì vô lý — và tệ hơn, nó khiến
- * job quét hết hạn nuốt mất đơn ngay sau khi khách vừa chốt thêm.
- */
-export async function refreshDraftHold(
-  client: PoolClient,
-  params: { orderId: string; holdSeconds: number; maxSeconds: number }
-): Promise<void> {
-  await client.query(
-    `UPDATE orders
-        SET held_until = GREATEST(
-                held_until,
-                LEAST(
-                    NOW() + make_interval(secs => $2),
-                    created_at + make_interval(secs => $3)
-                )
-            )
-      WHERE id = $1 AND status = 'DRAFT'`,
-    [params.orderId, params.holdSeconds, params.maxSeconds]
-  );
-}
-
-/**
- * Tạo đơn nháp, sinh mã đơn đọc được và token xác nhận.
+ * Tạo đơn nháp mới, sinh mã đơn đọc được và token xác nhận.
  *
  * Mã đơn dạng LIVE-20261008-a1b2c3: phần ngày để shop đọc trên live,
  * phần đuôi lấy từ chính UUID nên không cần bộ đếm riêng và không bao
  * giờ đụng nhau giữa các request song song.
- */
-/**
- * Tạo đơn nháp mới.
+ *
+ * KHÔNG có hạn giữ: đơn nháp không giữ tồn nên không có gì để hết hạn.
  *
  * `ON CONFLICT DO NOTHING` nhắm vào index riêng phần uq_orders_open_draft:
  * nếu khách đã có đơn nháp đang mở trong phiên này thì KHÔNG tạo thêm,
@@ -200,36 +174,31 @@ export async function refreshDraftHold(
 export async function insertOrder(
   client: PoolClient,
   dto: InsertOrderDto
-): Promise<{ id: string; orderCode: string; heldUntil: string; confirmToken: string } | null> {
+): Promise<{ id: string; orderCode: string; confirmToken: string } | null> {
   const result = await client.query<{
     id: string;
     order_code: string;
-    held_until: string;
     confirm_token: string;
   }>(
     `WITH new_order AS (SELECT gen_random_uuid() AS id)
      INSERT INTO orders (
          id, order_code, customer_id, merchant_id, livestream_id,
-         source, idempotency_key, status, held_until, confirm_token,
-         cod_blocked
+         source, idempotency_key, status, confirm_token, cod_blocked
      )
      SELECT
          id,
          'LIVE-' || to_char(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYYMMDD')
                  || '-' || substring(replace(id::text, '-', '') FROM 1 FOR 6),
-         $1, $2, $3, $4, $5, 'DRAFT',
-         NOW() + make_interval(secs => $6),
-         $7, $8
+         $1, $2, $3, $4, $5, 'DRAFT', $6, $7
      FROM new_order
      ON CONFLICT (livestream_id, customer_id) WHERE status = 'DRAFT' DO NOTHING
-     RETURNING id, order_code, held_until, confirm_token`,
+     RETURNING id, order_code, confirm_token`,
     [
       dto.customerId,
       dto.merchantId,
       dto.livestreamId,
       dto.source,
       dto.idempotencyKey,
-      dto.holdSeconds,
       crypto.randomBytes(32).toString("base64url"),
       dto.codBlocked ?? false,
     ]
@@ -242,7 +211,6 @@ export async function insertOrder(
   return {
     id: row.id,
     orderCode: row.order_code,
-    heldUntil: row.held_until,
     confirmToken: row.confirm_token,
   };
 }
@@ -302,10 +270,12 @@ export async function upsertOrderItem(
 /**
  * Tạo hoặc cộng dồn lượt giữ hàng.
  *
+ * Chỉ được gọi lúc khách XÁC NHẬN đơn — đơn nháp không có lượt giữ.
+ *
  * Index uq_reservations_active_hold chỉ cho phép MỘT lượt giữ HOLDING
- * trên mỗi dòng hàng. Khi gộp đơn, bình luận thứ hai cùng mã sẽ cộng
- * thêm vào dòng cũ, nên ở đây phải cộng vào lượt giữ đang có chứ không
- * được chèn dòng mới — chèn mới là vi phạm index và vỡ transaction.
+ * trên mỗi dòng hàng, nên nếu dòng này đã có lượt giữ đang sống thì
+ * cộng vào chứ không chèn thêm — chèn mới là vi phạm index và vỡ
+ * transaction.
  *
  * Mệnh đề ON CONFLICT phải chép ĐÚNG predicate của index, kể cả vế
  * `order_item_id IS NOT NULL`. Postgres chỉ suy ra được index khi điều
@@ -417,18 +387,15 @@ export async function applyBestPrice(
 }
 
 /**
- * BẪY-10: tìm thứ khách đang giữ trong phiên để huỷ theo ý họ.
+ * BẪY-10: tìm thứ khách đang chốt dở trong phiên để huỷ theo ý họ.
  *
- * Khách gõ "thôi k lấy nữa" thì phải trả tồn NGAY. Thiếu nhánh này,
- * hàng bị giam oan tới hết TTL — 5 phút trong một phiên live là rất
- * nhiều, đủ để mã hot báo hết hàng sai cho người thật sự muốn mua.
+ * Khách gõ "thôi k lấy nữa" thì đóng đơn nháp của họ ngay, và trả tồn
+ * của đề nghị đang chờ duyệt (nhánh duy nhất còn giữ tồn trước khi
+ * xác nhận). Trả cả hai loại: khách không biết bình luận trước của
+ * mình rơi vào nhánh nào, và cũng không cần biết.
  *
- * Trả cả đơn nháp lẫn đề nghị đang chờ duyệt: khách không biết bình
- * luận trước của mình rơi vào nhánh nào, và cũng không cần biết.
- *
- * Chỉ lấy thứ CÒN ĐANG GIỮ TỒN. Đơn đã xác nhận không nằm trong đây —
- * huỷ đơn đã xác nhận là việc của shop, không phải của một câu bình
- * luận mà AI có thể đọc sai.
+ * Chỉ lấy đơn CHƯA xác nhận. Huỷ đơn đã xác nhận là việc của shop,
+ * không phải của một câu bình luận mà AI có thể đọc sai.
  */
 export async function findCancellableInSession(
   client: PoolClient,
@@ -471,12 +438,15 @@ export async function loadOrder(
             o.total_amount  AS "totalAmount",
             o.held_until    AS "heldUntil",
             o.confirm_token AS "confirmToken",
-            o.recipient_name AS "recipientName",
-            o.recipient_phone AS "recipientPhone",
-            o.shipping_address AS "shippingAddress",
+            ${SQL_TEN_NGUOI_NHAN}  AS "recipientName",
+            ${SQL_SDT_NGUOI_NHAN}  AS "recipientPhone",
+            ${SQL_DIA_CHI_GIAO}    AS "shippingAddress",
             (a.normalized_at IS NOT NULL) AS "addressNormalized",
+            l.title         AS "livestreamTitle",
             o.created_at    AS "createdAt"
-       FROM orders o LEFT JOIN addresses a ON a.id = o.address_id
+       FROM orders o
+       LEFT JOIN addresses a   ON a.id = o.address_id
+       LEFT JOIN livestreams l ON l.id = o.livestream_id
       WHERE o.id = $1`,
     [orderId]
   );
@@ -485,14 +455,27 @@ export async function loadOrder(
     `SELECT oi.id,
             oi.sku_id        AS "skuId",
             s.sku_code      AS "skuCode",
+            s.variant_name  AS "variantName",
             p.name          AS "productName",
             quantity,
             requested_qty AS "requestedQty",
             is_partial    AS "isPartial",
-            unit_price    AS "unitPrice"
+            unit_price    AS "unitPrice",
+            -- Ảnh ĐẠI DIỆN của chính biến thể nếu có, không thì lùi
+            -- về ảnh của sản phẩm. Khách chốt "áo trắng size M" mà
+            -- màn xác nhận hiện ảnh áo đen là họ tưởng shop gửi nhầm.
+            (SELECT img.url FROM product_images img
+              WHERE img.sku_id = s.id OR img.product_id = p.id
+              ORDER BY (img.sku_id = s.id) DESC, img.is_primary DESC,
+                       img.sort_order
+              LIMIT 1) AS "imageUrl",
+            -- Bình luận gốc đã sinh ra dòng này. Đây là bằng chứng
+            -- AI đọc đúng ý khách, và là thứ khách nhận ra ngay.
+            c.content AS "sourceComment"
        FROM order_items oi
        JOIN product_skus s ON s.id = oi.sku_id
        JOIN products p ON p.id = s.product_id
+       LEFT JOIN livestream_comments c ON c.id = oi.source_comment_id
       WHERE oi.order_id = $1
       ORDER BY oi.created_at`,
     [orderId]

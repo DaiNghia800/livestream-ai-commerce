@@ -7,18 +7,17 @@
  *   0.5–0.85  vào hàng đợi, NHÂN VIÊN duyệt, VẪN GIỮ TỒN trong lúc chờ
  *   < 0.5     chỉ ghi nhận để dò lại, không giữ tồn
  *
- * Vì sao nhánh giữa vẫn giữ tồn: công bằng với khách. Người bình luận
- * lúc 20:01 không đáng mất hàng vào tay người bình luận lúc 20:03 chỉ
- * vì AI đọc câu của họ khó hơn. Đổi lại phải có TTL — hàng đợi không
- * ai ngó sẽ giam sạch kho.
+ * Vì sao nhánh giữa vẫn giữ tồn: công bằng với khách trong vài phút
+ * nhân viên xem. Người bình luận lúc 20:01 không đáng mất hàng vào tay
+ * người bình luận lúc 20:03 chỉ vì AI đọc câu của họ khó hơn. Đổi lại
+ * phải có TTL — hàng đợi không ai ngó sẽ giam sạch kho.
  *
- * Toàn bộ giá trị của file này nằm ở hàm `approve`: duyệt là CHUYỂN
- * CHỦ SỞ HỮU lượt giữ, tuyệt đối không trả tồn rồi giữ lại.
+ * Duyệt xong thì lượt giữ TRẢ VỀ KHO: đơn nháp không giữ tồn, hàng chỉ
+ * được giữ lại đúng lúc khách bấm xác nhận, như mọi đơn khác.
  */
 
 import crypto from "crypto";
 import type { Pool, PoolClient } from "pg";
-import { config } from "../../../config.js";
 import {
   AllLinesOutOfStockError,
   InvalidOrderStateError,
@@ -30,13 +29,11 @@ import {
   appendOutboxEvent,
   findSellableSku,
   loadOrder,
-  refreshDraftHold,
   upsertOrderItem,
 } from "../repositories/order.repository.js";
 import {
   findByCommentId,
   findForReview,
-  findHoldingForOrderItem,
   findOverdueRequestIds,
   findRequestHoldings,
   insertPurchaseRequest,
@@ -45,8 +42,6 @@ import {
   loadPurchaseRequest,
   markRequestExpired,
   markRequestReviewed,
-  mergeHoldInto,
-  transferHoldToOrderItem,
 } from "../repositories/purchase-request.repository.js";
 import { evaluateGuards, type GuardVerdict } from "./order-guards.js";
 import type { OrderSource, RejectedLine } from "../types/order.types.js";
@@ -126,19 +121,16 @@ export class PurchaseRequestService {
   }
 
   /**
-   * Nhân viên duyệt: CHUYỂN CHỦ SỞ HỮU lượt giữ sang đơn hàng.
+   * Nhân viên duyệt: ghi hàng vào đơn nháp, TRẢ lượt giữ về kho.
    *
-   * ĐÂY LÀ PHẦN QUAN TRỌNG NHẤT CỦA T9.
+   * Đề nghị giữ tồn trong lúc chờ duyệt để khách gõ chữ xấu không thua
+   * khách gõ chữ đẹp ngay trong vài phút nhân viên xem (QĐ-3). Nhưng
+   * đơn nháp thì KHÔNG giữ tồn — hàng chỉ được giữ lại đúng lúc khách
+   * bấm xác nhận, như mọi đơn khác. Giữ tiếp dưới tên đơn là cho khách
+   * này một đặc quyền mà khách bình luận rõ ràng không có.
    *
-   * Cách làm sai mà ai cũng nghĩ ra đầu tiên: trả tồn rồi giữ lại dưới
-   * tên đơn hàng. Giữa hai thao tác đó, dù chỉ vài micro giây, món
-   * hàng nằm trong trạng thái KHẢ DỤNG — một khách khác đang F5 có thể
-   * cướp đúng món mà khách này đã chờ nhân viên duyệt suốt ba phút.
-   * Tệ hơn: nếu bước giữ lại thất bại vì vừa hết hàng thì đề nghị đã
-   * duyệt rồi mà không còn hàng để giao.
-   *
-   * Ở đây `inventory.held_quantity` KHÔNG hề bị đụng tới trong suốt
-   * quá trình duyệt. Đó là tiêu chí nghiệm thu của ca test #23.
+   * Vì thế ở đây không còn "chuyển chủ sở hữu": lượt giữ của đề nghị
+   * đóng bằng RELEASED (lý do APPROVED), tồn khả dụng tăng lại.
    */
   async approve(
     requestId: string,
@@ -184,7 +176,6 @@ export class PurchaseRequestService {
         // Khoá chống trùng lấy từ chính đề nghị: duyệt lại cũng không
         // thể sinh ra đơn thứ hai.
         idempotencyKey: `pr:${requestId}`,
-        holdSeconds: config.holdSoftSeconds,
       });
 
       for (const hold of holdings) {
@@ -193,7 +184,8 @@ export class PurchaseRequestService {
           throw new SkuNotFoundError(hold.skuId);
         }
 
-        const itemId = await upsertOrderItem(client, {
+        // UPSERT: khách đã có đúng mã này trong đơn nháp thì cộng dồn.
+        await upsertOrderItem(client, {
           orderId,
           skuId: hold.skuId,
           quantity: hold.quantity,
@@ -201,32 +193,9 @@ export class PurchaseRequestService {
           unitPrice: sku.price,
         });
 
-        // Dòng hàng này đã có lượt giữ đang sống nghĩa là khách từng
-        // chốt đúng mã này trong phiên. Không thể chuyển chủ thẳng vì
-        // uq_reservations_active_hold chỉ cho một lượt giữ mỗi dòng,
-        // nên phải dồn số lượng vào lượt giữ đang có.
-        const existingHold = await findHoldingForOrderItem(client, itemId);
-
-        if (existingHold) {
-          await mergeHoldInto(client, {
-            sourceReservationId: hold.id,
-            targetReservationId: existingHold,
-          });
-        } else {
-          await transferHoldToOrderItem(client, {
-            reservationId: hold.id,
-            orderId,
-            orderItemId: itemId,
-          });
-        }
-      }
-
-      if (merged) {
-        await refreshDraftHold(client, {
-          orderId,
-          holdSeconds: config.holdSoftSeconds,
-          maxSeconds: config.holdMaxSeconds,
-        });
+        // Trả về kho. releaseStock có guard `status = 'HOLDING'` nên
+        // hai nhân viên cùng bấm duyệt cũng chỉ trả một lần.
+        await releaseStock(client, hold.id, "APPROVED");
       }
 
       if (!(await markRequestReviewed(client, {
@@ -252,9 +221,9 @@ export class PurchaseRequestService {
         },
       });
 
-      // KHÔNG phát inventory.changed ở đây: tồn khả dụng không thay
-      // đổi khi duyệt, hàng chỉ đổi người đứng tên. Phát ra sẽ khiến
-      // màn hình shop nhấp nháy mà con số vẫn y nguyên.
+      // Tồn khả dụng vừa tăng lại (lượt giữ của đề nghị đã trả), màn
+      // hình shop phải thấy.
+      await this.appendRequestInventoryEvents(client, requestId, "APPROVED");
 
       await client.query("COMMIT");
       return {
