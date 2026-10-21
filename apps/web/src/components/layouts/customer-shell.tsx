@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSyncExternalStore, type ReactNode } from "react";
-import { LogOut, UserRound } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ChevronDown, LogOut, MapPin, UserRound } from "lucide-react";
 import { Brand } from "./brand";
+import { AddressBookDialog } from "@/features/orders/address-book-dialog";
+import { ProfileDialog } from "@/features/orders/profile-dialog";
+import styles from "./customer-shell.module.css";
 
 type AuthUser = {
   full_name: string;
@@ -43,6 +46,8 @@ function parseAuthUser(snapshot: string | null): AuthUser | null {
   return null;
 }
 
+type HopThoai = "hoSo" | "diaChi" | null;
+
 export function CustomerShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const userSnapshot = useSyncExternalStore(
@@ -53,6 +58,11 @@ export function CustomerShell({ children }: { children: ReactNode }) {
   const user = parseAuthUser(userSnapshot);
 
   function signOut() {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("liveorder_pending_comment:") || key.startsWith("liveorder_customer_uuid:")) {
+        localStorage.removeItem(key);
+      }
+    }
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("auth_user");
@@ -63,15 +73,53 @@ export function CustomerShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
+  const [moMenu, setMoMenu] = useState(false);
+  const [hopThoai, setHopThoai] = useState<HopThoai>(null);
+  const khoiRef = useRef<HTMLDivElement>(null);
+
+  // Bấm ra ngoài hoặc Esc thì đóng menu — như mọi menu tài khoản.
+  useEffect(() => {
+    if (!moMenu) return;
+    const ngoai = (e: MouseEvent) => {
+      if (!khoiRef.current?.contains(e.target as Node)) setMoMenu(false);
+    };
+    const phim = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoMenu(false);
+    };
+    document.addEventListener("mousedown", ngoai);
+    document.addEventListener("keydown", phim);
+    return () => {
+      document.removeEventListener("mousedown", ngoai);
+      document.removeEventListener("keydown", phim);
+    };
+  }, [moMenu]);
+
+  function chon(muc: HopThoai) {
+    setMoMenu(false);
+    setHopThoai(muc);
+  }
+
   return (
     <>
+      {hopThoai === "hoSo" && <ProfileDialog onClose={() => setHopThoai(null)} />}
+      {hopThoai === "diaChi" && <AddressBookDialog onClose={() => setHopThoai(null)} />}
       <header className="customer-header">
         <Link href="/" aria-label="LiveOrder AI — Trang khách hàng">
           <Brand />
         </Link>
         {user ? (
-          <div className="customer-account">
-            <div className="customer-user" aria-label="Tài khoản đang đăng nhập">
+          <div className={`customer-account ${styles.khoiTaiKhoan}`} ref={khoiRef}>
+            {/* Là <button> chứ không phải <div onClick>: bàn phím và
+                trình đọc màn hình mới tới được, và không phải tự gắn
+                role/tabIndex. */}
+            <button
+              type="button"
+              className={`customer-user ${styles.nutTaiKhoan}`}
+              aria-label="Tài khoản của tôi"
+              aria-haspopup="menu"
+              aria-expanded={moMenu}
+              onClick={() => setMoMenu((v) => !v)}
+            >
               <span className="customer-avatar" aria-hidden="true">
                 <UserRound size={19} />
               </span>
@@ -79,11 +127,28 @@ export function CustomerShell({ children }: { children: ReactNode }) {
                 <strong>{user.full_name}</strong>
                 <small>{user.email}</small>
               </span>
-            </div>
-            <button className="customer-logout" type="button" onClick={signOut}>
-              <LogOut size={16} aria-hidden="true" />
-              Đăng xuất
+              <ChevronDown size={16} className={styles.muiTen} aria-hidden="true" />
             </button>
+            {moMenu && (
+              <ul className={styles.menu} role="menu" aria-label="Tài khoản của tôi">
+                <li role="none">
+                  <button type="button" role="menuitem" className={styles.menuMuc} onClick={() => chon("hoSo")}>
+                    <UserRound size={16} aria-hidden="true" /> Thông tin cá nhân
+                  </button>
+                </li>
+                <li role="none">
+                  <button type="button" role="menuitem" className={styles.menuMuc} onClick={() => chon("diaChi")}>
+                    <MapPin size={16} aria-hidden="true" /> Địa chỉ nhận hàng
+                  </button>
+                </li>
+                <li role="separator" className={styles.menuChia} />
+                <li role="none">
+                  <button type="button" role="menuitem" className={`${styles.menuMuc} ${styles.menuDangXuat}`} onClick={signOut}>
+                    <LogOut size={16} aria-hidden="true" /> Đăng xuất
+                  </button>
+                </li>
+              </ul>
+            )}
           </div>
         ) : (
           <Link className="customer-login-link" href="/login">
