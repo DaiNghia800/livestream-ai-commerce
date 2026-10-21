@@ -90,7 +90,7 @@ export function CustomerLive() {
                   <p className={styles.productStock}>Còn {product.stock} sản phẩm <span>·</span> Minh họa</p>
                   <div className={styles.productBuyRow}>
                     <strong>{formatMoney(product.price)}</strong>
-                    <button type="button" onClick={() => setSelected(product)} aria-label={`Xem ${product.name}`}>
+                    <button type="button" onClick={() => setSelected(product)} aria-label={`Xem ${product.id}`}>
                       Xem <span aria-hidden="true">→</span>
                     </button>
                   </div>
@@ -140,7 +140,7 @@ export function CustomerLive() {
               onChange={(event) => setMessage(event.target.value)}
             />
             <Button type="submit" disabled={!message.trim()}>
-              <Send size={16} /> Gửi bình luận
+              <Send size={16} /> Thử gửi bình luận
             </Button>
             <p className={styles.notice} role="status">{notice}</p>
           </form>
