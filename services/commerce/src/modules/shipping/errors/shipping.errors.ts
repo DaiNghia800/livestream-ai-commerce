@@ -65,7 +65,17 @@ export class CodNotAllowedError extends DomainError {
   readonly code = "COD_NOT_ALLOWED";
   constructor(readonly orderCode: string) {
     super(
-      `Đơn ${orderCode} bị chặn thu tiền mặt khi giao. Khách phải thanh toán trước.`
+      `Đơn ${orderCode} bị chặn thu tiền mặt khi giao. Cần thu đủ tiền trước khi tạo vận đơn; đặt cọc một phần chưa đủ.`
+    );
+  }
+}
+
+/** GHN cần cân nặng và kích thước từng kiện khi dùng dịch vụ hàng nặng. */
+export class GhnHeavyShipmentNotSupportedError extends DomainError {
+  readonly code = "GHN_HEAVY_SHIPMENT_NOT_SUPPORTED";
+  constructor() {
+    super(
+      "GHN từ 20.000 g cần cân nặng và kích thước từng kiện; ứng dụng chưa hỗ trợ nhập thông tin này"
     );
   }
 }
@@ -83,6 +93,21 @@ export class CannotCancelShipmentError extends DomainError {
 /** Chỉ đơn tự giao mới được cập nhật tay và phải ghi nhận lấy hàng trước. */
 export class InvalidManualShipmentStatusError extends DomainError {
   readonly code = "INVALID_MANUAL_SHIPMENT_STATUS";
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Mốc giả lập không hợp lệ.
+ *
+ * Tách khỏi `CarrierRejectedError`: cái đó trả 502 vì nghĩa là HÃNG
+ * từ chối. Ở đây hãng chưa hề được gọi — lỗi nằm ở phía bấm nút, nên
+ * phải là 400. Trả 502 cho lỗi của mình là đẩy người đọc log đi tìm
+ * sự cố bên ngoài trong khi vấn đề nằm ngay trong nhà.
+ */
+export class InvalidSimulationStepError extends DomainError {
+  readonly code = "INVALID_SIMULATION_STEP";
   constructor(message: string) {
     super(message);
   }

@@ -16,10 +16,11 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  CircleDollarSign,
   Download,
+  ListFilter,
   PackageCheck,
   RefreshCw,
-  Search,
   Truck,
   Warehouse,
 } from "lucide-react";
@@ -30,10 +31,20 @@ import {
   ErrorState,
   LoadingState,
 } from "@/components/feedback/states";
-import { buildCsv, downloadCsv, tenTep } from "@/lib/export-csv";
+import { downloadXlsx } from "@/lib/export-xlsx";
 import { formatDateTime, formatMoney } from "@/lib/format";
-import { shippingApi } from "@/lib/api";
+import { shippingApi, type ShipmentListItem } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import {
+  CommerceListToolbar,
+  CommercePager,
+  defaultFilterRows,
+  matchesFilters,
+  type ListFilterField,
+  type ListFilterRow,
+  type MatchMode,
+  type SortOption,
+} from "@/features/shared/commerce-list-controls";
 import zebra from "@/styles/zebra-table.module.css";
 import { carrierLabels, shipmentStatuses, tenHang } from "./labels";
 import styles from "./shipment-list.module.css";
@@ -72,7 +83,55 @@ const NHOM = {
 
 type NhomKey = keyof typeof NHOM;
 
-const MOI_TRANG = [10, 20, 50, 100];
+const SORT_OPTIONS = [
+  { key: "newest", label: "Mới nhất trước" },
+  { key: "oldest", label: "Cũ nhất trước" },
+  { key: "codDesc", label: "Thu hộ cao → thấp" },
+  { key: "codAsc", label: "Thu hộ thấp → cao" },
+  { key: "feeDesc", label: "Cước cao → thấp" },
+] as const satisfies SortOption<string>[];
+
+type SortKey = (typeof SORT_OPTIONS)[number]["key"];
+
+const SHIPMENT_FIELDS: ListFilterField<ShipmentListItem>[] = [
+  {
+    key: "status",
+    label: "Trạng thái",
+    icon: ListFilter,
+    kind: "multi",
+    options: Object.entries(shipmentStatuses).map(([value, meta]) => ({ value, label: meta.label })),
+    pick: (shipment) => shipment.status,
+  },
+  {
+    key: "carrier",
+    label: "Đơn vị vận chuyển",
+    icon: Truck,
+    kind: "multi",
+    options: Object.entries(carrierLabels).map(([value, label]) => ({ value, label })),
+    pick: (shipment) => shipment.carrier,
+  },
+  {
+    key: "cod",
+    label: "Tiền thu hộ",
+    icon: CircleDollarSign,
+    kind: "range",
+    pick: (shipment) => Number(shipment.codAmount),
+  },
+  {
+    key: "fee",
+    label: "Cước vận chuyển",
+    icon: CircleDollarSign,
+    kind: "range",
+    pick: (shipment) => Number(shipment.feeActual ?? shipment.feeQuoted ?? 0),
+  },
+  {
+    key: "weight",
+    label: "Cân nặng (g)",
+    icon: Warehouse,
+    kind: "range",
+    pick: (shipment) => shipment.weightGram,
+  },
+];
 
 export function MerchantShipmentList() {
   const { data, loading, error, refreshing, reload } = useApi(
@@ -85,10 +144,12 @@ export function MerchantShipmentList() {
   const hangs = useMemo(() => hangData ?? [], [hangData]);
 
   const [tuKhoa, setTuKhoa] = useState("");
-  const [locHang, setLocHang] = useState("");
-  const [nhom, setNhom] = useState<NhomKey | "">("");
+  const [sapXep, setSapXep] = useState<SortKey>("newest");
+  const [rows, setRows] = useState<ListFilterRow[]>(() => defaultFilterRows(["status", "carrier"]));
+  const [mode, setMode] = useState<MatchMode>("ALL");
   const [trang, setTrang] = useState(1);
   const [moiTrang, setMoiTrang] = useState(20);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const dem = useMemo(() => {
     const d: Record<NhomKey, number> = {
@@ -109,22 +170,25 @@ export function MerchantShipmentList() {
 
   const daLoc = useMemo(() => {
     const tk = tuKhoa.trim().toLowerCase();
-    return vanDons.filter((v) => {
-      if (locHang && v.carrier !== locHang) return false;
-      if (
-        nhom &&
-        !(NHOM[nhom].trangThai as readonly string[]).includes(v.status)
-      ) {
-        return false;
-      }
-      if (!tk) return true;
-      // Tìm được bằng cả mã vận đơn, mã đơn và tên khách — ba thứ shop
-      // có trong tay khi khách gọi điện hỏi.
-      return [v.trackingCode, v.orderCode, v.recipientName, v.clientOrderCode]
-        .filter(Boolean)
-        .some((x) => String(x).toLowerCase().includes(tk));
+    const result = vanDons.filter((shipment) => {
+      const searchMatches = !tk || [
+        shipment.trackingCode,
+        shipment.orderCode,
+        shipment.recipientName,
+        shipment.clientOrderCode,
+      ].filter(Boolean).some((value) => String(value).toLowerCase().includes(tk));
+      return searchMatches && matchesFilters(shipment, rows, mode, SHIPMENT_FIELDS);
     });
-  }, [vanDons, tuKhoa, locHang, nhom]);
+    return [...result].sort((a, b) => {
+      switch (sapXep) {
+        case "oldest": return a.createdAt.localeCompare(b.createdAt);
+        case "codDesc": return Number(b.codAmount) - Number(a.codAmount);
+        case "codAsc": return Number(a.codAmount) - Number(b.codAmount);
+        case "feeDesc": return Number(b.feeActual ?? b.feeQuoted ?? 0) - Number(a.feeActual ?? a.feeQuoted ?? 0);
+        default: return b.createdAt.localeCompare(a.createdAt);
+      }
+    });
+  }, [vanDons, tuKhoa, rows, mode, sapXep]);
 
   const tongTrang = Math.max(1, Math.ceil(daLoc.length / moiTrang));
   // Lọc xong có thể còn ít trang hơn trang đang đứng; kẹp lại thay vì
@@ -133,10 +197,10 @@ export function MerchantShipmentList() {
   const batDau = (trangHienTai - 1) * moiTrang;
   const trenTrang = daLoc.slice(batDau, batDau + moiTrang);
 
-  function xuatCsv() {
-    downloadCsv(
-      tenTep("van-don"),
-      buildCsv(daLoc, [
+  async function xuatExcel() {
+    setExportError(null);
+    try {
+      await downloadXlsx("van-don", "Vận đơn", daLoc, [
         { header: "Mã vận đơn", value: (v) => v.trackingCode ?? "" },
         { header: "Mã đơn", value: (v) => v.orderCode },
         { header: "Người nhận", value: (v) => v.recipientName ?? "" },
@@ -145,13 +209,15 @@ export function MerchantShipmentList() {
           header: "Trạng thái",
           value: (v) => shipmentStatuses[v.status]?.label ?? v.status,
         },
-        { header: "Thu hộ", value: (v) => v.codAmount },
-        { header: "Cước báo giá", value: (v) => v.feeQuoted ?? "" },
-        { header: "Cước thực tế", value: (v) => v.feeActual ?? "" },
-        { header: "Cân nặng (g)", value: (v) => v.weightGram },
-        { header: "Tạo lúc", value: (v) => formatDateTime(v.createdAt) },
-      ]),
-    );
+        { header: "Thu hộ (₫)", value: (v) => v.codAmount, kind: "money" },
+        { header: "Cước báo giá (₫)", value: (v) => v.feeQuoted, kind: "money" },
+        { header: "Cước thực tế (₫)", value: (v) => v.feeActual, kind: "money" },
+        { header: "Cân nặng (g)", value: (v) => v.weightGram, kind: "number" },
+        { header: "Tạo lúc", value: (v) => formatDateTime(v.createdAt), minWidth: 20 },
+      ]);
+    } catch {
+      setExportError("Không tạo được tệp Excel. Vui lòng thử lại.");
+    }
   }
 
   if (loading) return <LoadingState />;
@@ -177,14 +243,15 @@ export function MerchantShipmentList() {
           </p>
         </div>
         <div className={styles.headActions}>
-          <Button variant="secondary" onClick={xuatCsv} disabled={!daLoc.length}>
-            <Download size={16} /> Xuất CSV
+          <Button variant="secondary" onClick={xuatExcel} disabled={!daLoc.length}>
+            <Download size={16} /> Xuất Excel ({daLoc.length})
           </Button>
           <Button variant="secondary" onClick={reload}>
             <RefreshCw size={16} /> Làm mới
           </Button>
         </div>
       </header>
+      {exportError && <p role="alert">{exportError}</p>}
 
       {/* Tình trạng từng hãng. Hiện ngay đầu trang vì "đẩy đơn không
           được" gần như luôn là do hãng chưa khai khoá. */}
@@ -211,18 +278,32 @@ export function MerchantShipmentList() {
         {(Object.keys(NHOM) as NhomKey[]).map((k) => {
           const n = NHOM[k];
           const Icon = n.icon;
+          const statusRow = rows.find((row) => row.field === "status");
+          const activeGroup = statusRow?.op === "is"
+            && statusRow.values.length === n.trangThai.length
+            && n.trangThai.every((status) => statusRow.values.includes(status));
           return (
             <button
               key={k}
               type="button"
               className={`${styles.stat} ${n.tone} ${
-                nhom === k ? styles.statActive : ""
+                activeGroup ? styles.statActive : ""
               }`}
               onClick={() => {
-                setNhom(nhom === k ? "" : k);
+                setRows((current) => {
+                  const other = current.filter((row) => row.field !== "status");
+                  return activeGroup ? other : [...other, {
+                    id: `status-${k}`,
+                    field: "status",
+                    op: "is",
+                    values: [...n.trangThai],
+                    from: "",
+                    to: "",
+                  }];
+                });
                 setTrang(1);
               }}
-              aria-pressed={nhom === k}
+              aria-pressed={activeGroup}
             >
               <span className={styles.statHead}>
                 <Icon size={14} /> {n.nhan}
@@ -234,43 +315,29 @@ export function MerchantShipmentList() {
         })}
       </div>
 
-      <div className={styles.toolbar}>
-        <div className={styles.search}>
-          <Search size={16} className={styles.searchIcon} />
-          <input
-            className={styles.searchInput}
-            placeholder="Tìm mã vận đơn, mã đơn hoặc tên khách"
-            value={tuKhoa}
-            onChange={(e) => {
-              setTuKhoa(e.target.value);
-              setTrang(1);
-            }}
-          />
-        </div>
-
-        <select
-          className={styles.select}
-          value={locHang}
-          onChange={(e) => {
-            setLocHang(e.target.value);
-            setTrang(1);
-          }}
-          aria-label="Lọc theo hãng"
-        >
-          <option value="">Tất cả hãng</option>
-          {Object.entries(carrierLabels).map(([ma, nhan]) => (
-            <option key={ma} value={ma}>
-              {nhan}
-            </option>
-          ))}
-        </select>
-      </div>
+      <p className={styles.subtitle}>Tìm và lọc trong tối đa 200 vận đơn gần nhất đã tải.</p>
+      <CommerceListToolbar
+        query={tuKhoa}
+        onQueryChange={(value) => { setTuKhoa(value); setTrang(1); }}
+        searchLabel="Tìm vận đơn"
+        placeholder="Tìm mã vận đơn, mã đơn hoặc tên khách…"
+        sort={sapXep}
+        sortOptions={SORT_OPTIONS}
+        onSortChange={(value) => { setSapXep(value); setTrang(1); }}
+        fields={SHIPMENT_FIELDS}
+        rows={rows}
+        mode={mode}
+        onRowsChange={(value) => { setRows(value); setTrang(1); }}
+        onModeChange={(value) => { setMode(value); setTrang(1); }}
+        resultCount={daLoc.length}
+        itemLabel="vận đơn"
+      />
 
       <div className={styles.panel}>
         {trenTrang.length === 0 ? (
           <EmptyState
-            title="Chưa có vận đơn nào"
-            description="Vào một đơn đã xác nhận rồi bấm Tạo vận đơn."
+            title={vanDons.length ? "Không có vận đơn khớp" : "Chưa có vận đơn nào"}
+            description={vanDons.length ? "Thử đổi từ khóa hoặc đặt lại bộ lọc." : "Vào một đơn đã xác nhận rồi bấm Tạo vận đơn."}
           />
         ) : (
           <>
@@ -345,52 +412,14 @@ export function MerchantShipmentList() {
               </table>
             </div>
 
-            <div className={styles.pager}>
-              <span className={styles.pagerInfo}>
-                Hiện {batDau + 1}–{Math.min(batDau + moiTrang, daLoc.length)} trên{" "}
-                {daLoc.length} vận đơn
-              </span>
-
-              <label className={styles.perPage}>
-                Mỗi trang
-                <select
-                  className={styles.select}
-                  value={moiTrang}
-                  onChange={(e) => {
-                    setMoiTrang(Number(e.target.value));
-                    setTrang(1);
-                  }}
-                >
-                  {MOI_TRANG.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <nav className={styles.pages} aria-label="Phân trang">
-                <button
-                  type="button"
-                  className={styles.page1}
-                  onClick={() => setTrang(trangHienTai - 1)}
-                  disabled={trangHienTai <= 1}
-                >
-                  Trước
-                </button>
-                <span className={styles.perPage}>
-                  {trangHienTai} / {tongTrang}
-                </span>
-                <button
-                  type="button"
-                  className={styles.page1}
-                  onClick={() => setTrang(trangHienTai + 1)}
-                  disabled={trangHienTai >= tongTrang}
-                >
-                  Sau
-                </button>
-              </nav>
-            </div>
+            <CommercePager
+              page={trangHienTai}
+              pageSize={moiTrang}
+              total={daLoc.length}
+              itemLabel="vận đơn"
+              onPageChange={setTrang}
+              onPageSizeChange={(size) => { setMoiTrang(size); setTrang(1); }}
+            />
           </>
         )}
       </div>

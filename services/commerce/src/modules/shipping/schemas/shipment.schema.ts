@@ -56,3 +56,14 @@ export const ListShipmentsSchema = z.object({
   status: z.string().max(20).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+
+/**
+ * Mốc cần giả lập, dùng mã CỦA HÃNG chứ không phải trạng thái của ta.
+ *
+ * Nhận mã hãng để gói tin dựng ra giống hệt gói tin thật, và để bảng
+ * ánh xạ trạng thái cũng được kiểm luôn — nhận trạng thái nội bộ là
+ * bỏ qua đúng phần hay sai nhất.
+ */
+export const SimulateSchema = z.object({
+  code: z.string().min(1).max(30),
+});

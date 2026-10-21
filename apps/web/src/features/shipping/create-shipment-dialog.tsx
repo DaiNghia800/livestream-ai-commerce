@@ -52,7 +52,8 @@ export function CreateShipmentDialog({
 
   const canSo = Number(can);
   const canHopLe = Number.isInteger(canSo) && canSo > 0 && canSo <= 50000;
-  const chan = !hang || !canHopLe || busy;
+  const ghnQuaNang = hang === "ghn" && canSo >= 20000;
+  const chan = !hang || !canHopLe || ghnQuaNang || busy;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -127,13 +128,20 @@ export function CreateShipmentDialog({
             id="ship-weight"
             type="number"
             min={1}
-            max={50000}
+            max={hang === "ghn" ? 19999 : 50000}
             value={can}
             onChange={(e) => setCan(e.target.value)}
           />
           {!canHopLe && can !== "" && (
             <span className="field-error">
               Cân nặng phải từ 1 đến 50.000 g. Nặng hơn thì phải tách kiện.
+            </span>
+          )}
+          {canHopLe && ghnQuaNang && (
+            <span className="field-error">
+              GHN từ 20.000 g cần cân nặng và kích thước từng kiện. Ứng dụng
+              chưa hỗ trợ nhập thông tin này; vui lòng chọn hãng khác. Không
+              giảm cân nặng khai báo nếu kiện thực tế vẫn từ 20 kg.
             </span>
           )}
         </div>

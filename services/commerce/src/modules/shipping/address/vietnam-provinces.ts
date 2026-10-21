@@ -134,6 +134,110 @@ export const TEN_CU_DA_SAP_NHAP: Record<string, TenTinh> = {
 };
 
 /**
+ * Thành phố / thị xã THUỘC TỈNH, và tỉnh hiện quản lý chúng.
+ *
+ * Khác hẳn bảng trên: đây chưa bao giờ là tỉnh. Khách quen gõ tên
+ * thành phố mình ở ("Nha Trang", "Biên Hòa") vào ô tỉnh, vì trong
+ * đời sống đó mới là địa danh người ta dùng. Sau 01/07/2025 cấp
+ * huyện bị bỏ hẳn, nên những tên này không còn là đơn vị hành chính
+ * nào cả — hãng vận chuyển tra danh mục sẽ không thấy.
+ *
+ * Cũng CHỈ GỢI Ý như bảng trên, không bao giờ tự áp.
+ *
+ * Cố ý BỎ QUA những tên trùng nhau giữa các tỉnh. Một gợi ý sai mà
+ * nghe hợp lý còn nguy hơn không gợi ý gì: người xác nhận đang vội
+ * sẽ bấm đồng ý.
+ *
+ * Tên nào đã là tỉnh hiện hành (Thanh Hóa, Cà Mau…) hoặc đã nằm
+ * trong bảng tỉnh cũ (Nam Định, Hải Dương…) thì không lặp lại ở đây.
+ */
+export const THANH_PHO_TRONG_TINH: Record<string, TenTinh> = {
+  // Khánh Hòa (gồm Ninh Thuận cũ)
+  "nha trang": "Khánh Hòa",
+  "cam ranh": "Khánh Hòa",
+  "phan rang thap cham": "Khánh Hòa",
+  "phan rang": "Khánh Hòa",
+
+  // TP. Hồ Chí Minh (gồm Bình Dương và Bà Rịa - Vũng Tàu cũ)
+  "thu duc": "TP. Hồ Chí Minh",
+  "thu dau mot": "TP. Hồ Chí Minh",
+  "di an": "TP. Hồ Chí Minh",
+  "ba ria": "TP. Hồ Chí Minh",
+
+  // Đồng Nai (gồm Bình Phước cũ)
+  "bien hoa": "Đồng Nai",
+  "long khanh": "Đồng Nai",
+  "dong xoai": "Đồng Nai",
+
+  // Lâm Đồng (gồm Bình Thuận và Đắk Nông cũ)
+  "da lat": "Lâm Đồng",
+  "bao loc": "Lâm Đồng",
+  "phan thiet": "Lâm Đồng",
+  "gia nghia": "Lâm Đồng",
+
+  // Đắk Lắk (gồm Phú Yên cũ)
+  "buon ma thuot": "Đắk Lắk",
+  "tuy hoa": "Đắk Lắk",
+
+  // Gia Lai (gồm Bình Định cũ)
+  pleiku: "Gia Lai",
+  "quy nhon": "Gia Lai",
+
+  // Đà Nẵng (gồm Quảng Nam cũ)
+  "tam ky": "Đà Nẵng",
+  "hoi an": "Đà Nẵng",
+
+  // Quảng Trị (gồm Quảng Bình cũ)
+  "dong ha": "Quảng Trị",
+  "dong hoi": "Quảng Trị",
+
+  // Nghệ An, Thanh Hóa
+  vinh: "Nghệ An",
+  "cua lo": "Nghệ An",
+  "sam son": "Thanh Hóa",
+
+  // Ninh Bình (gồm Hà Nam và Nam Định cũ)
+  "phu ly": "Ninh Bình",
+
+  // Quảng Ninh
+  "ha long": "Quảng Ninh",
+  "cam pha": "Quảng Ninh",
+  "mong cai": "Quảng Ninh",
+  "uong bi": "Quảng Ninh",
+
+  // Phú Thọ (gồm Vĩnh Phúc và Hòa Bình cũ)
+  "viet tri": "Phú Thọ",
+  "vinh yen": "Phú Thọ",
+  "phuc yen": "Phú Thọ",
+
+  // Bắc Ninh (gồm Bắc Giang cũ)
+  "tu son": "Bắc Ninh",
+
+  // Lào Cai, Điện Biên
+  "sa pa": "Lào Cai",
+  "dien bien phu": "Điện Biên",
+
+  // An Giang (gồm Kiên Giang cũ)
+  "long xuyen": "An Giang",
+  "chau doc": "An Giang",
+  "rach gia": "An Giang",
+  "ha tien": "An Giang",
+
+  // Đồng Tháp (gồm Tiền Giang cũ)
+  "cao lanh": "Đồng Tháp",
+  "sa dec": "Đồng Tháp",
+  "my tho": "Đồng Tháp",
+  "go cong": "Đồng Tháp",
+
+  // Cần Thơ (gồm Hậu Giang cũ)
+  "vi thanh": "Cần Thơ",
+  "nga bay": "Cần Thơ",
+
+  // Tây Ninh (gồm Long An cũ)
+  "tan an": "Tây Ninh",
+};
+
+/**
  * Bỏ dấu, bỏ tiền tố hành chính, gom khoảng trắng.
  *
  * Mục đích là so khớp CHỨ KHÔNG phải để lưu: bản đã bỏ dấu không bao
@@ -170,16 +274,49 @@ const TRA_NHANH: Map<string, TenTinh> = (() => {
   return m;
 })();
 
+/** Vì sao có gợi ý, để câu hỏi cho người dùng nói đúng chuyện. */
+export type LoaiGoiY = "TINH_SAP_NHAP" | "CAP_DUOI_TINH";
+
 export interface KetQuaTraTinh {
   /** Tên chuẩn để gửi cho hãng. NULL = không khớp chắc chắn. */
   tinh: TenTinh | null;
   /**
-   * Tên mới của một tỉnh đã bị sáp nhập, để hỏi lại người dùng.
+   * Tên tỉnh đề nghị, để hỏi lại người dùng.
    *
    * Có giá trị ở đây nghĩa là ĐỪNG tự lưu — hiện ra cho người xác
    * nhận rồi mới ghi.
    */
   goiY: TenTinh | null;
+  /**
+   * "TINH_SAP_NHAP": tên tỉnh cũ, nay thuộc tỉnh khác.
+   * "CAP_DUOI_TINH": tên thành phố/thị xã, chưa bao giờ là tỉnh.
+   *
+   * Hai chuyện khác nhau nên lời nhắc cũng phải khác. Nói với người
+   * gõ "Nha Trang" rằng tỉnh của họ đã sáp nhập là sai sự thật.
+   */
+  loaiGoiY: LoaiGoiY | null;
+}
+
+/**
+ * Một tỉnh HIỆN HÀNH gồm những tỉnh CŨ nào.
+ *
+ * Chiều ngược của `TEN_CU_DA_SAP_NHAP`, và là thứ bắt buộc phải có
+ * để dựng danh sách quận/huyện cho người chọn.
+ *
+ * Danh mục hãng vận chuyển vẫn theo 63 tỉnh cũ: GHN liệt kê 65 đơn
+ * vị, trong đó "Bình Dương" là một tỉnh RIÊNG chứ không nằm trong
+ * "Hồ Chí Minh". Nên hỏi GHN danh sách quận của TP. Hồ Chí Minh chỉ
+ * được 25 quận, không có Thủ Dầu Một — người ở đó không chọn nổi
+ * địa chỉ của mình.
+ *
+ * Trả về tên đã bỏ dấu để so khớp với danh mục của hãng, kèm chính
+ * tỉnh đó (một tỉnh không sáp nhập thì chỉ có một phần tử).
+ */
+export function tinhCuCua(tinhMoi: TenTinh): string[] {
+  const cu = Object.entries(TEN_CU_DA_SAP_NHAP)
+    .filter(([, moi]) => moi === tinhMoi)
+    .map(([khoa]) => khoa);
+  return [chuanHoaDeSoKhop(tinhMoi), ...cu];
 }
 
 /** Tra một chuỗi bất kỳ về tên tỉnh chuẩn. */
@@ -187,13 +324,21 @@ export function traTinh(nhap: string): KetQuaTraTinh {
   const khoa = chuanHoaDeSoKhop(nhap);
   const khop = TRA_NHANH.get(khoa);
   if (khop) {
-    return { tinh: khop, goiY: null };
+    return { tinh: khop, goiY: null, loaiGoiY: null };
   }
 
   const cu = TEN_CU_DA_SAP_NHAP[khoa];
   if (cu) {
-    return { tinh: null, goiY: cu };
+    return { tinh: null, goiY: cu, loaiGoiY: "TINH_SAP_NHAP" };
   }
 
-  return { tinh: null, goiY: null };
+  // Tra bảng tỉnh cũ TRƯỚC: "Nam Định" vừa là tỉnh cũ vừa là tên
+  // thành phố, và câu trả lời "tỉnh này đã sáp nhập" mới là thứ
+  // người gõ cần nghe.
+  const thanhPho = THANH_PHO_TRONG_TINH[khoa];
+  if (thanhPho) {
+    return { tinh: null, goiY: thanhPho, loaiGoiY: "CAP_DUOI_TINH" };
+  }
+
+  return { tinh: null, goiY: null, loaiGoiY: null };
 }

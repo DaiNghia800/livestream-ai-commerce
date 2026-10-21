@@ -347,66 +347,6 @@ button.stat:focus-visible {
   }
 }
 
-/* ── Bộ lọc đã lưu ──────────────────────────────────────────────── */
-
-.saved {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-
-.savedLabel {
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-}
-
-.savedChip {
-  display: inline-flex;
-  align-items: stretch;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  background: var(--color-surface);
-}
-
-.savedApply {
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: var(--text-xs);
-  color: var(--color-text);
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-}
-
-.savedApply:hover {
-  color: var(--color-primary);
-}
-
-.savedDrop {
-  display: inline-flex;
-  align-items: center;
-  border: 0;
-  border-left: 1px solid var(--color-border);
-  background: none;
-  color: var(--color-muted);
-  padding: 0 var(--space-2);
-  cursor: pointer;
-}
-
-.savedDrop:hover {
-  color: var(--color-error);
-  background: var(--color-error-bg);
-}
-
-.savedApply:focus-visible,
-.savedDrop:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
-}
-
 /* ── Thanh công cụ: tìm · sắp xếp · lọc ─────────────────────────── */
 
 .toolbar {

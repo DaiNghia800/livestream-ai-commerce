@@ -653,6 +653,11 @@ Ba điểm khác biệt khi viết adapter cho nhà tổng hợp:
    `x-goship-hmac-sha256`. Tốt hơn hẳn cách khai bí mật vào đường dẫn như
    GHN: chữ ký đổi theo từng gói nên chặn được cả việc phát lại một gói
    tin cũ đã bắt được.
+4. **Tra cứu và huỷ dùng hai endpoint khác nhau.** Đồng bộ trạng thái gọi
+   `GET /shipments/search?code={id}`; kết quả là danh sách vận đơn, từng
+   mốc nằm trong `history` với `updated_time` là Unix timestamp. Huỷ gọi
+   `DELETE /shipments/{id}`. `GET /shipments/{id}` không phải endpoint
+   tra cứu của Goship và đã gây HTTP 405 lặp trong job đồng bộ.
 
 Mã trạng thái của Goship là số 900–919 và 1000. Bốn mã cố ý **không ánh
 xạ** vì chúng không phải một bước trên đường đi của kiện: `909`/`910`
@@ -671,6 +676,7 @@ khoản shop**, xử lý theo QĐ-V5.
 | [GHN — Order Status Callback](https://developer.ghn.vn/en/docs/webhook/callback-order-status) | Khử trùng theo `OrderCode + Type + Time`, danh sách sự kiện gồm `cod`, `update_weight`, `update_fee` |
 | [GHTK — Webhook](https://docs.giaohangtietkiem.vn/en/docs/submit-order/webhook) | Không nhận 200 thì gửi lại một lần |
 | [Pancake — Logistics Integration](https://docs.pancake.vn/english/untitled-11) | Mô hình kết nối nhiều hãng, đẩy đơn lẻ và đẩy hàng loạt |
+| [Goship — Shipment API](https://doc.goship.io/api/shipment/shipment) | Tra cứu bằng `/shipments/search`, lịch sử `history`, huỷ bằng `DELETE /shipments/{id}` |
 
 **Lấy từ Pancake / PosCake:**
 

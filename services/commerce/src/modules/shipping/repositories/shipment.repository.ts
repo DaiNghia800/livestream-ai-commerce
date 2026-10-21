@@ -26,6 +26,32 @@ export interface LuuDiaChiParams {
   normalizedAt: Date | null;
 }
 
+/**
+ * Thông tin giao hàng để HIỂN THỊ, gộp từ hai nguồn.
+ *
+ * Địa chỉ nằm ở hai nơi: cột cũ `orders.shipping_address` (nguyên
+ * văn khách gõ) và bảng `addresses` (bản đã tách, có tỉnh/phường
+ * riêng). Màn hình chỉ đọc cột cũ là sai trong cả hai chiều:
+ *
+ *   - Đơn tạo trước khi có bảng `addresses` thì chỉ có cột cũ.
+ *   - Đơn tạo qua luồng mới có thể chỉ có bảng mới, và màn hình
+ *     hiện "Chưa có" trong khi kiện hàng đang trên đường tới một
+ *     địa chỉ có thật.
+ *
+ * Ưu tiên bảng `addresses`: ĐÓ là bản gửi cho hãng, tức là nơi kiện
+ * hàng thật sự đến. Hiện chữ khách gõ trong khi giao tới chỗ khác là
+ * đúng kiểu nhầm lẫn khiến shop trả lời sai cho khách.
+ *
+ * Mọi câu truy vấn dùng các hằng này phải LEFT JOIN addresses a.
+ */
+export const SQL_TEN_NGUOI_NHAN = `COALESCE(a.recipient_name, o.recipient_name)`;
+export const SQL_SDT_NGUOI_NHAN = `COALESCE(a.recipient_phone, o.recipient_phone)`;
+/** concat_ws bỏ qua NULL, nên địa chỉ hai cấp (thiếu huyện) vẫn gọn. */
+export const SQL_DIA_CHI_GIAO = `COALESCE(
+              NULLIF(concat_ws(', ', a.street_line, a.ward_name,
+                               a.district_name, a.province_name), ''),
+              o.shipping_address)`;
+
 export async function insertAddress(
   client: PoolClient,
   p: LuuDiaChiParams
@@ -48,6 +74,76 @@ export async function insertAddress(
     ]
   );
   return r.rows[0].id;
+}
+
+/**
+ * Ghi đè địa chỉ đã có.
+ *
+ * Sửa TẠI CHỖ chứ không chèn dòng mới rồi trỏ lại: chèn mới để lại
+ * dòng cũ mồ côi, và `addresses` là nơi duy nhất lưu địa chỉ giao nên
+ * rác ở đây tích lại theo từng lần shop sửa.
+ */
+export async function updateAddress(
+  client: PoolClient,
+  addressId: string,
+  p: LuuDiaChiParams
+): Promise<void> {
+  await client.query(
+    `UPDATE addresses
+        SET recipient_name  = $2,
+            recipient_phone = $3,
+            province_name   = $4,
+            district_name   = $5,
+            ward_name       = $6,
+            street_line     = $7,
+            is_new_format   = $8,
+            normalized_at   = $9
+      WHERE id = $1`,
+    [
+      addressId,
+      p.recipientName,
+      p.recipientPhone,
+      p.provinceName,
+      p.districtName,
+      p.wardName,
+      p.streetLine,
+      p.isNewFormat,
+      p.normalizedAt,
+    ]
+  );
+}
+
+/** Đơn đã gắn bản ghi địa chỉ nào chưa; NULL = chưa có. */
+export async function findAddressIdOfOrder(
+  client: PoolClient,
+  orderId: string
+): Promise<string | null> {
+  const r = await client.query<{ address_id: string | null }>(
+    `SELECT address_id FROM orders WHERE id = $1`,
+    [orderId]
+  );
+  return r.rows[0]?.address_id ?? null;
+}
+
+/**
+ * Đơn này đã có vận đơn còn sống chưa?
+ *
+ * Dùng ĐÚNG vị từ của chỉ mục `uq_shipments_active_per_order` để câu
+ * trả lời ở đây và ràng buộc trong database không bao giờ lệch nhau.
+ */
+export async function hasActiveShipment(
+  client: PoolClient,
+  orderId: string
+): Promise<boolean> {
+  const r = await client.query(
+    `SELECT 1
+       FROM shipments
+      WHERE order_id = $1
+        AND status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
+      LIMIT 1`,
+    [orderId]
+  );
+  return r.rowCount! > 0;
 }
 
 export async function attachAddressToOrder(
@@ -147,6 +243,8 @@ export interface TaoVanDonParams {
   widthCm: number | null;
   heightCm: number | null;
   insuranceValue: string;
+  /** Lời dặn shop gửi kèm cho bưu tá. */
+  note: string | null;
 }
 
 /**
@@ -164,8 +262,8 @@ export async function insertShipmentRequested(
     `INSERT INTO shipments (
          order_id, carrier, service_code, client_order_code, status,
          cod_amount, weight_gram, length_cm, width_cm, height_cm,
-         insurance_value)
-     VALUES ($1, $2, $3, $4, 'REQUESTED', $5, $6, $7, $8, $9, $10)
+         insurance_value, note)
+     VALUES ($1, $2, $3, $4, 'REQUESTED', $5, $6, $7, $8, $9, $10, $11)
      -- Suy luận theo CỘT kèm đúng điều kiện của chỉ mục một phần.
      -- ON CONFLICT ON CONSTRAINT chỉ dùng được với ràng buộc thật,
      -- còn uq_shipments_active_per_order là một UNIQUE INDEX có WHERE
@@ -185,6 +283,7 @@ export async function insertShipmentRequested(
       p.widthCm,
       p.heightCm,
       p.insuranceValue,
+      p.note,
     ]
   );
   return r.rows[0]?.id ?? null;
@@ -198,6 +297,8 @@ export async function markShipmentCreated(
     feeQuoted: string | null;
     /** Hãng con, khi đi qua nhà tổng hợp. Giữ nguyên nếu không có. */
     serviceCode?: string | null;
+    /** Hạn giao hãng tự tính, giữ nguyên văn. */
+    expectedDeliveryText?: string | null;
   }
 ): Promise<boolean> {
   const r = await client.query(
@@ -290,6 +391,14 @@ const CHON_VAN_DON = `
     s.fee_quoted::text  AS "feeQuoted",
     s.fee_actual::text  AS "feeActual",
     s.weight_gram       AS "weightGram",
+    s.length_cm         AS "lengthCm",
+    s.width_cm          AS "widthCm",
+    s.height_cm         AS "heightCm",
+    s.insurance_value::text AS "insuranceValue",
+    s.note,
+    s.expected_delivery_text AS "expectedDeliveryText",
+    s.picked_up_at      AS "pickedUpAt",
+    s.delivered_at      AS "deliveredAt",
     s.failure_reason    AS "failureReason",
     s.last_synced_at    AS "lastSyncedAt",
     s.created_at        AS "createdAt",
@@ -315,6 +424,60 @@ export async function findShipmentById(
  * tạo đơn về tới nơi — lúc đó `tracking_code` còn NULL và thứ duy
  * nhất khớp được là mã của chính ta.
  */
+/**
+ * Người nhận và danh sách hàng của một vận đơn.
+ *
+ * Màn chi tiết cần cả hai để shop trả lời khách mà không phải mở
+ * thêm màn đơn hàng, rồi lại mở portal của hãng. Lấy người nhận từ
+ * bảng `addresses` chứ không từ cột cũ: đó mới là bản đã gửi cho
+ * hãng, tức địa chỉ kiện hàng thật sự đang đi tới.
+ */
+export async function findShipmentParties(
+  client: PoolClient,
+  shipmentId: string
+): Promise<{
+  nguoiNhan: {
+    name: string | null;
+    phone: string | null;
+    streetLine: string | null;
+    wardName: string | null;
+    districtName: string | null;
+    provinceName: string | null;
+  } | null;
+  items: Array<{ skuCode: string; productName: string; quantity: number }>;
+}> {
+  const r = await client.query(
+    `SELECT ${SQL_TEN_NGUOI_NHAN} AS name,
+            ${SQL_SDT_NGUOI_NHAN} AS phone,
+            a.street_line   AS "streetLine",
+            a.ward_name     AS "wardName",
+            a.district_name AS "districtName",
+            a.province_name AS "provinceName"
+       FROM shipments s
+       JOIN orders o        ON o.id = s.order_id
+       LEFT JOIN addresses a ON a.id = o.address_id
+      WHERE s.id = $1`,
+    [shipmentId]
+  );
+
+  const hang = await client.query<{
+    skuCode: string;
+    productName: string;
+    quantity: number;
+  }>(
+    `SELECT sk.sku_code AS "skuCode", pr.name AS "productName", oi.quantity
+       FROM shipments s
+       JOIN order_items oi  ON oi.order_id = s.order_id
+       JOIN product_skus sk ON sk.id = oi.sku_id
+       JOIN products pr     ON pr.id = sk.product_id
+      WHERE s.id = $1
+      ORDER BY oi.created_at`,
+    [shipmentId]
+  );
+
+  return { nguoiNhan: r.rows[0] ?? null, items: hang.rows };
+}
+
 export async function findShipmentForEvent(
   client: PoolClient,
   keys: { trackingCode?: string | null; clientOrderCode?: string | null }
@@ -347,10 +510,11 @@ export async function listShipments(
   // định cho mọi tổ hợp, thay vì nối chuỗi động.
   const r = await client.query(
     `SELECT ${CHON_VAN_DON},
-            o.recipient_name AS "recipientName",
-            o.status         AS "orderStatus"
+            ${SQL_TEN_NGUOI_NHAN} AS "recipientName",
+            o.status              AS "orderStatus"
        FROM shipments s
        JOIN orders o ON o.id = s.order_id
+       LEFT JOIN addresses a ON a.id = o.address_id
       WHERE ($1::uuid    IS NULL OR o.merchant_id = $1)
         AND ($2::varchar IS NULL OR s.carrier     = $2)
         AND ($3::varchar IS NULL OR s.status      = $3)

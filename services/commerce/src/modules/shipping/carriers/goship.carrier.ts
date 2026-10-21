@@ -90,6 +90,29 @@ const ANH_XA: Record<string, ShipmentStatus> = {
   "1000": "REJECTED",
 };
 
+/**
+ * Nhặt mã vận đơn Goship từ một gói tin bất kỳ.
+ *
+ * Goship đặt mã ở `id` (phản hồi tạo đơn lẫn webhook đều vậy), còn
+ * `gcode` là tên trường trong tài liệu. Cả hai đều phải thử.
+ *
+ * Nhưng TUYỆT ĐỐI không nhận chuỗi toàn số: mọi phong bì của Goship
+ * đều có `code`, và đó là MÃ HTTP. Nhận bừa thì lúc tạo đơn ta lưu
+ * mã vận đơn "200", còn lúc đọc webhook ta đi tìm vận đơn mang mã
+ * "200" — không bao giờ thấy, và mọi gói tin bị bỏ im lặng.
+ *
+ * Mã Goship luôn có chữ (GS…), nên điều kiện này không loại nhầm.
+ */
+function nhatMaVanDon(...ungVien: unknown[]): string | null {
+  for (const v of ungVien) {
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s === "" || /^\d+$/.test(s)) continue;
+    return s;
+  }
+  return null;
+}
+
 /** Mốc Goship đã chuyển tiền thu hộ về tài khoản shop. */
 const MA_TIEN_VE = "911";
 
@@ -545,9 +568,7 @@ export class GoshipCarrier implements ShippingCarrier {
     // lần Goship từ chối sẽ lưu vào đơn mã vận đơn "200", và lỗi chỉ
     // lộ ra lúc khách bấm tra cứu. Mã Goship luôn có chữ (GS…), nên
     // chuỗi toàn số chắc chắn không phải mã vận đơn.
-    const maTho = data?.id ?? data?.gcode ?? data?.code;
-    const ma =
-      maTho != null && !/^\d+$/.test(String(maTho)) ? maTho : null;
+    const ma = nhatMaVanDon(data?.id, data?.gcode, data?.code);
     if (!ma) {
       throw new CarrierRejectedError(
         "goship",
@@ -567,31 +588,49 @@ export class GoshipCarrier implements ShippingCarrier {
 
   async cancelShipment(trackingCode: string): Promise<void> {
     await this.goi(
-      `/shipments/${encodeURIComponent(trackingCode)}/cancel`,
-      "POST"
+      `/shipments/${encodeURIComponent(trackingCode)}`,
+      "DELETE"
     );
   }
 
   async getTracking(trackingCode: string): Promise<TrackingEvent[]> {
-    const data = await this.goi<{
+    type GoshipHistory = {
       status?: string | number;
       status_text?: string;
-      update_time?: number;
-    }>(`/shipments/${encodeURIComponent(trackingCode)}`, "GET");
+      status_desc?: string;
+      updated_time?: string | number;
+    };
+    type GoshipShipment = { id?: string; history?: GoshipHistory[] };
 
-    if (data?.status == null) return [];
+    const result = await this.goi<unknown>(
+      `/shipments/search?code=${encodeURIComponent(trackingCode)}`,
+      "GET"
+    );
+    const rows = Array.isArray(result)
+      ? result
+      : result && typeof result === "object" &&
+          Array.isArray((result as { data?: unknown }).data)
+        ? (result as { data: unknown[] }).data
+        : [];
+    const shipment = rows.find(
+      (row): row is GoshipShipment =>
+        row !== null && typeof row === "object" &&
+        (row as GoshipShipment).id === trackingCode
+    );
 
-    const ma = String(data.status);
-    return [
-      {
-        eventCode: ma,
-        mappedStatus: ANH_XA[ma] ?? null,
-        occurredAt: data.update_time
-          ? new Date(data.update_time * 1000)
-          : new Date(),
-        description: data.status_text ?? ma,
-      },
-    ];
+    return (shipment?.history ?? []).flatMap((entry) => {
+      const seconds = Number(entry.updated_time);
+      if (entry.status == null || !Number.isFinite(seconds) || seconds <= 0) {
+        return [];
+      }
+      const code = String(entry.status);
+      return [{
+        eventCode: code,
+        mappedStatus: ANH_XA[code] ?? null,
+        occurredAt: new Date(seconds * 1000),
+        description: entry.status_desc ?? entry.status_text ?? code,
+      }];
+    });
   }
 
   /**
@@ -638,6 +677,16 @@ export class GoshipCarrier implements ShippingCarrier {
     const ma = String(b.status ?? "");
     const laTienVe = ma === MA_TIEN_VE;
 
+    // Tính MỘT LẦN rồi dùng lại cho cả việc khớp vận đơn lẫn mã đối
+    // soát COD. Hai chỗ đó mà lấy từ hai nguồn khác nhau là sớm muộn
+    // lệch nhau.
+    const maVanDon = nhatMaVanDon(b.gcode, b.id, b.code);
+    const maCuaTa = b.metadata
+      ? String(b.metadata)
+      : b.order_id
+        ? String(b.order_id)
+        : null;
+
     return {
       eventCode: ma || "unknown",
       mappedStatus: laTienVe ? null : (ANH_XA[ma] ?? null),
@@ -647,20 +696,24 @@ export class GoshipCarrier implements ShippingCarrier {
       description: String(b.status_text ?? b.message ?? b.description ?? ma),
       // `metadata` là mã của ta gửi kèm lúc tạo; `order_id` là mã bên
       // hệ thống Goship.
-      clientOrderCode: b.metadata
-        ? String(b.metadata)
-        : b.order_id
-          ? String(b.order_id)
-          : null,
-      // Ưu tiên `gcode` — mã của Goship, cũng là thứ ta đã lưu lúc
-      // tạo. `code` là mã của hãng con, chỉ có sau khi hãng nhận đơn
-      // nên khớp theo nó là bỏ sót mọi sự kiện ở giai đoạn đầu.
-      trackingCode: b.gcode ? String(b.gcode) : b.code ? String(b.code) : null,
+      clientOrderCode: maCuaTa,
+      // `gcode` và `id` đều là mã của Goship — thứ ta đã lưu lúc tạo.
+      // Thực tế gói tin của họ dùng `id`; chỉ đọc `gcode` là không
+      // khớp được vận đơn nào, và mọi webhook rơi vào UNKNOWN_SHIPMENT
+      // trong im lặng. Riêng mốc 911 chỉ về qua webhook, nên bỏ sót ở
+      // đây là tiền COD không bao giờ được ghi sổ.
+      trackingCode: maVanDon,
       codTransferred:
         laTienVe && b.cod != null
           ? {
               amount: String(b.cod),
-              reference: String(b.gcode ?? b.code ?? Date.now()),
+              // Mã đối soát phải ỔN ĐỊNH giữa các lần hãng gửi lại,
+              // nếu không chống trùng vô tác dụng và tiền COD được
+              // ghi nhận nhiều lần. Date.now() ở đây là hỏng hẳn —
+              // mỗi lần gửi lại sinh một mã khác. Tới được nhánh này
+              // nghĩa là đã khớp được vận đơn, nên chắc chắn có ít
+              // nhất một trong hai mã ổn định dưới đây.
+              reference: maVanDon ?? maCuaTa ?? `cod-${ma}`,
             }
           : null,
       weightGram: b.weight != null ? Math.round(Number(b.weight)) : null,

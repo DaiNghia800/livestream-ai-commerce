@@ -20,7 +20,11 @@ import {
   AlertTriangle,
   ArrowLeft,
   Ban,
+  Boxes,
+  Check,
+  FlaskConical,
   Package,
+  Plus,
   RefreshCw,
   Link2,
   Truck,
@@ -36,7 +40,10 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 import { shippingApi, type ShipmentStatus } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import {
+  CHANG_THUAN,
+  changHienTai,
   HUY_DUOC,
+  LECH_DUONG,
   MOC_BAM_TAY,
   shipmentStatuses,
   tenHang,
@@ -222,6 +229,65 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
         </div>
       </div>
 
+      <ThanhTienTrinh status={vd.status} />
+
+      <section className={styles.panel}>
+        <div className={styles.panelHead}>
+          <Package size={16} /> Thông tin bưu kiện
+        </div>
+        <div className={styles.panelBody}>
+          <div className={styles.doiBen}>
+            <BenGiaoNhanBox nhan="Nơi gửi" ben={vd.nguoiGui} gui />
+            <BenGiaoNhanBox nhan="Nơi nhận" ben={vd.nguoiNhan} />
+          </div>
+
+          <dl className={styles.thongSo}>
+            <ThongSo nhan="Hàng hoá">
+              {vd.items.length === 0
+                ? "—"
+                : vd.items
+                    .map((i) => `${i.skuCode} × ${i.quantity}`)
+                    .join(", ")}
+            </ThongSo>
+            <ThongSo nhan="Kích thước đóng gói">
+              {vd.lengthCm && vd.widthCm && vd.heightCm
+                ? `${vd.lengthCm}×${vd.widthCm}×${vd.heightCm} cm`
+                : "chưa khai"}
+            </ThongSo>
+            <ThongSo nhan="Khối lượng">{vd.weightGram} g</ThongSo>
+            <ThongSo nhan="Giá trị khai giá">
+              {Number(vd.insuranceValue ?? 0) > 0
+                ? formatMoney(Number(vd.insuranceValue))
+                : "không khai"}
+            </ThongSo>
+            <ThongSo nhan="Bên trả cước">
+              {/* Hệ thống luôn gửi "người gửi trả" cho hãng. Hiện ra
+                  để shop không phải mở portal hãng mới biết. */}
+              Shop trả
+            </ThongSo>
+            <ThongSo nhan="Dự kiến giao">
+              {vd.expectedDeliveryText ?? "hãng chưa tính"}
+            </ThongSo>
+            {vd.pickedUpAt && (
+              <ThongSo nhan="Hãng lấy hàng lúc">
+                {formatDateTime(vd.pickedUpAt)}
+              </ThongSo>
+            )}
+            {vd.deliveredAt && (
+              <ThongSo nhan="Giao xong lúc">
+                {formatDateTime(vd.deliveredAt)}
+              </ThongSo>
+            )}
+          </dl>
+
+          {vd.note && (
+            <p className={styles.ghiChu}>
+              <strong>Dặn bưu tá:</strong> {vd.note}
+            </p>
+          )}
+        </div>
+      </section>
+
       <div className={styles.grid}>
         <section className={styles.panel}>
           <div className={styles.panelHead}>
@@ -291,6 +357,37 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
           </div>
         </section>
 
+        {vd.moPhong.length > 0 && (
+          <section className={styles.panel}>
+            <div className={styles.panelHead}>
+              <FlaskConical size={16} /> Giả lập hãng (môi trường thử)
+            </div>
+            <div className={styles.panelBody}>
+              <p className={styles.mocMoTa}>
+                Sandbox của hãng không có bưu tá nên vận đơn nằm mãi ở
+                &ldquo;chờ lấy hàng&rdquo;. Các nút dưới đây bắn gói tin
+                đúng như hãng gửi, đi qua đủ lớp xác thực và chống trùng —
+                bấm hai lần cùng một mốc sẽ bị chặn, đúng như thật.
+              </p>
+              <div className={styles.manual}>
+                {vd.moPhong.map((m) => (
+                  <Button
+                    key={m.code}
+                    variant="secondary"
+                    disabled={dangChay}
+                    onClick={() =>
+                      chay(() => shippingApi.simulate(vd.id, m.code))
+                    }
+                  >
+                    {m.label}
+                    <span className={styles.maHang}>{m.code}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className={styles.panel}>
           <div className={styles.panelHead}>Nhật ký sự kiện từ hãng</div>
           <div className={styles.panelBody}>
@@ -320,5 +417,111 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/** Một đầu của hành trình. Thiếu dữ liệu thì nói thẳng là thiếu. */
+function BenGiaoNhanBox({
+  nhan,
+  ben,
+  gui = false,
+}: {
+  nhan: string;
+  ben: { name: string | null; phone: string | null; streetLine: string | null;
+         wardName: string | null; districtName: string | null;
+         provinceName: string | null } | null;
+  gui?: boolean;
+}) {
+  const dong = ben
+    ? [ben.streetLine, ben.wardName, ben.districtName, ben.provinceName]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+
+  return (
+    <div className={styles.ben}>
+      <span className={styles.benNhan}>
+        {gui ? <Package size={13} /> : <Truck size={13} />} {nhan}
+      </span>
+      {ben?.name ? (
+        <>
+          <span className={styles.benTen}>
+            {ben.name}
+            {ben.phone && <span className={styles.benSdt}>{ben.phone}</span>}
+          </span>
+          <span className={styles.benDiaChi}>{dong || "chưa có địa chỉ"}</span>
+        </>
+      ) : (
+        <span className={styles.benDiaChi}>chưa có</span>
+      )}
+    </div>
+  );
+}
+
+function ThongSo({
+  nhan,
+  children,
+}: {
+  nhan: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={styles.thongSoDong}>
+      <dt>{nhan}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * Thanh tiến trình ngang.
+ *
+ * Dòng thời gian bên dưới kể đủ mọi chuyện nhưng phải đọc mới hiểu.
+ * Thanh này trả lời trong một cái liếc: hàng đang ở đoạn nào.
+ *
+ * Vận đơn đi lệch đường thuận (giao hỏng, hoàn về, bị huỷ) thì KHÔNG
+ * vẽ thanh. Ép một đơn đã hoàn về vào thanh "đang giao → giao xong"
+ * là nói dối ngay chỗ dễ nhìn nhất.
+ */
+function ThanhTienTrinh({ status }: { status: string }) {
+  if (LECH_DUONG.has(status)) return null;
+
+  const dangO = changHienTai(status);
+  if (dangO < 0) return null;
+
+  const icons = {
+    CREATED: Plus,
+    PICKED_UP: Package,
+    IN_TRANSIT: Boxes,
+    OUT_FOR_DELIVERY: Truck,
+    DELIVERED: Check,
+  };
+  const daGiaoXong = status === "DELIVERED";
+
+  return (
+    <ol className={styles.tienTrinh} aria-label="Tiến trình giao hàng">
+      {CHANG_THUAN.map((c, i) => {
+        const xong = daGiaoXong || i < dangO;
+        const hienTai = !daGiaoXong && i === dangO;
+        const Icon = icons[c.status];
+        return (
+          <li
+            key={c.status}
+            className={[
+              styles.chang,
+              xong ? styles.changXong : "",
+              hienTai ? styles.changHienTai : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            aria-current={hienTai ? "step" : undefined}
+            aria-label={`${c.label}: ${xong ? "hoàn tất" : hienTai ? "đang thực hiện" : "chưa tới"}`}
+          >
+            <span className={styles.changCham}><Icon size={22} aria-hidden="true" /></span>
+            <span className={styles.changTen}>{c.label}</span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

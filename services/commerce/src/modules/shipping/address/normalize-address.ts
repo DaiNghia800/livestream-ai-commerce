@@ -25,6 +25,7 @@ export type LyDoChuaChuan =
   | "THIEU_TINH"
   | "TINH_LA"
   | "TINH_DA_SAP_NHAP"
+  | "TEN_CAP_DUOI_TINH"
   | "THIEU_PHUONG_XA"
   | "THIEU_SO_NHA";
 
@@ -32,6 +33,8 @@ export const MO_TA_LY_DO: Record<LyDoChuaChuan, string> = {
   THIEU_TINH: "Không tìm thấy tỉnh/thành trong địa chỉ",
   TINH_LA: "Tỉnh/thành không nằm trong danh mục 34 đơn vị hiện hành",
   TINH_DA_SAP_NHAP: "Tỉnh/thành này đã sáp nhập, cần xác nhận tên mới",
+  TEN_CAP_DUOI_TINH:
+    "Đây là tên thành phố/thị xã, không phải tỉnh — cần xác nhận tỉnh",
   THIEU_PHUONG_XA: "Không tìm thấy phường/xã trong địa chỉ",
   THIEU_SO_NHA: "Không tìm thấy số nhà hoặc tên đường",
 };
@@ -88,7 +91,11 @@ export function tachDiaChi(nguyenVan: string): DiaChiDaTach {
     if (kq.goiY) {
       goiYTinh = kq.goiY;
       viTriTinh = i;
-      lyDo.push("TINH_DA_SAP_NHAP");
+      lyDo.push(
+        kq.loaiGoiY === "CAP_DUOI_TINH"
+          ? "TEN_CAP_DUOI_TINH"
+          : "TINH_DA_SAP_NHAP"
+      );
       break;
     }
   }
