@@ -3,37 +3,43 @@
  *
  * Bảng tóm tắt — cột "Tồn kho" là chỗ hay bị làm sai nhất:
  *
- *   Sự kiện              Lượt giữ            Tồn kho                 Đơn
- *   ──────────────────────────────────────────────────────────────────────
- *   Mở link xác nhận     giữ nguyên          không đổi               → PENDING_CONFIRMATION
- *   Khách xác nhận       giữ nguyên HOLDING  KHÔNG ĐỔI               → CONFIRMED
- *   Huỷ                  → RELEASED          held -= q               → CANCELLED
- *   Hết hạn TTL          → RELEASED          held -= q               → EXPIRED
- *   Hoàn tất giao hàng   → CONSUMED          on_hand -= q, held -= q → COMPLETED
+ *   Sự kiện              Lượt giữ              Tồn kho                 Đơn
+ *   ────────────────────────────────────────────────────────────────────────
+ *   Mở link xác nhận     chưa có               không đổi               → PENDING_CONFIRMATION
+ *   Khách xác nhận       TẠO MỚI, HOLDING      held += q               → CONFIRMED
+ *   Huỷ                  → RELEASED (nếu có)   held -= q (nếu có)      → CANCELLED
+ *   Hoàn tất giao hàng   → CONSUMED            on_hand -= q, held -= q → COMPLETED
  *
- * Điểm dễ hiểu nhầm: XÁC NHẬN KHÔNG TRỪ TỒN. Hàng vẫn đang được giữ cho
- * khách, chỉ là bỏ đồng hồ đếm ngược đi. Tồn thật chỉ giảm khi hàng rời
- * kho ở bước hoàn tất.
+ * Điểm mấu chốt: ĐƠN NHÁP KHÔNG GIỮ TỒN và không có hạn — khách để link
+ * bao lâu cũng được. Tồn chỉ được giữ đúng lúc khách bấm xác nhận: ai
+ * bấm trước được trước, người sau thấy "hết hàng" ngay trên trang xác
+ * nhận. Tồn thật chỉ giảm khi hàng rời kho ở bước hoàn tất.
  */
 
 import type { Pool, PoolClient } from "pg";
 import { config } from "../../../config.js";
 import {
   InvalidOrderStateError,
+  OrderAccessError,
   OrderNotFoundError,
 } from "../../../shared/errors/domain.errors.js";
-import { commitStock, releaseStock } from "../repositories/inventory.repository.js";
+import { findOwnerUserIdByConfirmToken } from "../../profile/repositories/customer-identity.repository.js";
+import {
+  commitStock,
+  holdStock,
+  releaseStock,
+} from "../repositories/inventory.repository.js";
 import {
   findHoldingReservationIds,
   findOrderByConfirmToken,
   findOrderById,
   findOrderDetailByCode,
+  findOrderItemsForHold,
   listOrders,
   markCancelled,
   markCompleted,
   markConfirmed,
   markConfirmLinkOpened,
-  markExpired,
   markProcessing,
   recordStatusHistory,
   saveShippingInfo,
@@ -44,22 +50,37 @@ import {
   appendOutboxEvent,
   applyBestPrice,
   loadOrder,
+  upsertReservation,
 } from "../repositories/order.repository.js";
 import { bumpRisk } from "../repositories/customer-risk.repository.js";
-import { markCodCollected } from "../../payment/repositories/payment.repository.js";
+import { CodNotAllowedError } from "../../payment/errors/payment.errors.js";
+import {
+  insertPayment,
+  markCodCollected,
+} from "../../payment/repositories/payment.repository.js";
 import { tachDiaChi } from "../../shipping/address/normalize-address.js";
+import { findCurrentWard } from "../../shipping/address/current-wards.js";
+import { traTinh } from "../../shipping/address/vietnam-provinces.js";
 import {
   attachAddressToOrder,
+  findAddressIdOfOrder,
+  hasActiveShipment,
   insertAddress,
+  updateAddress,
 } from "../../shipping/repositories/shipment.repository.js";
+import type { ConfirmOrderInput, SetOrderAddressInput } from "../schemas/order.schema.js";
 import type { Order, OrderStatus } from "../types/order.types.js";
 
-export interface ShippingInfo {
-  recipientName: string;
-  recipientPhone: string;
-  shippingAddress: string;
-  note?: string | null;
-}
+/**
+ * Trạng thái còn cho sửa địa chỉ giao.
+ *
+ * Dừng ở PROCESSING. Từ SHIPPING trở đi hàng đã rời kho, còn
+ * COMPLETED/CANCELLED/RETURNED thì địa chỉ là dữ liệu lịch sử —
+ * sửa vào chỉ làm sai chứng từ của một việc đã xong.
+ */
+const SUA_DUOC_DIA_CHI = new Set<OrderStatus>(["CONFIRMED", "PROCESSING"]);
+
+export type ShippingInfo = ConfirmOrderInput;
 
 export class OrderLifecycleService {
   constructor(private readonly pool: Pool) {}
@@ -67,10 +88,10 @@ export class OrderLifecycleService {
   /**
    * Khách mở link xác nhận.
    *
-   * Idempotent: mở lại nhiều lần đều được, mỗi lần nới thêm hạn giữ
-   * nhưng không bao giờ quá trần 30 phút kể từ lúc tạo đơn.
+   * Idempotent: mở lại bao nhiêu lần cũng được. Không có gì để gia hạn
+   * — đơn nháp không có hạn — chỉ ghi dấu khách đã mở link.
    */
-  async openConfirmLink(token: string): Promise<Order> {
+  async openConfirmLink(token: string, viewerUserId: number | null = null): Promise<Order> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -79,19 +100,16 @@ export class OrderLifecycleService {
       if (!order) {
         throw new OrderNotFoundError(`token ${token.slice(0, 8)}…`);
       }
+      await this.requireViewer(client, token, viewerUserId);
 
       // Đơn đã xác nhận/huỷ/hết hạn thì chỉ trả về để hiển thị, không
       // hồi sinh. Khách mở lại link cũ phải thấy đúng trạng thái thật.
       if (order.status === "DRAFT" || order.status === "PENDING_CONFIRMATION") {
-        const extended = await markConfirmLinkOpened(client, {
-          orderId: order.id,
-          extendSeconds: config.holdConfirmSeconds,
-          maxSeconds: config.holdMaxSeconds,
-        });
+        const conMo = await markConfirmLinkOpened(client, order.id);
 
         // Chỉ ghi lịch sử khi thật sự đổi trạng thái, không ghi mỗi lần
         // khách F5 trang.
-        if (extended && order.status === "DRAFT") {
+        if (conMo && order.status === "DRAFT") {
           await recordStatusHistory(client, {
             orderId: order.id,
             fromStatus: "DRAFT",
@@ -115,9 +133,13 @@ export class OrderLifecycleService {
   /**
    * Khách xác nhận đơn kèm thông tin giao hàng.
    *
-   * Không đụng tới tồn kho — xem bảng ở đầu file.
+   * ĐÂY là lúc duy nhất tồn được giữ cho đơn — xem bảng ở đầu file.
    */
-  async confirmOrder(token: string, shipping: ShippingInfo): Promise<Order> {
+  async confirmOrder(
+    token: string,
+    shipping: ShippingInfo,
+    viewerUserId: number | null = null
+  ): Promise<Order> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -126,6 +148,7 @@ export class OrderLifecycleService {
       if (!order) {
         throw new OrderNotFoundError(`token ${token.slice(0, 8)}…`);
       }
+      await this.requireViewer(client, token, viewerUserId);
 
       // Xác nhận lại đơn đã xác nhận thì coi như thành công, trả về
       // nguyên trạng. Khách bấm hai lần không phải là lỗi của khách.
@@ -135,12 +158,36 @@ export class OrderLifecycleService {
         return current;
       }
 
-      await saveShippingInfo(client, { orderId: order.id, ...shipping });
+      let shippingAddress: string;
+      let address: ReturnType<typeof tachDiaChi>;
+      if ("wardCode" in shipping) {
+        const selectedWard = findCurrentWard(shipping.provinceName, shipping.wardCode);
+        if (!selectedWard) throw new Error("Invalid selected ward");
+        shippingAddress = [shipping.streetLine, selectedWard.name, shipping.provinceName].join(", ");
+        address = {
+          daChuanHoa: true,
+          provinceName: shipping.provinceName,
+          districtName: null,
+          wardName: selectedWard.name,
+          streetLine: shipping.streetLine,
+          isNewFormat: true,
+          lyDo: [],
+          goiYTinh: null,
+        };
+      } else {
+        shippingAddress = shipping.shippingAddress;
+        address = tachDiaChi(shippingAddress);
+      }
+      await saveShippingInfo(client, {
+        orderId: order.id,
+        recipientName: shipping.recipientName,
+        recipientPhone: shipping.recipientPhone,
+        shippingAddress,
+        note: shipping.note,
+      });
 
-      // Chỉ gắn địa chỉ dùng được khi đủ tỉnh/phường/số nhà. Giữ
-      // nguyên chuỗi khách gõ trong orders.shipping_address để shop
-      // có thể sửa khi tách không chắc chắn.
-      const address = tachDiaChi(shipping.shippingAddress);
+      // Selected addresses are verified against the ward catalog above.
+      // Legacy free-text requests still use the cautious parser.
       if (address.daChuanHoa) {
         const addressId = await insertAddress(client, {
           recipientName: shipping.recipientName,
@@ -162,8 +209,59 @@ export class OrderLifecycleService {
 
       const changed = await markConfirmed(client, order.id);
       if (!changed) {
-        // Thua cuộc đua với job quét hết hạn, hoặc đơn đã bị huỷ.
+        // Đơn vừa bị huỷ, hoặc vừa được xác nhận ở một tab khác.
         throw new InvalidOrderStateError(order.id, order.status, "xác nhận");
+      }
+
+      // GIỮ TỒN — lần đầu và duy nhất trong vòng đời đơn.
+      //
+      // Đơn nháp không giữ gì, nên N khách cùng chốt món cuối đều tới
+      // được đây. holdStock là nơi phân thắng thua: điều kiện "còn đủ
+      // hàng" nằm ngay trong câu UPDATE, hai transaction tranh món cuối
+      // thì đúng một bên qua; bên kia nhận OutOfStock, ROLLBACK trả lại
+      // cả trạng thái CONFIRMED vừa đổi lẫn địa chỉ vừa lưu. Đơn vẫn
+      // là nháp, khách thấy mã nào hết ngay trên trang xác nhận.
+      //
+      // Giữ ĐỦ hoặc không giữ gì: khách vừa đọc tổng tiền rồi mới bấm,
+      // âm thầm bớt số lượng sau lưng họ là đổi hợp đồng.
+      for (const item of await findOrderItemsForHold(client, order.id)) {
+        await holdStock(client, item.skuId, item.quantity);
+        await upsertReservation(client, {
+          orderId: order.id,
+          orderItemId: item.id,
+          skuId: item.skuId,
+          quantity: item.quantity,
+        });
+      }
+
+      // Ghi phương thức khách vừa chọn — CHỈ khi họ có chọn.
+      //
+      // Không chọn thì để module thanh toán tự lo như trước; tự ý
+      // tạo khoản thu cho mọi đơn là đổi hành vi của một luồng
+      // không ai nhờ đụng tới.
+      //
+      // Đặt SAU applyBestPrice để số tiền là giá cuối. Và đọc LẠI
+      // tổng tiền từ database chứ không dùng bản đọc lúc mở giao
+      // dịch — flash sale có thể vừa hạ giá xong.
+      // Khách rủi ro bị chặn COD từ lúc tạo nháp, nhưng chốt chặn đó
+      // trước đây chỉ nằm ở module thanh toán. Khách chọn COD ngay tại
+      // bước xác nhận mà không kiểm ở đây là lách qua được: đơn chốt
+      // xong, khoản thu COD đã ghi, lúc bưu tá tới mới lộ.
+      if (shipping.paymentMethod === "COD" && order.codBlocked) {
+        throw new CodNotAllowedError(order.id);
+      }
+
+      if (shipping.paymentMethod) {
+        const sauGia = await loadOrder(client, order.id);
+        await insertPayment(client, {
+          orderId: order.id,
+          method: shipping.paymentMethod,
+          amount: sauGia.totalAmount,
+          txnRef: `${order.orderCode}-pay`.slice(0, 64),
+          // COD không qua cổng nào; ONLINE để trống tới khi khách
+          // chọn cổng cụ thể ở bước sau.
+          provider: null,
+        });
       }
 
       await recordStatusHistory(client, {
@@ -177,6 +275,12 @@ export class OrderLifecycleService {
         aggregateId: order.id,
         eventType: "order.confirmed",
         payload: { orderId: order.id, orderCode: order.orderCode },
+      });
+
+      // Tồn khả dụng vừa giảm — màn hình shop phải thấy ngay.
+      await appendInventoryChangedEvents(client, {
+        orderId: order.id,
+        reason: "ORDER_CONFIRMED",
       });
 
       const result = await loadOrder(client, order.id);
@@ -212,32 +316,112 @@ export class OrderLifecycleService {
     });
   }
 
+  /** CONFIRMED → PROCESSING. Không đụng tồn. */
   /**
-   * Hết hạn giữ hàng — job quét gọi hàm này.
+   * Shop sửa tay địa chỉ giao.
    *
-   * Dùng chung đường với huỷ, chỉ khác trạng thái đích và lý do, để
-   * logic trả tồn chỉ tồn tại ở một chỗ duy nhất.
+   * Lối thoát cho những địa chỉ bộ tách tự động không dám quyết. Ghi
+   * thẳng vào `addresses` với `normalized_at` = bây giờ: người sửa là
+   * người biết chính xác, nên kết quả coi như đã chuẩn hoá.
+   *
+   * ── HAI RÀNG BUỘC ──
+   *
+   * Đơn phải đang ở trạng thái còn cho sửa. Đơn đã huỷ hoặc đã xong
+   * thì địa chỉ là dữ liệu lịch sử, sửa vào chỉ làm sai chứng từ.
+   *
+   * Và đơn KHÔNG được có vận đơn còn sống. Lúc đó kiện hàng đã nằm
+   * trong tay hãng với địa chỉ cũ in trên nhãn; đổi trong database
+   * không đổi được cái nhãn, chỉ khiến hệ thống và thực tế nói hai
+   * chuyện khác nhau. Muốn đổi thì huỷ vận đơn trước.
    */
-  async expireOrder(orderId: string): Promise<Order | null> {
+  async setOrderAddress(
+    orderId: string,
+    input: SetOrderAddressInput,
+    changedBy?: string
+  ): Promise<Order> {
+    const client = await this.pool.connect();
     try {
-      return await this.releaseAndTransition(orderId, {
-        attempt: "cho hết hạn",
-        transition: (client) => markExpired(client, orderId),
-        toStatus: "EXPIRED",
-        eventType: "order.expired",
-        releaseReason: "TTL_EXPIRED",
-      });
-    } catch (err) {
-      // Job quét chạy song song nhiều worker: thua cuộc đua là chuyện
-      // bình thường, không phải lỗi. Trả null để worker bỏ qua đơn này.
-      if (err instanceof InvalidOrderStateError) {
-        return null;
+      await client.query("BEGIN");
+
+      const order = await this.requireOrder(client, orderId);
+
+      if (!SUA_DUOC_DIA_CHI.has(order.status)) {
+        throw new InvalidOrderStateError(
+          orderId,
+          order.status,
+          "sửa địa chỉ giao"
+        );
       }
+
+      if (await hasActiveShipment(client, orderId)) {
+        throw new InvalidOrderStateError(
+          orderId,
+          order.status,
+          "sửa địa chỉ khi đã có vận đơn — huỷ vận đơn trước"
+        );
+      }
+
+      // Lưu tên tỉnh theo DANH MỤC, không theo cách người dùng gõ.
+      // Schema đã chặn tỉnh lạ, nên tới đây chắc chắn tra ra.
+      const provinceName = traTinh(input.provinceName).tinh as string;
+      const districtName = input.districtName ?? null;
+
+      const diaChi = {
+        recipientName: input.recipientName,
+        recipientPhone: input.recipientPhone,
+        provinceName,
+        districtName,
+        wardName: input.wardName,
+        streetLine: input.streetLine,
+        // Không có quận/huyện = địa chỉ hai cấp sau sáp nhập.
+        isNewFormat: districtName === null,
+        normalizedAt: new Date(),
+      };
+
+      const addressId = await findAddressIdOfOrder(client, orderId);
+      if (addressId) {
+        await updateAddress(client, addressId, diaChi);
+      } else {
+        const moi = await insertAddress(client, diaChi);
+        await attachAddressToOrder(client, orderId, moi);
+      }
+
+      // Giữ cột chuỗi cũ khớp với bản đã tách. Để lệch thì màn đơn
+      // hàng hiện địa chỉ cũ còn hãng nhận địa chỉ mới, và không ai
+      // biết bên nào đúng.
+      await saveShippingInfo(client, {
+        orderId,
+        recipientName: input.recipientName,
+        recipientPhone: input.recipientPhone,
+        shippingAddress: [
+          input.streetLine,
+          input.wardName,
+          districtName,
+          provinceName,
+        ]
+          .filter(Boolean)
+          .join(", "),
+      });
+
+      await recordStatusHistory(client, {
+        orderId,
+        fromStatus: order.status,
+        toStatus: order.status,
+        changedBy,
+        note: "Sửa địa chỉ giao",
+      });
+
+      const result = await loadOrder(client, orderId);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
       throw err;
+    } finally {
+      client.release();
     }
   }
 
-  /** CONFIRMED → PROCESSING. Không đụng tồn. */
   async startProcessing(orderId: string, changedBy?: string): Promise<Order> {
     const client = await this.pool.connect();
     try {
@@ -364,6 +548,25 @@ export class OrderLifecycleService {
 
   // ───────────────────────────────────────────────────────────────────
 
+  /**
+   * Đơn đã nối với một tài khoản thì chỉ tài khoản đó được mở link.
+   *
+   * Đơn chưa nối (khách vãng lai, dữ liệu cũ) giữ hành vi cũ: token
+   * trong link là đủ. Kiểm ở service chứ không ở middleware để GET và
+   * POST không thể lệch nhau — chặn xem mà quên chặn xác nhận hộ là
+   * lỗ hổng thật.
+   */
+  private async requireViewer(
+    client: PoolClient,
+    token: string,
+    viewerUserId: number | null
+  ): Promise<void> {
+    const owner = await findOwnerUserIdByConfirmToken(client, token);
+    if (owner === null) return;
+    if (viewerUserId === null) throw new OrderAccessError("LOGIN_REQUIRED");
+    if (viewerUserId !== owner) throw new OrderAccessError("FORBIDDEN");
+  }
+
   private async requireOrder(
     client: PoolClient,
     orderId: string
@@ -376,11 +579,11 @@ export class OrderLifecycleService {
   }
 
   /**
-   * Khuôn chung cho huỷ và hết hạn: đổi trạng thái rồi trả tồn.
+   * Khuôn chung cho mọi lối ra sớm của đơn: đổi trạng thái rồi trả tồn.
    *
-   * Gom về một chỗ vì hai nghiệp vụ này chỉ khác nhau ở nhãn, còn phần
-   * dễ sai — thứ tự thao tác và việc trả tồn — thì giống hệt. Viết hai
-   * bản riêng là sớm muộn cũng lệch nhau.
+   * Hiện chỉ còn huỷ đi qua đây (hết hạn đã bỏ cùng với giữ tồn ở đơn
+   * nháp). Giữ nguyên khuôn vì phần dễ sai — thứ tự thao tác và việc
+   * trả tồn — không phụ thuộc vào lý do đóng đơn.
    */
   private async releaseAndTransition(
     orderId: string,
@@ -403,10 +606,14 @@ export class OrderLifecycleService {
         throw new InvalidOrderStateError(orderId, order.status, opts.attempt);
       }
 
-      // Trả tồn SAU khi đã giành được quyền đổi trạng thái.
-      // releaseStock có guard riêng nên gọi trùng cũng vô hại.
+      // Trả tồn SAU khi đã giành được quyền đổi trạng thái. Đơn nháp
+      // không có lượt giữ nào nên vòng này rỗng; đơn đã xác nhận thì
+      // trả hết. releaseStock có guard riêng nên gọi trùng cũng vô hại.
+      let daTra = 0;
       for (const reservationId of await findHoldingReservationIds(client, orderId)) {
-        await releaseStock(client, reservationId, opts.releaseReason);
+        if (await releaseStock(client, reservationId, opts.releaseReason)) {
+          daTra += 1;
+        }
       }
 
       await recordStatusHistory(client, {
@@ -417,15 +624,13 @@ export class OrderLifecycleService {
         note: opts.releaseReason,
       });
 
-      // BẪY-08: đếm hành vi bom hàng, CÙNG transaction với việc đổi
+      // BẪY-08: đếm hành vi gian lận, CÙNG transaction với việc đổi
       // trạng thái. Lệch một nhịp là hai nguồn số liệu lệch vĩnh viễn.
       //
-      // Chỉ đếm hai thứ: chốt rồi để hết hạn, và shop huỷ vì nghi gian
-      // lận. Khách tự huỷ sớm là hành vi LÀNH — họ trả hàng về kho cho
-      // người khác mua, phạt họ là phạt nhầm.
-      if (opts.toStatus === "EXPIRED") {
-        await bumpRisk(client, order.customerId, "EXPIRED");
-      } else if (opts.releaseReason === "SUSPECTED_FRAUD") {
+      // Chỉ đếm shop huỷ vì nghi gian lận. Khách tự huỷ là hành vi
+      // LÀNH, phạt họ là phạt nhầm. (Đơn nháp không còn hết hạn, nên
+      // tín hiệu "chốt rồi bỏ" không còn phát sinh từ đây.)
+      if (opts.releaseReason === "SUSPECTED_FRAUD") {
         await bumpRisk(client, order.customerId, "FRAUD");
       }
 
@@ -439,11 +644,14 @@ export class OrderLifecycleService {
         },
       });
 
-      // Hàng vừa trả về kho, tồn khả dụng tăng lại.
-      await appendInventoryChangedEvents(client, {
-        orderId,
-        reason: opts.releaseReason,
-      });
+      // Hàng vừa trả về kho thì tồn khả dụng tăng lại — chỉ phát khi
+      // thật sự có gì trả; huỷ đơn nháp không làm con số nào đổi.
+      if (daTra > 0) {
+        await appendInventoryChangedEvents(client, {
+          orderId,
+          reason: opts.releaseReason,
+        });
+      }
 
       const result = await loadOrder(client, orderId);
       await client.query("COMMIT");

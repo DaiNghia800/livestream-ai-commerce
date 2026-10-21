@@ -23,7 +23,6 @@ export interface ResolveDraftParams {
   livestreamId: string | null;
   source: OrderSource;
   idempotencyKey: string;
-  holdSeconds: number;
   codBlocked?: boolean;
 }
 
@@ -54,7 +53,6 @@ export async function getOrCreateOpenDraft(
     livestreamId: params.livestreamId,
     source: params.source,
     idempotencyKey: params.idempotencyKey,
-    holdSeconds: params.holdSeconds,
     codBlocked: params.codBlocked,
   });
 

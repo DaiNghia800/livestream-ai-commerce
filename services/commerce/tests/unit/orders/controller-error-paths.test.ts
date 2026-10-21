@@ -23,6 +23,7 @@ import {
   InvalidOrderStateError,
   LivestreamNotOpenError,
   OrderNotFoundError,
+  OutOfStockError,
   SkuNotFoundError,
 } from "../../../src/shared/errors/domain.errors.js";
 
@@ -192,6 +193,20 @@ describe("OrderLifecycleController", () => {
     // không cho phép. Client nên tải lại đơn, không phải sửa dữ liệu.
     expect(res.statusCode).toBe(409);
     expect(res.body.currentStatus).toBe("CANCELLED");
+  });
+
+  it("xác nhận: hết hàng đúng lúc bấm trả 409 OutOfStock kèm mã thiếu", async () => {
+    const res = fakeRes();
+    await controller(new OutOfStockError("sku-7", 2, 1)).confirm(
+      fakeReq({ params: { token: "t" }, body: confirmBody }),
+      res
+    );
+
+    // Đơn nháp không giữ tồn; người khác vừa bấm trước. Trang khách cần
+    // biết mã nào thiếu và còn bao nhiêu để nói đúng câu.
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe("OutOfStock");
+    expect(res.body.rejected).toEqual([{ skuId: "sku-7", requested: 2, sellable: 1 }]);
   });
 
   it("xác nhận: thiếu địa chỉ trả 400", async () => {

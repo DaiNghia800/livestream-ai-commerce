@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../../../src/config.js";
 import {
+  chuanHoaIp,
   assertSandbox,
   GatewayNotConfiguredError,
   MockGateway,
@@ -801,5 +802,34 @@ describe("Cổng chưa cấu hình", () => {
         "VNPAY_HASH_SECRET",
       ]);
     }
+  });
+});
+
+describe("Chuẩn hoá IP khách gửi cho cổng", () => {
+  it("đổi loopback IPv6 thành IPv4", () => {
+    // Node trả `::1` cho localhost. VNPay đưa IP vào chữ ký và chỉ
+    // nhận IPv4, nên gửi `::1` là giao dịch bị từ chối mà thông báo
+    // không hề nhắc tới IP — rất khó lần ra.
+    expect(chuanHoaIp("::1")).toBe("127.0.0.1");
+    expect(chuanHoaIp("::")).toBe("127.0.0.1");
+  });
+
+  it("bóc tiền tố của IPv4 đi qua tầng IPv6", () => {
+    // Chạy sau proxy thì rất hay gặp dạng này.
+    expect(chuanHoaIp("::ffff:203.0.113.5")).toBe("203.0.113.5");
+    expect(chuanHoaIp("::FFFF:10.0.0.1")).toBe("10.0.0.1");
+  });
+
+  it("giữ nguyên IPv4 thường và cắt khoảng trắng thừa", () => {
+    expect(chuanHoaIp("203.0.113.5")).toBe("203.0.113.5");
+    expect(chuanHoaIp("  203.0.113.5  ")).toBe("203.0.113.5");
+  });
+
+  it("thiếu IP thì lùi về loopback, KHÔNG trả chuỗi rỗng", () => {
+    // Chuỗi rỗng lọt vào chữ ký là cổng từ chối, mà log của ta thì
+    // không thấy gì bất thường.
+    expect(chuanHoaIp(undefined)).toBe("127.0.0.1");
+    expect(chuanHoaIp(null)).toBe("127.0.0.1");
+    expect(chuanHoaIp("")).toBe("127.0.0.1");
   });
 });

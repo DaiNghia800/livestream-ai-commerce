@@ -1,9 +1,18 @@
 /**
- * Tạo đơn nháp kèm giữ tồn — toàn bộ trong MỘT transaction.
+ * Tạo đơn nháp — KHÔNG giữ tồn.
  *
- * Vì giữ tồn và tạo đơn nằm chung một transaction, mọi ROLLBACK đều tự
- * động trả lại tồn đã giữ. Không cần viết code bù trừ, không có đường
- * nào rò rỉ.
+ * Đơn nháp chỉ ghi lại "khách đã chốt, chờ xác nhận". Tồn kho được giữ
+ * đúng lúc khách bấm xác nhận (OrderLifecycleService.confirmOrder), nên
+ * đơn nháp để bao lâu cũng được và không có job nào quét hết hạn.
+ *
+ * Hệ quả cố ý: N khách cùng chốt món cuối thì N đơn nháp cùng tồn tại;
+ * ai xác nhận trước được hàng, người sau thấy "hết hàng" ngay trên
+ * trang xác nhận. Đổi lại, bình luận rác không còn giam được tồn, và
+ * khách thật không bị cắt giữa lúc đang gõ địa chỉ.
+ *
+ * Vẫn đọc tồn khả dụng lúc chốt để bot trả lời khách ngay: mã nào đang
+ * hết sạch thì báo luôn thay vì để họ mở link rồi mới biết. Đó chỉ là
+ * ảnh chụp tại thời điểm chốt, không phải cam kết.
  *
  * Từ T6, service này GỘP ĐƠN: một khách bình luận nhiều lần trong cùng
  * phiên live chỉ sinh ra MỘT đơn nháp, các lần sau cộng dồn vào đơn đó.
@@ -18,9 +27,8 @@ import {
   LivestreamNotOpenError,
   SkuNotFoundError,
 } from "../../../shared/errors/domain.errors.js";
-import { holdUpTo } from "../repositories/inventory.repository.js";
+import { readSellableQty } from "../repositories/inventory.repository.js";
 import {
-  appendInventoryChangedEvents,
   appendOutboxEvent,
   fingerprintDraftRequest,
   findIdempotencyRecord,
@@ -29,9 +37,7 @@ import {
   loadOrder,
   readLivestreamStatus,
   recordIdempotencyKey,
-  refreshDraftHold,
   upsertOrderItem,
-  upsertReservation,
 } from "../repositories/order.repository.js";
 import { readRiskProfile } from "../repositories/customer-risk.repository.js";
 import { getOrCreateOpenDraft } from "./draft-order.resolver.js";
@@ -52,16 +58,13 @@ export interface CreateDraftOrderParams {
 /** Mã lỗi Postgres cho vi phạm ràng buộc duy nhất. */
 const UNIQUE_VIOLATION = "23505";
 
-/** Đơn đã tồn tại từ trước, request này là bản lặp nên không giữ thêm gì. */
+/** Đơn đã tồn tại từ trước, request này là bản lặp nên không ghi thêm gì. */
 const ALREADY_EXISTS = Symbol("already-exists");
 
 export class DraftOrderService {
   constructor(
     private readonly pool: Pool,
-    private readonly holdSeconds: number,
-    private readonly maxHoldSeconds: number,
-    private readonly riskScoreThreshold = 1.1,
-    private readonly riskyHoldSeconds = holdSeconds
+    private readonly riskScoreThreshold = 1.1
   ) {}
 
   async createDraftOrder(
@@ -75,8 +78,8 @@ export class DraftOrderService {
       await this.requireOpenLivestream(client, params.livestreamId ?? null);
 
       // ── 2. Chống trùng ───────────────────────────────────────────
-      // Phải kiểm TRƯỚC khi giữ tồn. Đảo thứ tự thì request lặp sẽ giữ
-      // thêm một lần nữa rồi mới phát hiện trùng — tồn bị giữ dư.
+      // Phải kiểm TRƯỚC khi ghi dòng hàng. Đảo thứ tự thì request lặp
+      // sẽ cộng dồn số lượng một lần nữa rồi mới phát hiện trùng.
       const fingerprint = fingerprintDraftRequest({
         customerId: params.customerId,
         merchantId: params.merchantId,
@@ -104,27 +107,23 @@ export class DraftOrderService {
 
       await client.query("BEGIN");
 
-      // ── 3. BẪY-08: khách có lịch sử bom hàng thì giữ ngắn hơn ────
-      // Người đã chốt rồi bỏ ba lần không đáng được giam tồn đủ 5 phút
-      // như người mua thật. Cờ cod_blocked ghi luôn vào đơn để module
-      // thanh toán sau này không phải tính lại điểm — tính lại nghĩa
-      // là khách có thể qua cửa này mà trượt cửa kia.
+      // ── 3. BẪY-08: khách có lịch sử bom hàng thì chặn COD ────────
+      // Cờ cod_blocked ghi luôn vào đơn để module thanh toán sau này
+      // không phải tính lại điểm — tính lại nghĩa là khách có thể qua
+      // cửa này mà trượt cửa kia.
       const risk = await readRiskProfile(client, params.customerId);
       const riskyCustomer = risk.riskScore >= this.riskScoreThreshold;
-      const holdSeconds = riskyCustomer
-        ? this.riskyHoldSeconds
-        : this.holdSeconds;
 
       // ── 4. Lấy đơn để ghi vào: tạo mới hoặc gộp vào đơn đang mở ───
       const target = await this.resolveTargetOrder(
         client,
         params,
         idempotencyKey,
-        { holdSeconds, codBlocked: riskyCustomer }
+        { codBlocked: riskyCustomer }
       );
 
       // Request lặp bị phát hiện muộn (xem resolveTargetOrder): trả về
-      // đơn đã có, tuyệt đối không giữ thêm tồn.
+      // đơn đã có, tuyệt đối không cộng dồn thêm.
       if (target === ALREADY_EXISTS) {
         await client.query("ROLLBACK");
         const winner = await findIdempotencyRecord(
@@ -142,15 +141,18 @@ export class DraftOrderService {
 
       const { orderId, merged } = target;
 
-      // ── 5. Giữ tồn từng dòng ─────────────────────────────────────
-      // Sắp xếp theo skuId để chống deadlock: hai đơn cùng mua A và B
-      // mà khoá theo thứ tự ngược nhau sẽ ôm nhau chết.
+      // ── 5. Ghi từng dòng theo tồn khả dụng HIỆN CÓ ───────────────
+      // Không giữ, chỉ nhìn. Mã hết sạch thì từ chối ngay để bot trả
+      // lời "hết hàng" trong vài giây; còn ít hơn khách muốn thì ghi
+      // phần còn lại và đánh dấu isPartial — host ngoài đời cũng nói
+      // "còn 3 thôi chị lấy không". Con số thật sự được chốt là lúc
+      // khách xác nhận.
       const sortedLines = [...params.lines].sort((a, b) =>
         a.skuId.localeCompare(b.skuId)
       );
 
       const rejected: RejectedLine[] = [];
-      let heldAny = false;
+      let addedAny = false;
 
       for (const line of sortedLines) {
         const sku = await findSellableSku(client, line.skuId);
@@ -158,56 +160,35 @@ export class DraftOrderService {
           throw new SkuNotFoundError(line.skuId);
         }
 
-        // holdUpTo chứ không holdStock: khách muốn 5 còn 3 thì giữ 3
-        // rồi hỏi lại, từ chối trắng là mất đơn không cần thiết.
-        const granted = await holdUpTo(client, line.skuId, line.quantity);
-
-        if (granted === 0) {
+        const ghi = Math.min(line.quantity, await readSellableQty(client, line.skuId));
+        if (ghi <= 0) {
           rejected.push({ skuId: line.skuId, requested: line.quantity, sellable: 0 });
           continue;
         }
 
-        // Cả hai hàm dưới đều là UPSERT: nếu mã này đã có trong đơn
-        // (khách chốt lại lần nữa) thì cộng dồn chứ không đẻ dòng mới.
-        const itemId = await upsertOrderItem(client, {
+        // UPSERT: nếu mã này đã có trong đơn (khách chốt lại lần nữa)
+        // thì cộng dồn chứ không đẻ dòng mới.
+        await upsertOrderItem(client, {
           orderId,
           skuId: line.skuId,
-          quantity: granted,
+          quantity: ghi,
           requestedQty: line.quantity,
           unitPrice: sku.price,
         });
 
-        await upsertReservation(client, {
-          orderId,
-          orderItemId: itemId,
-          skuId: line.skuId,
-          quantity: granted,
-        });
-
-        heldAny = true;
+        addedAny = true;
       }
 
-      // Không giữ được gì thì huỷ sạch. Với đơn mới là để không còn lại
+      // Không ghi được gì thì huỷ sạch. Với đơn mới là để không còn lại
       // đơn rỗng; với đơn gộp thì ROLLBACK chỉ xoá phần vừa thêm, đơn cũ
       // đã commit từ trước nên vẫn nguyên vẹn.
-      if (!heldAny) {
+      if (!addedAny) {
         await client.query("ROLLBACK");
         throw new AllLinesOutOfStockError(rejected);
       }
 
-      // ── 6. Gia hạn giữ hàng khi gộp ──────────────────────────────
-      // Khách vừa chốt thêm mã nghĩa là vẫn đang mua, không có lý do
-      // để cắt đồng hồ của những mã đã chốt trước đó.
-      if (merged) {
-        await refreshDraftHold(client, {
-          orderId,
-          holdSeconds,
-          maxSeconds: this.maxHoldSeconds,
-        });
-      }
-
-      // ── 7. Ghi nhận khoá chống trùng ─────────────────────────────
-      // Nằm trong cùng transaction với phần giữ tồn: nếu giữ tồn hỏng
+      // ── 6. Ghi nhận khoá chống trùng ─────────────────────────────
+      // Nằm trong cùng transaction với phần ghi dòng hàng: nếu ghi hỏng
       // thì khoá cũng biến mất, request được phép thử lại sạch sẽ.
       await recordIdempotencyKey(client, {
         customerId: params.customerId,
@@ -216,7 +197,8 @@ export class DraftOrderService {
         requestHash: fingerprint,
       });
 
-      // ── 8. Sự kiện, cùng transaction ─────────────────────────────
+      // ── 7. Sự kiện, cùng transaction ─────────────────────────────
+      // Không có inventory.changed ở đây: tồn khả dụng chưa đổi.
       const result = await loadOrder(client, orderId);
       await appendOutboxEvent(client, {
         aggregateId: orderId,
@@ -232,12 +214,6 @@ export class DraftOrderService {
         },
       });
 
-      // Tồn khả dụng vừa giảm, màn hình shop phải thấy ngay.
-      await appendInventoryChangedEvents(client, {
-        orderId,
-        reason: merged ? "ORDER_ITEMS_ADDED" : "ORDER_DRAFTED",
-      });
-
       await client.query("COMMIT");
 
       return { ...result, rejected };
@@ -246,8 +222,7 @@ export class DraftOrderService {
 
       // Hai request cùng khoá idempotency chạy song song: cả hai vượt
       // qua bước 1, một cái thua ở uq_orders_customer_idempotency.
-      // ROLLBACK ở trên đã trả lại CẢ phần tồn kẻ thua vừa giữ — đó là
-      // lợi ích của việc giữ tồn và tạo đơn nằm chung transaction.
+      // ROLLBACK ở trên xoá sạch phần kẻ thua vừa ghi.
       if (
         typeof err === "object" &&
         err !== null &&
@@ -305,7 +280,7 @@ export class DraftOrderService {
     client: PoolClient,
     params: CreateDraftOrderParams,
     idempotencyKey: string,
-    opts: { holdSeconds: number; codBlocked: boolean }
+    opts: { codBlocked: boolean }
   ): Promise<{ orderId: string; merged: boolean } | typeof ALREADY_EXISTS> {
     const resolved = await getOrCreateOpenDraft(client, {
       customerId: params.customerId,
@@ -313,7 +288,6 @@ export class DraftOrderService {
       livestreamId: params.livestreamId ?? null,
       source: params.source,
       idempotencyKey,
-      holdSeconds: opts.holdSeconds,
       codBlocked: opts.codBlocked,
     });
 
@@ -321,14 +295,14 @@ export class DraftOrderService {
       return resolved;
     }
 
-    // Đây là chỗ bịt lỗ giữ tồn hai lần.
+    // Đây là chỗ bịt lỗ cộng dồn hai lần.
     //
     // Hai request CÙNG MỘT khoá chạy song song: cả hai qua được bước 1
     // (lúc đó chưa ai ghi khoá), một cái tạo được đơn, cái kia rơi vào
     // đây. `FOR UPDATE` bên trong getOrCreateOpenDraft đã chặn nó lại
     // cho tới khi kẻ thắng COMMIT, mà kẻ thắng ghi khoá trước khi
     // commit — nên giờ tra lại là thấy. Thiếu bước này, request lặp bị
-    // hiểu nhầm thành "bình luận mới" và giữ tồn thêm một lần nữa.
+    // hiểu nhầm thành "bình luận mới" và cộng dồn số lượng thêm một lần.
     const replayed = await findOrderIdByIdempotencyKey(
       client,
       params.customerId,

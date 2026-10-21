@@ -1,9 +1,10 @@
 /**
- * T9 — Hàng đợi duyệt và chuyển chủ sở hữu lượt giữ (QĐ-3).
+ * T9 — Hàng đợi duyệt (QĐ-3).
  *
- * Ca quan trọng nhất của cả file là "DUYỆT KHÔNG LÀM TỒN NHÚC NHÍCH":
- * đó là tiêu chí nghiệm thu #23, và là lý do tồn tại của cách làm
- * chuyển-chủ-sở-hữu thay vì trả-rồi-giữ-lại.
+ * Đề nghị giữ tồn TRONG LÚC chờ duyệt để khách gõ chữ xấu không thua
+ * khách gõ chữ đẹp. Nhưng duyệt xong thì lượt giữ TRẢ VỀ KHO: đơn nháp
+ * không giữ tồn, hàng chỉ được giữ lại đúng lúc khách xác nhận — như
+ * mọi đơn khác.
  */
 
 import crypto from "crypto";
@@ -24,10 +25,7 @@ import {
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
 const app = createApp();
 
-const purchaseRequests = new PurchaseRequestService(
-  pool,
-  new DraftOrderService(pool, config.holdSoftSeconds, config.holdMaxSeconds)
-);
+const purchaseRequests = new PurchaseRequestService(pool, new DraftOrderService(pool));
 
 afterAll(async () => {
   await pool.end();
@@ -93,7 +91,8 @@ describe("Ba nhánh theo điểm tin cậy", () => {
     expect(res.body.decision).toBe("AUTO_ORDER");
     expect(res.body.order.status).toBe("DRAFT");
     expect(res.body.order.items[0].quantity).toBe(3);
-    expect((await readStock(pool, sku)).held).toBe(3);
+    // Chốt thẳng thành đơn nháp thì không giữ tồn — giữ lúc khách xác nhận.
+    expect((await readStock(pool, sku)).held).toBe(0);
   });
 
   it("điểm 0.5–0.85 thì VÀO HÀNG ĐỢI và vẫn GIỮ TỒN", async () => {
@@ -195,12 +194,18 @@ describe("Chống trùng theo mã bình luận (tầng 2)", () => {
 
     expect(replay.body.decision).toBe("DUPLICATE");
     expect(replay.body.order.id).toBe(first.body.order.id);
-    expect((await readStock(pool, sku)).held).toBe(2);
+    expect(replay.body.order.items[0].quantity).toBe(2);
   });
 });
 
-describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
-  it("DUYỆT KHÔNG LÀM TỒN NHÚC NHÍCH (nghiệm thu #23)", async () => {
+describe("Duyệt — ghi vào đơn nháp, trả lượt giữ về kho", () => {
+  const diaChi = {
+    recipientName: "Phạm Thu Hằng",
+    recipientPhone: "0912345678",
+    shippingAddress: "22 Lê Lợi, phường Vĩnh Ninh, Huế",
+  };
+
+  it("DUYỆT TRẢ TỒN VỀ KHO — hàng chỉ giữ lại lúc khách xác nhận", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const queued = await submit({
       skuId: sku,
@@ -209,23 +214,32 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
       livestreamId: await createLivestream(pool),
     });
     const requestId = queued.body.purchaseRequest.id;
-
-    const truoc = await readStock(pool, sku);
-    expect(truoc.held).toBe(4);
+    expect((await readStock(pool, sku)).held).toBe(4);
 
     const approved = await request(app)
       .post(`/api/purchase-requests/${requestId}/approve`)
       .send({ reviewedBy: crypto.randomUUID() });
 
     expect(approved.status).toBe(200);
+    expect(approved.body.order.status).toBe("DRAFT");
+    expect(approved.body.order.items).toEqual([
+      expect.objectContaining({ skuId: sku, quantity: 4, requestedQty: 4 }),
+    ]);
 
-    // Trái tim của T9. Cách làm sai — trả tồn rồi giữ lại dưới tên đơn
-    // — sẽ để lộ một khoảnh khắc món hàng ở trạng thái KHẢ DỤNG, đủ
-    // để khách khác cướp mất món mà khách này đã chờ ba phút.
-    expect(await readStock(pool, sku)).toEqual(truoc);
+    // Đơn nháp không giữ gì: lượt giữ của đề nghị đóng lại, tồn về kho.
+    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
+    const cuaDeNghi = await readReservations(requestId);
+    expect(cuaDeNghi).toHaveLength(1);
+    expect(cuaDeNghi[0].status).toBe("RELEASED");
+    expect(cuaDeNghi[0].order_id).toBeNull();
+    const cuaDon = await pool.query(
+      `SELECT 1 FROM reservations WHERE order_id = $1`,
+      [approved.body.order.id]
+    );
+    expect(cuaDon.rows).toHaveLength(0);
   });
 
-  it("lượt giữ đổi chủ từ đề nghị sang dòng hàng", async () => {
+  it("khách xác nhận đơn vừa duyệt thì giữ đúng số đã ghi", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const queued = await submit({
       skuId: sku,
@@ -233,30 +247,16 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
       confidence: 0.6,
       livestreamId: await createLivestream(pool),
     });
-    const requestId = queued.body.purchaseRequest.id;
-
     const approved = await request(app)
-      .post(`/api/purchase-requests/${requestId}/approve`)
+      .post(`/api/purchase-requests/${queued.body.purchaseRequest.id}/approve`)
       .send({});
-    const orderId = approved.body.order.id;
 
-    const rows = await pool.query<{
-      purchase_request_id: string | null;
-      order_id: string | null;
-      order_item_id: string | null;
-      status: string;
-      quantity: number;
-    }>(
-      `SELECT purchase_request_id, order_id, order_item_id, status, quantity
-         FROM reservations WHERE order_id = $1`,
-      [orderId]
-    );
+    const confirmed = await request(app)
+      .post(`/api/orders/confirm/${approved.body.order.confirmToken}`)
+      .send(diaChi);
 
-    expect(rows.rows).toHaveLength(1);
-    expect(rows.rows[0].purchase_request_id).toBeNull();
-    expect(rows.rows[0].order_item_id).not.toBeNull();
-    expect(rows.rows[0].status).toBe("HOLDING");
-    expect(Number(rows.rows[0].quantity)).toBe(2);
+    expect(confirmed.status).toBe(200);
+    expect((await readStock(pool, sku)).held).toBe(2);
   });
 
   it("đề nghị chuyển APPROVED và trỏ sang đơn vừa tạo", async () => {
@@ -278,7 +278,7 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
     expect(row.order_id).toBe(approved.body.order.id);
   });
 
-  it("DUYỆT HAI LẦN chỉ ra một đơn", async () => {
+  it("DUYỆT HAI LẦN chỉ ra một đơn và chỉ trả tồn một lần", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const queued = await submit({
       skuId: sku,
@@ -293,7 +293,8 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
 
     expect(b.status).toBe(200);
     expect(b.body.order.id).toBe(a.body.order.id);
-    expect((await readStock(pool, sku)).held).toBe(2);
+    expect(b.body.order.items[0].quantity).toBe(2);
+    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
   });
 
   it("HAI NHÂN VIÊN cùng bấm duyệt cũng chỉ ra một đơn", async () => {
@@ -313,7 +314,7 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
 
     const ids = [a.body.order?.id, b.body.order?.id].filter(Boolean);
     expect(new Set(ids).size).toBe(1);
-    expect((await readStock(pool, sku)).held).toBe(3);
+    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
   });
 
   it("duyệt GỘP vào đơn nháp khách đã có trong phiên", async () => {
@@ -347,11 +348,11 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
     // Một khách, một phiên, một đơn — kể cả khi đi qua hàng đợi duyệt
     expect(approved.body.order.id).toBe(auto.body.order.id);
     expect(approved.body.order.items).toHaveLength(2);
-    expect((await readStock(pool, skuA)).held).toBe(2);
-    expect((await readStock(pool, skuB)).held).toBe(3);
+    expect((await readStock(pool, skuA)).held).toBe(0);
+    expect((await readStock(pool, skuB)).held).toBe(0);
   });
 
-  it("duyệt CÙNG MÃ khách đã có thì DỒN lượt giữ, tồn vẫn không đổi", async () => {
+  it("duyệt CÙNG MÃ khách đã có thì CỘNG DỒN dòng hàng", async () => {
     const live = await createLivestream(pool);
     const customerId = crypto.randomUUID();
     const sku = await createSkuWithStock(pool, 10);
@@ -370,33 +371,23 @@ describe("Duyệt — chuyển chủ sở hữu lượt giữ", () => {
       customerId,
       livestreamId: live,
     });
-
-    const truoc = await readStock(pool, sku);
-    expect(truoc.held).toBe(5);
+    // Chỉ phần chờ duyệt đang giữ.
+    expect((await readStock(pool, sku)).held).toBe(3);
 
     const approved = await request(app)
       .post(`/api/purchase-requests/${queued.body.purchaseRequest.id}/approve`)
       .send({});
 
-    // Tồn vẫn không nhúc nhích: hàng chỉ đổi người đứng tên
-    expect(await readStock(pool, sku)).toEqual(truoc);
     expect(approved.body.order.items).toHaveLength(1);
     expect(approved.body.order.items[0].quantity).toBe(5);
+    expect((await readStock(pool, sku)).held).toBe(0);
 
-    // Lượt giữ cũ đóng bằng MERGED chứ không phải RELEASED: RELEASED
-    // nghĩa là tồn đã về kho, mà ở đây tồn không hề đi đâu.
-    const all = await pool.query<{ status: string; quantity: number }>(
-      `SELECT status, quantity FROM reservations
-        WHERE sku_id = $1 ORDER BY created_at`,
+    // Lượt giữ duy nhất từng có là của đề nghị, nay đã RELEASED.
+    const all = await pool.query<{ status: string; release_reason: string | null }>(
+      `SELECT status, release_reason FROM reservations WHERE sku_id = $1`,
       [sku]
     );
-    const byStatus = all.rows.reduce<Record<string, number>>((acc, r) => {
-      acc[r.status] = (acc[r.status] ?? 0) + Number(r.quantity);
-      return acc;
-    }, {});
-    expect(byStatus.HOLDING).toBe(5);
-    expect(byStatus.MERGED).toBe(3);
-    expect(byStatus.RELEASED).toBeUndefined();
+    expect(all.rows).toEqual([{ status: "RELEASED", release_reason: "APPROVED" }]);
   });
 
   it("đề nghị đã bị từ chối thì không duyệt được nữa", async () => {
@@ -510,8 +501,8 @@ describe("Job quét đề nghị quá hạn", () => {
     await job.runOnce();
 
     expect((await readRequest(requestId)).status).toBe("APPROVED");
-    // Hàng vẫn đang giữ cho khách qua đơn hàng
-    expect((await readStock(pool, sku)).held).toBe(2);
+    // Duyệt đã trả tồn; job không được trả thêm lần nữa (held âm).
+    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
   });
 
   it("CHẠY HAI LƯỢT chỉ trả tồn một lần", async () => {

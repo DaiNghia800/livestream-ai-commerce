@@ -1,5 +1,9 @@
 /**
- * POST /api/orders/draft — tạo đơn nháp kèm giữ tồn.
+ * POST /api/orders/draft — tạo đơn nháp, KHÔNG giữ tồn.
+ *
+ * Tồn chỉ được giữ lúc khách xác nhận (xem order-lifecycle). Ở bước
+ * này chỉ nhìn tồn khả dụng để trả lời khách ngay: hết sạch thì báo
+ * luôn, còn ít hơn khách muốn thì ghi phần còn lại và đánh dấu.
  */
 
 import crypto from "crypto";
@@ -34,7 +38,7 @@ function post(body: unknown, key = crypto.randomUUID()) {
 }
 
 describe("POST /api/orders/draft", () => {
-  it("tạo đơn nháp và giữ tồn", async () => {
+  it("tạo đơn nháp mà KHÔNG giữ tồn, không có hạn", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const res = await post(payload(sku, 2));
 
@@ -45,17 +49,26 @@ describe("POST /api/orders/draft", () => {
     expect(res.body.items[0].quantity).toBe(2);
     expect(res.body.rejected).toEqual([]);
 
-    expect((await readStock(pool, sku)).held).toBe(2);
+    // Tồn y nguyên: bình luận rác không giam được hàng nữa.
+    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
+    const row = await pool.query<{ held_until: string | null }>(
+      `SELECT held_until FROM orders WHERE id = $1`,
+      [res.body.id]
+    );
+    expect(row.rows[0].held_until).toBeNull();
   });
 
-  it("giữ một phần khi không đủ tồn", async () => {
+  it("còn ít hơn khách muốn thì ghi phần còn bán được và đánh dấu", async () => {
     const sku = await createSkuWithStock(pool, 3);
     const res = await post(payload(sku, 5));
 
+    // Host ngoài đời cũng nói "còn 3 thôi chị lấy không". Số 3 này là
+    // ảnh chụp lúc chốt; con số thật được giữ là lúc khách xác nhận.
     expect(res.status).toBe(201);
     expect(res.body.items[0].quantity).toBe(3);
     expect(res.body.items[0].requestedQty).toBe(5);
     expect(res.body.items[0].isPartial).toBe(true);
+    expect((await readStock(pool, sku)).held).toBe(0);
   });
 
   it("hết hàng hoàn toàn trả 409 và không để lại đơn rỗng", async () => {
@@ -75,7 +88,7 @@ describe("POST /api/orders/draft", () => {
     expect(orphan.rows[0].n).toBe(0);
   });
 
-  it("gửi lại cùng Idempotency-Key không tạo đơn mới, không giữ tồn thêm", async () => {
+  it("gửi lại cùng Idempotency-Key không tạo đơn mới, không cộng dồn", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const body = payload(sku, 2);
     const key = crypto.randomUUID();
@@ -84,7 +97,7 @@ describe("POST /api/orders/draft", () => {
     const second = await post(body, key);
 
     expect(first.body.id).toBe(second.body.id);
-    expect((await readStock(pool, sku)).held).toBe(2);
+    expect(second.body.items[0].quantity).toBe(2);
   });
 
   it("thiếu header Idempotency-Key trả 400", async () => {
@@ -110,7 +123,7 @@ describe("POST /api/orders/draft", () => {
     expect(res.body.error).toBe("ValidationError");
   });
 
-  it("sinh sự kiện outbox cùng transaction", async () => {
+  it("sinh sự kiện outbox cùng transaction, KHÔNG có inventory.changed", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const res = await post(payload(sku, 1));
 
@@ -118,7 +131,14 @@ describe("POST /api/orders/draft", () => {
       `SELECT event_type, status FROM outbox_events WHERE aggregate_id = $1`,
       [res.body.id]
     );
-
     expect(event.rows[0]).toEqual({ event_type: "order.drafted", status: "PENDING" });
+
+    // Tồn khả dụng không đổi thì màn hình shop không có gì để vẽ lại.
+    const ton = await pool.query(
+      `SELECT 1 FROM outbox_events
+        WHERE aggregate_type = 'inventory' AND aggregate_id = $1::text`,
+      [sku]
+    );
+    expect(ton.rows).toHaveLength(0);
   });
 });

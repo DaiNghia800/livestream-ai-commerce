@@ -14,6 +14,8 @@ import pg from "pg";
 import { config } from "../src/config.js";
 
 const TABLES = [
+  "user_addresses",
+  "customer_identities",
   "outbox_events",
   "payment_transactions",
   "payments",

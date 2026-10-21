@@ -328,6 +328,16 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
     return res.body;
   }
 
+  /** Khách xác nhận — lúc này tồn mới được giữ. */
+  async function confirm(token: string) {
+    const res = await request(app).post(`/api/orders/confirm/${token}`).send({
+      recipientName: "Lê Thu Hà",
+      recipientPhone: "0967004118",
+      shippingAddress: "88 Trần Phú, Nha Trang, Khánh Hoà",
+    });
+    expect(res.status).toBe(200);
+  }
+
   async function readInventoryEvents(skuId: string) {
     const result = await pool.query<{ payload: Record<string, unknown> }>(
       `SELECT payload FROM outbox_events
@@ -338,9 +348,18 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
     return result.rows.map((r) => r.payload);
   }
 
-  it("chốt đơn sinh inventory.changed với tồn khả dụng MỚI", async () => {
+  it("chốt NHÁP không sinh inventory.changed — tồn chưa đổi", async () => {
     const sku = await createSkuWithStock(pool, 10);
     await createDraft(sku, 3);
+
+    // Phát ra ở đây là bắt màn hình shop vẽ lại một con số y nguyên.
+    expect(await readInventoryEvents(sku)).toEqual([]);
+  });
+
+  it("XÁC NHẬN sinh inventory.changed với tồn khả dụng MỚI", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const draft = await createDraft(sku, 3);
+    await confirm(draft.confirmToken);
 
     const events = await readInventoryEvents(sku);
     expect(events).toHaveLength(1);
@@ -349,13 +368,14 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
       onHand: 10,
       held: 3,
       sellable: 7,
-      reason: "ORDER_DRAFTED",
+      reason: "ORDER_CONFIRMED",
     });
   });
 
-  it("huỷ đơn sinh sự kiện với tồn đã trả lại", async () => {
+  it("huỷ đơn đã xác nhận sinh sự kiện với tồn đã trả lại", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const draft = await createDraft(sku, 4);
+    await confirm(draft.confirmToken);
 
     await request(app)
       .post(`/api/orders/${draft.id}/cancel`)
@@ -370,10 +390,23 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
     });
   });
 
+  it("huỷ đơn NHÁP không sinh sự kiện tồn — không có gì để trả", async () => {
+    const sku = await createSkuWithStock(pool, 10);
+    const draft = await createDraft(sku, 4);
+
+    await request(app)
+      .post(`/api/orders/${draft.id}/cancel`)
+      .send({ reason: "CUSTOMER_CANCEL" });
+
+    expect(await readInventoryEvents(sku)).toEqual([]);
+  });
+
   it("payload mang TRẠNG THÁI chứ không mang mức chênh", async () => {
     const sku = await createSkuWithStock(pool, 10);
-    await createDraft(sku, 2);
-    await createDraft(sku, 3);
+    const a = await createDraft(sku, 2);
+    const b = await createDraft(sku, 3);
+    await confirm(a.confirmToken);
+    await confirm(b.confirmToken);
 
     const events = await readInventoryEvents(sku);
 
@@ -387,11 +420,12 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
   it("publisher đẩy được cả sự kiện đơn lẫn sự kiện tồn kho", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const draft = await createDraft(sku, 1);
+    await confirm(draft.confirmToken);
 
     const transport = new FakeTransport();
 
     // RÚT CẠN chứ không chạy một lượt. Lô mặc định là 100 sự kiện, mà
-    // các file test khác chạy song song cũng đang sinh sự kiện — hai
+    // các file test khác chạy song song cũng đang sinh sự kiện — ba
     // sự kiện của ca này không chắc cùng lọt vào một lô.
     const job = new PublishOutboxJob(pool, transport, { batchSize: 200 });
     for (let i = 0; i < 20; i += 1) {
@@ -405,6 +439,7 @@ describe("Sự kiện tồn kho cho màn hình shop", () => {
     );
     expect(cuaDonNay.map((e) => e.eventType).sort()).toEqual([
       "inventory.changed",
+      "order.confirmed",
       "order.drafted",
     ]);
   });

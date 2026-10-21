@@ -36,7 +36,32 @@ Ngoài phạm vi: thanh toán, vận đơn, đối soát ngân hàng, mô hình 
 
 ## 2. Các quyết định thiết kế
 
-### QĐ-1 — TTL giữ hàng: 2 tầng, 5' → 15', trần 30'
+> **Sửa đổi 2026-10-22 — bỏ giữ tồn ở đơn nháp.** QĐ-1 (TTL hai tầng)
+> và vế "giữ tồn ngay tại `DRAFT`" của QĐ-3 **không còn áp dụng**:
+>
+> - Đơn nháp (`DRAFT` / `PENDING_CONFIRMATION`) **không giữ tồn, không
+>   có hạn**. Khách để link bao lâu cũng được; không còn job quét đơn
+>   hết hạn, không còn trạng thái `EXPIRED` cho đơn mới.
+> - Tồn chỉ được giữ **đúng lúc khách bấm xác nhận** (`confirmOrder`):
+>   `holdStock` giữ đủ hoặc không giữ gì; thiếu → `409 OutOfStock`,
+>   đơn vẫn là nháp, trang khách nói rõ mã nào thiếu.
+> - Hệ quả cố ý: N khách cùng chốt món cuối thì ai xác nhận trước
+>   được, người sau nhận "hết hàng" lúc bấm. Đổi lại, bình luận rác
+>   không giam được tồn ("tồn ma" — BẪY-12 — biến mất tận gốc).
+> - Đề nghị chờ duyệt (`PURCHASE_REQUEST`) **vẫn giữ tồn** trong lúc
+>   chờ (TTL `HOLD_SOFT_SECONDS`, job quét đề nghị giữ nguyên). Duyệt
+>   xong thì lượt giữ **trả về kho** (`RELEASED`/`APPROVED`), không
+>   còn "chuyển chủ sở hữu" sang đơn.
+> - Guard BẪY-01 đếm dòng hàng của đơn còn sống + lượt giữ của đề
+>   nghị, thay vì chỉ lượt giữ.
+> - Điểm rủi ro BẪY-08 chỉ còn tăng khi shop huỷ vì nghi gian lận;
+>   `expired_count` giữ nguyên cho dữ liệu cũ.
+>
+> Migration `023_drop_draft_hold.sql` trả về kho mọi lượt giữ của đơn
+> nháp đang có, gỡ `chk_orders_hold_until` và `idx_orders_pending_hold`.
+> Các mục dưới đây giữ nguyên để hiểu lịch sử thiết kế.
+
+### QĐ-1 — TTL giữ hàng: 2 tầng, 5' → 15', trần 30' *(đã thay thế — xem ghi chú trên)*
 
 **Bối cảnh.** ERD ghi giữ hàng hết hạn sau **3 phút**. Use case *Chốt đơn tự động*, *Xác nhận đơn hàng*, *Tự động hủy đơn quá hạn* đều ghi **15 phút**.
 

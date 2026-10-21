@@ -55,7 +55,49 @@ describe("Danh mục tỉnh/thành", () => {
   });
 
   it("tên hoàn toàn lạ thì không khớp và cũng không gợi ý", () => {
-    expect(traTinh("Tỉnh Không Có Thật")).toEqual({ tinh: null, goiY: null });
+    expect(traTinh("Tỉnh Không Có Thật")).toEqual({
+      tinh: null,
+      goiY: null,
+      loaiGoiY: null,
+    });
+  });
+
+  it("tên thành phố thuộc tỉnh được gợi ý về tỉnh đang quản lý", () => {
+    // Khách gõ tên thành phố mình ở, vì ngoài đời đó mới là địa danh
+    // người ta dùng. Sau 01/07/2025 cấp huyện bị bỏ nên những tên
+    // này không còn là đơn vị hành chính nào, hãng tra không ra.
+    const kq = traTinh("Nha Trang");
+    expect(kq.tinh).toBeNull();
+    expect(kq.goiY).toBe("Khánh Hòa");
+    expect(kq.loaiGoiY).toBe("CAP_DUOI_TINH");
+
+    // Thành phố của một tỉnh ĐÃ SÁP NHẬP phải nhảy thẳng tới tỉnh
+    // MỚI, không dừng ở tỉnh cũ: Thủ Dầu Một thuộc Bình Dương cũ,
+    // mà Bình Dương nay là TP. Hồ Chí Minh.
+    expect(traTinh("Thủ Dầu Một").goiY).toBe("TP. Hồ Chí Minh");
+    expect(traTinh("Quy Nhơn").goiY).toBe("Gia Lai");
+    expect(traTinh("Hội An").goiY).toBe("Đà Nẵng");
+  });
+
+  it("phân biệt tỉnh sáp nhập với tên cấp dưới tỉnh", () => {
+    // Hai chuyện khác nhau nên lời nhắc phải khác. Nói với người gõ
+    // "Nha Trang" rằng tỉnh của họ đã sáp nhập là sai sự thật.
+    expect(traTinh("Bình Dương").loaiGoiY).toBe("TINH_SAP_NHAP");
+    expect(traTinh("Biên Hòa").loaiGoiY).toBe("CAP_DUOI_TINH");
+  });
+
+  it("tên vừa là tỉnh cũ vừa là thành phố thì ưu tiên nghĩa TỈNH", () => {
+    // "Nam Định" là tỉnh cũ, đồng thời là tên thành phố tỉnh lỵ.
+    // Người gõ nó gần như luôn có ý nói tỉnh.
+    expect(traTinh("Nam Định").loaiGoiY).toBe("TINH_SAP_NHAP");
+    expect(traTinh("Nam Định").goiY).toBe("Ninh Bình");
+  });
+
+  it("tên đang là tỉnh hiện hành thì khớp thẳng, không gợi ý", () => {
+    // Thanh Hóa vừa là tỉnh vừa là tên thành phố tỉnh lỵ. Bảng thành
+    // phố không được phép cướp mất trường hợp này.
+    expect(traTinh("Thanh Hóa").tinh).toBe("Thanh Hóa");
+    expect(traTinh("Cà Mau").tinh).toBe("Cà Mau");
   });
 });
 

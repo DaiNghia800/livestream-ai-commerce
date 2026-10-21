@@ -46,6 +46,20 @@ async function readSellable(
 }
 
 /**
+ * Tồn khả dụng hiện tại, KHÔNG khoá dòng.
+ *
+ * Dùng để trả lời khách ngay lúc chốt ("mã này hết rồi") — chỉ là ảnh
+ * chụp tại thời điểm đó, không phải cam kết. Muốn giữ thật thì phải
+ * qua holdStock, và việc đó chỉ xảy ra lúc khách xác nhận đơn.
+ */
+export async function readSellableQty(
+  client: PoolClient,
+  skuId: string
+): Promise<number> {
+  return readSellable(client, skuId, false);
+}
+
+/**
  * Giữ đủ số lượng, hoặc không giữ gì cả.
  *
  * Điều kiện nằm NGAY TRONG câu UPDATE. Postgres khoá dòng khi ghi, nên

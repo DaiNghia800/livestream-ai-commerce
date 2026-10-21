@@ -108,7 +108,7 @@ function fakePool(opts: FakeOptions): Pool {
 }
 
 function service(pool: Pool) {
-  return new DraftOrderService(pool, 300, 1800, 1.1, 180);
+  return new DraftOrderService(pool, 1.1);
 }
 
 const params = {

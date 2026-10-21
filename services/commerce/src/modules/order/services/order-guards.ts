@@ -14,7 +14,7 @@
 import type { PoolClient } from "pg";
 import { config } from "../../../config.js";
 import {
-  readHeldQtyInSession,
+  readQtyInSession,
   readRiskProfile,
 } from "../repositories/customer-risk.repository.js";
 
@@ -33,7 +33,7 @@ export interface GuardVerdict {
   holdWhileReviewing: boolean;
   /** Lý do để hiện trên màn hình hàng đợi. Rỗng nghĩa là không vướng gì. */
   reasons: GuardReason[];
-  /** TTL áp cho lần giữ này. Rút ngắn với khách rủi ro cao. */
+  /** TTL của đề nghị trong hàng đợi duyệt (chỉ nhánh chờ duyệt mới giữ tồn). */
   holdSeconds: number;
   /** Ghi vào orders.cod_blocked để module thanh toán tôn trọng. */
   codBlocked: boolean;
@@ -78,9 +78,9 @@ export async function evaluateGuards(
   // chứ không phải mất một đơn, nên KHÔNG giữ thêm.
   //
   // Chỉ kiểm được khi có phiên: ngoài phiên live thì không có ranh
-  // giới nào để tính "đã giữ bao nhiêu".
+  // giới nào để tính "đã gom bao nhiêu".
   if (input.livestreamId) {
-    const dangGiu = await readHeldQtyInSession(client, {
+    const dangGiu = await readQtyInSession(client, {
       customerId: input.customerId,
       livestreamId: input.livestreamId,
     });
@@ -103,11 +103,7 @@ export async function evaluateGuards(
     autoOrderAllowed: reasons.length === 0,
     holdWhileReviewing,
     reasons,
-    // Khách đã bỏ đơn ba lần không đáng được giam tồn đủ 5 phút như
-    // khách mua thật.
-    holdSeconds: riskyCustomer
-      ? config.holdRiskySeconds
-      : config.holdSoftSeconds,
+    holdSeconds: config.holdSoftSeconds,
     codBlocked: riskyCustomer,
     riskScore: risk.riskScore,
   };

@@ -88,7 +88,8 @@ describe("Ca #9 — cùng khoá chống trùng, khác nội dung", () => {
 
     expect(again.status).toBe(201);
     expect(again.body.id).toBe(first.body.id);
-    expect((await readStock(pool, sku)).held).toBe(2);
+    // Gửi lại không cộng dồn dòng hàng.
+    expect(again.body.items[0].quantity).toBe(2);
   });
 
   it("thứ tự các dòng đảo ngược vẫn tính là Y HỆT", async () => {
@@ -133,7 +134,10 @@ describe("Ca #9 — cùng khoá chống trùng, khác nội dung", () => {
     const merchantId = crypto.randomUUID();
     const key = crypto.randomUUID();
 
-    await postDraft({ customerId, merchantId, lines: [{ skuId: sku, quantity: 2 }] }, key);
+    const first = await postDraft(
+      { customerId, merchantId, lines: [{ skuId: sku, quantity: 2 }] },
+      key
+    );
     const khac = await postDraft(
       { customerId, merchantId, lines: [{ skuId: sku, quantity: 5 }] },
       key
@@ -143,8 +147,12 @@ describe("Ca #9 — cùng khoá chống trùng, khác nội dung", () => {
     // im lặng biến mất, khách chốt mà không có đơn, log không ghi gì.
     expect(khac.status).toBe(422);
     expect(khac.body.error).toBe("IdempotencyKeyReused");
-    // Và tuyệt đối không giữ thêm tồn
-    expect((await readStock(pool, sku)).held).toBe(2);
+    // Và tuyệt đối không đụng vào đơn cũ
+    const dong = await pool.query<{ quantity: number }>(
+      `SELECT quantity FROM order_items WHERE order_id = $1`,
+      [first.body.id]
+    );
+    expect(dong.rows.map((r) => Number(r.quantity))).toEqual([2]);
   });
 
   it("KHÁC mã hàng cũng trả 422", async () => {
@@ -204,8 +212,9 @@ describe("Ca #20 — bất biến tồn kho ở tầng database", () => {
   });
 
   it("không cho hạ on_hand xuống dưới mức đang giữ", async () => {
-    const sku = await createSkuWithStock(pool, 10);
-    await postDraft({ lines: [{ skuId: sku, quantity: 8 }] });
+    // Đặt thẳng held = 8 (đơn nháp không giữ tồn, muốn có lượt giữ
+    // thì phải qua bước xác nhận — ở đây chỉ cần ràng buộc của bảng).
+    const sku = await createSkuWithStock(pool, 10, 8);
 
     // Shop sửa tồn tay trong lúc đang có đơn giữ hàng
     await expect(
@@ -335,7 +344,7 @@ describe("Ca #22 — kiểm tra đầu vào", () => {
 });
 
 describe("Ca #30 — một bình luận nhiều mã hàng", () => {
-  it("ra MỘT đơn, hai dòng, hai lượt giữ, một link xác nhận", async () => {
+  it("ra MỘT đơn, hai dòng, một link xác nhận; xác nhận mới giữ cả hai", async () => {
     const skuA = await createSkuWithStock(pool, 10);
     const skuB = await createSkuWithStock(pool, 10);
 
@@ -351,14 +360,26 @@ describe("Ca #30 — một bình luận nhiều mã hàng", () => {
     // Ca này chứng minh QĐ-2 (tách ORDER_ITEM). Ra hai đơn nghĩa là
     // schema còn sai.
     expect(res.body.confirmToken).toBeTruthy();
+    // Nháp chưa giữ gì.
+    expect((await readStock(pool, skuA)).held).toBe(0);
+    expect((await readStock(pool, skuB)).held).toBe(0);
 
+    const confirmed = await request(app)
+      .post(`/api/orders/confirm/${res.body.confirmToken}`)
+      .send({
+        recipientName: "Trần Văn Nam",
+        recipientPhone: "0987654321",
+        shippingAddress: "10 Hai Bà Trưng, phường Đa Kao, Quận 1",
+      });
+    expect(confirmed.status).toBe(200);
+
+    // Một lần bấm giữ ĐỦ cả hai dòng — hoặc không dòng nào.
     const reservations = await pool.query(
       `SELECT sku_id, quantity FROM reservations
         WHERE order_id = $1 AND status = 'HOLDING' ORDER BY sku_id`,
       [res.body.id]
     );
     expect(reservations.rows).toHaveLength(2);
-
     expect((await readStock(pool, skuA)).held).toBe(2);
     expect((await readStock(pool, skuB)).held).toBe(3);
   });
@@ -378,7 +399,7 @@ describe("Ca #30 — một bình luận nhiều mã hàng", () => {
     expect(Number(res.body.totalAmount)).toBe(199000 * 3);
   });
 
-  it("một mã hết hàng thì giữ mã còn lại và báo rõ mã nào hỏng", async () => {
+  it("một mã hết hàng thì ghi mã còn lại và báo rõ mã nào hỏng", async () => {
     const con = await createSkuWithStock(pool, 10);
     const het = await createSkuWithStock(pool, 0);
 
@@ -460,8 +481,8 @@ describe("Nhánh lỗi hiếm — chỉ chạy khi có sự cố", () => {
     expect(a.status).toBe(201);
     expect(b.status).toBe(201);
     expect(a.body.id).toBe(b.body.id);
-    // ROLLBACK của kẻ thua đã trả lại phần tồn nó vừa giữ
-    expect((await readStock(pool, sku)).held).toBe(2);
+    // ROLLBACK của kẻ thua đã xoá phần nó vừa ghi: không cộng dồn thành 4
+    expect(a.body.items[0].quantity).toBe(2);
   });
 
   it("thao tác trên đơn không tồn tại trả 404 ở mọi endpoint", async () => {
