@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import { CancelOrderDialog } from "./cancel-order-dialog";
 import { CreateShipmentDialog } from "@/features/shipping/create-shipment-dialog";
+import { EditAddressDialog } from "./edit-address-dialog";
 import { formatCountdown, formatDateTime, formatMoney } from "@/lib/format";
 import { ordersApi, paymentsApi, type OrderDetail } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -72,6 +73,7 @@ function OrderDetailView({
 }) {
   const [moTay, setMoTay] = useState(false);
   const [moVanDon, setMoVanDon] = useState(false);
+  const [moDiaChi, setMoDiaChi] = useState(false);
 
   /*
    * Mở hộp thoại huỷ khi địa chỉ kết thúc bằng #huy-don.
@@ -113,6 +115,10 @@ function OrderDetailView({
   // Chỉ đơn đã xác nhận mới đẩy sang hãng được: đơn nháp khách còn
   // huỷ được, đơn hết hạn thì tồn đã trả về kho.
   const taoVanDonDuoc = order.status === "CONFIRMED" && !order.activeShipmentId;
+  const conPhaiThu = Math.max(
+    0,
+    Number(order.totalAmount) - Number(order.payment?.paidAmount ?? 0),
+  );
   const cancelOpen = moTay || (hash === "#huy-don" && cancellable);
 
   function dongHuy() {
@@ -298,11 +304,30 @@ function OrderDetailView({
 
       {order.codBlocked && (
         <div className="notice notice-warning">
-          <h3>Khách này không được thanh toán khi nhận hàng</h3>
+          <h3>Đơn này không được thu hộ khi giao</h3>
           <p>
-            Hệ thống đánh dấu dựa trên lịch sử chốt đơn rồi bỏ. Đơn cần được
-            chuyển khoản trước hoặc đặt cọc.
+            Cờ này được ghi lúc tạo đơn dựa trên lịch sử đơn hết hạn và các lần
+            shop hủy vì nghi gian lận.
           </p>
+          {conPhaiThu > 0 ? (
+            <p>
+              Cần thu đủ {formatMoney(conPhaiThu)} trước khi tạo vận đơn; đặt
+              cọc một phần vẫn chưa đủ. {order.payment?.txnRef ? (
+                <Link
+                  className="link-inline"
+                  href={`/shop/payments/${order.payment.txnRef}`}
+                >
+                  Mở khoản thu hiện có
+                </Link>
+              ) : (
+                <a className="link-inline" href="#order-payment">
+                  Đến phần Thanh toán
+                </a>
+              )} để thu tiền trước khi giao.
+            </p>
+          ) : (
+            <p>Đã thu đủ tiền. Bạn có thể tạo vận đơn với số tiền thu hộ bằng 0.</p>
+          )}
         </div>
       )}
 
@@ -323,9 +348,12 @@ function OrderDetailView({
         <div className="notice notice-warning" role="status">
           <h3>Địa chỉ giao hàng chưa chuẩn hoá</h3>
           <p>
-            Kiểm tra lại tỉnh, phường/xã và số nhà trước khi tạo vận đơn.
-            Hệ thống sẽ báo lỗi nếu chưa xác định được địa chỉ chính xác.
+            Chưa tách được tỉnh và phường/xã từ địa chỉ khách gõ, nên chưa
+            đẩy sang hãng được. Sửa lại rồi mới tạo vận đơn.
           </p>
+          <Button variant="secondary" onClick={() => setMoDiaChi(true)}>
+            Sửa địa chỉ giao
+          </Button>
         </div>
       )}
 
@@ -448,7 +476,7 @@ function OrderDetailView({
             )}
           </Card>
 
-          <Card>
+          <Card id="order-payment">
             <h2 className="title-icon">
               <CreditCard size={18} aria-hidden="true" /> Thanh toán
             </h2>
@@ -516,6 +544,14 @@ function OrderDetailView({
         onClose={() => setMoVanDon(false)}
         onCreated={(vanDon) => router.push(`/shop/shipping/${vanDon.id}`)}
       />
+
+      {moDiaChi && (
+        <EditAddressDialog
+          order={order}
+          onClose={() => setMoDiaChi(false)}
+          onSaved={onChanged}
+        />
+      )}
 
       <CancelOrderDialog
         orderCode={order.orderCode}

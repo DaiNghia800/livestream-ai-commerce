@@ -305,6 +305,196 @@
 
 /* ── Bấm tay trạng thái (đơn tự giao) ────────────────────────────── */
 
+/* ── Thanh tiến trình ───────────────────────────────────────────
+   Đường nối vẽ bằng ::before của từng chặng chứ không phải một
+   thanh nền riêng: như vậy nó tự co giãn theo số chặng, và chặng
+   đầu không bị thừa một đoạn gạch cụt ra ngoài. */
+
+.tienTrinh {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
+}
+
+.chang {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 84px;
+  text-align: center;
+}
+
+.chang::before {
+  content: "";
+  position: absolute;
+  top: 25px;
+  right: 50%;
+  left: -50%;
+  height: 2px;
+  background: var(--color-border);
+}
+
+.chang:first-child::before {
+  display: none;
+}
+
+.changXong::before,
+.changHienTai::before {
+  background: var(--color-success);
+}
+
+.changCham {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--color-subtle);
+  color: var(--color-muted);
+}
+
+.changXong .changCham {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.changHienTai .changCham {
+  background: var(--color-secondary-subtle);
+  color: var(--color-primary);
+}
+
+.changTen {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.changHienTai .changTen {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.changXong .changTen {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* ── Thông tin bưu kiện ─────────────────────────────────────────
+   Dùng nguyên bộ biến màu của trang, không đặt màu cứng: trang có
+   cả nền sáng lẫn nền tối, màu cứng là hỏng một trong hai. */
+
+.doiBen {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.ben {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-subtle);
+  min-width: 0;
+}
+
+.benNhan {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.benTen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.benSdt {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.benDiaChi {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  /* Địa chỉ gõ liền một mạch không có chỗ ngắt; không cho xuống dòng
+     tự do thì nó đẩy ngang cả thẻ. */
+  overflow-wrap: anywhere;
+}
+
+.thongSo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.thongSoDong {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  min-width: 0;
+}
+
+.thongSoDong dt {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.thongSoDong dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.ghiChu {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--color-secondary-subtle);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* Mã sự kiện của hãng, in nhỏ cạnh nhãn tiếng Việt: lúc đối chiếu
+   với nhật ký bên dưới thì cần đúng mã chứ không phải tên dịch ra. */
+.maHang {
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
 .manual {
   display: flex;
   flex-wrap: wrap;
@@ -312,6 +502,10 @@
 }
 
 @media (max-width: 900px) {
+  .doiBen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .grid {
     grid-template-columns: minmax(0, 1fr);
   }

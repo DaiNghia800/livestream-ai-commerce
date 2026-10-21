@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import ExcelJS from "exceljs";
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import {
   ORDER_CANCELLED,
@@ -76,6 +76,7 @@ test("order list filters by status and keeps the layout inside the viewport", as
   ).toBeVisible();
 
   await chonGiaTri(page, "Trạng thái đơn", "Đã hủy");
+  await expect(page.getByRole("button", { name: "Lưu bộ lọc" })).toHaveCount(0);
   await expect(
     page.getByText(ORDER_CANCELLED.orderCode, { exact: true }),
   ).toBeVisible();
@@ -307,7 +308,7 @@ test("sắp xếp theo tiền cao nhất trước", async ({ page }) => {
   expect([...so].sort((a, b) => b - a)).toEqual(so);
 });
 
-test("xuất Excel tải về CSV đúng những đơn đang hiển thị", async ({ page }) => {
+test("xuất Excel có cột đủ rộng, điện thoại là chữ và đúng tập đã lọc", async ({ page }) => {
   await stubApi(page);
   await page.goto("/shop/orders");
 
@@ -320,18 +321,19 @@ test("xuất Excel tải về CSV đúng những đơn đang hiển thị", asyn
     bam(page, page.getByRole("button", { name: /Xuất Excel/ })),
   ]);
 
-  expect(download.suggestedFilename()).toMatch(/^don-hang-\d{8}-\d{4}\.csv$/);
-
-  const noiDung = readFileSync((await download.path())!, "utf8");
-
-  // BOM UTF-8: thiếu nó thì Excel đọc dấu tiếng Việt thành ký tự rác.
-  expect(noiDung.charCodeAt(0)).toBe(0xfeff);
-  expect(noiDung).toContain("Mã đơn");
-  expect(noiDung).toContain(ORDER_CANCELLED.orderCode);
-  expect(noiDung).not.toContain(ORDER_DRAFT.orderCode);
+  expect(download.suggestedFilename()).toMatch(/^don-hang-\d{8}-\d{4}\.xlsx$/);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
+  const sheet = workbook.worksheets[0];
+  expect(sheet.getRow(1).getCell(1).value).toBe("Mã đơn");
+  expect(sheet.rowCount).toBe(2);
+  expect(sheet.getRow(2).getCell(1).value).toBe(ORDER_CANCELLED.orderCode);
+  expect(sheet.getRow(2).getCell(5).value).toBe(ORDER_CANCELLED.recipientPhone);
+  expect(sheet.getRow(2).getCell(5).numFmt).toBe("@");
+  expect(sheet.getColumn(5).width).toBeGreaterThan(ORDER_CANCELLED.recipientPhone.length);
 });
 
-test("ô có dấu phẩy được bọc nháy, không vỡ cột", async ({ page }) => {
+test("tên tiếng Việt và tiền xuất đúng kiểu trong workbook", async ({ page }) => {
   await stubApi(page);
   await page.goto("/shop/orders");
 
@@ -339,12 +341,13 @@ test("ô có dấu phẩy được bọc nháy, không vỡ cột", async ({ pag
     page.waitForEvent("download"),
     bam(page, page.getByRole("button", { name: /Xuất Excel/ })),
   ]);
-  const noiDung = readFileSync((await download.path())!, "utf8");
-
-  // Mọi ô đều phải được bọc — địa chỉ tiếng Việt luôn có dấu phẩy.
-  for (const dong of noiDung.replace(/^﻿/, "").split("\r\n")) {
-    if (dong) expect(dong.startsWith('"')).toBe(true);
-  }
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
+  const sheet = workbook.worksheets[0];
+  const row = sheet.getRows(2, sheet.rowCount - 1)!.find((item) => item.getCell(1).value === ORDER_CANCELLED.orderCode)!;
+  expect(row.getCell(4).value).toBe(ORDER_CANCELLED.recipientName);
+  expect(row.getCell(7).value).toBe(398000);
+  expect(sheet.getColumn(4).width).toBeGreaterThan(ORDER_CANCELLED.recipientName.length);
 });
 
 test("nút Xuất Excel mờ khi không còn đơn nào", async ({ page }) => {
@@ -452,11 +455,10 @@ test("xuất Excel lấy TOÀN BỘ đơn đã lọc, không chỉ trang đang x
     page.waitForEvent("download"),
     bam(page, page.getByRole("button", { name: /Xuất Excel/ })),
   ]);
-  const noiDung = readFileSync((await download.path())!, "utf8");
-
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
   // Xuất theo trang đang xem thì kế toán mất 5 đơn mà không biết.
-  const soDong = noiDung.trim().split("\r\n").length - 1;
-  expect(soDong).toBe(25);
+  expect(workbook.worksheets[0].rowCount - 1).toBe(25);
 });
 
 test("khi IN THẬT, chỉ phiếu giao hiện ra còn giao diện bị giấu", async ({

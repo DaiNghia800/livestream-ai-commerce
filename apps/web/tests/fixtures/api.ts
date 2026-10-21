@@ -273,6 +273,39 @@ export const SHIP_DETAIL = {
       description: "",
     },
   ],
+  lengthCm: 28,
+  widthCm: 20,
+  heightCm: 5,
+  insuranceValue: "598000.00",
+  note: "Cho xem hàng không cho thử",
+  expectedDeliveryText: "23/10 - 24/10",
+  pickedUpAt: null,
+  deliveredAt: null,
+  nguoiGui: {
+    name: "Kho LiveOrder",
+    phone: "0900000000",
+    streetLine: "123 Nguyễn Văn Linh",
+    wardName: "Phường Tân Thuận",
+    districtName: "Quận 7",
+    provinceName: "TP. Hồ Chí Minh",
+  },
+  nguoiNhan: {
+    name: "Nguyễn Thuỳ Trang",
+    phone: "0984122899",
+    streetLine: "18 Duy Tân",
+    wardName: "Phường Dịch Vọng Hậu",
+    districtName: "Cầu Giấy",
+    provinceName: "Hà Nội",
+  },
+  items: [
+    { skuCode: "AO01-BE-L", productName: "Áo sơ mi lụa", quantity: 2 },
+  ],
+  // Có mốc giả lập = đang ở môi trường thử. Fixture để sẵn vài mốc
+  // để kiểm bảng giả lập hiện ra và bấm được.
+  moPhong: [
+    { code: "picked", label: "Đã lấy hàng" },
+    { code: "delivered", label: "Giao thành công" },
+  ],
 };
 
 export const CARRIERS = [
@@ -326,6 +359,39 @@ export const TRACKING_CHUA_CO_MA = {
 };
 
 /** Cài sẵn các tuyến API trước khi điều hướng. */
+/**
+ * Đơn mà bộ tách địa chỉ KHÔNG dám quyết.
+ *
+ * "Nha Trang" là tên thành phố, sau 01/07/2025 không còn là đơn vị
+ * hành chính nào — đúng tình huống shop phải sửa tay.
+ */
+export const ORDER_DIA_CHI_HONG = {
+  ...ORDER_DETAIL,
+  id: "55555555-5555-4555-8555-555555555555",
+  orderCode: "LIVE-20261011-eee555",
+  shippingAddress: "88 Trần Phú, phường Lộc Thọ, Nha Trang",
+  addressNormalized: false,
+};
+
+/** Quận/huyện và phường/xã giả, đủ để thử chuỗi chọn nối tiếp. */
+export const HUYEN_MAU: Record<string, string[]> = {
+  "Khánh Hòa": ["Thành phố Nha Trang", "Thành phố Cam Ranh"],
+  "TP. Hồ Chí Minh": ["Quận 1", "Thành phố Thủ Dầu Một"],
+};
+
+export const XA_MAU: Record<string, string[]> = {
+  "Thành phố Nha Trang": ["Phường Lộc Thọ", "Phường Vạn Thắng"],
+  "Quận 1": ["Phường Bến Nghé", "Phường Bến Thành"],
+};
+
+/** Vài tỉnh đủ dùng cho test; bản thật có 34. */
+export const TINH_THANH_MAU = [
+  "Hà Nội",
+  "Khánh Hòa",
+  "TP. Hồ Chí Minh",
+  "Đà Nẵng",
+];
+
 export async function stubApi(page: Page, options: StubOptions = {}) {
   const {
     // Nhân bản để có đủ đơn thử phân trang. Mã đơn phải khác nhau,
@@ -395,6 +461,21 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
       return json(route, { items: CARRIERS });
     }
 
+    // Cùng lý do như carriers: đặt trước "/shipments/:id".
+    if (path === "/shipments/provinces") {
+      return json(route, { items: TINH_THANH_MAU });
+    }
+
+    if (path === "/shipments/districts") {
+      const tinh = url.searchParams.get("province") ?? "";
+      return json(route, { items: HUYEN_MAU[tinh] ?? [] });
+    }
+
+    if (path === "/shipments/wards") {
+      const huyen = url.searchParams.get("district") ?? "";
+      return json(route, { items: XA_MAU[huyen] ?? [] });
+    }
+
     if (path === "/shipments") {
       return json(route, { items: shipments });
     }
@@ -403,6 +484,12 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
       return tracking
         ? json(route, tracking)
         : json(route, { error: "TRACKING_NOT_FOUND" }, 404);
+    }
+
+    // Giả lập một mốc: trả về chính bản chi tiết, đủ để màn hình
+    // tải lại mà không cần dựng cả máy trạng thái trong fixture.
+    if (path.endsWith("/simulate")) {
+      return json(route, { ketQua: "APPLIED", chiTiet: shipmentDetail });
     }
 
     if (path.startsWith("/shipments/")) {
@@ -417,6 +504,34 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
 
     if (path.endsWith("/approve") || path.endsWith("/reject")) {
       return json(route, { ok: true });
+    }
+
+    // Lưu địa chỉ: trả về đơn đã chuẩn hoá, dựng từ chính thân gửi
+    // lên để test đối chiếu được cái gì thật sự tới server.
+    if (path.endsWith("/address")) {
+      const than = route.request().postDataJSON() as {
+        provinceName: string;
+        wardName: string;
+        streetLine: string;
+      };
+      if (than.provinceName === "Hà Nội") {
+        // Một nhánh từ chối để kiểm việc hiện lỗi nguyên văn.
+        return json(
+          route,
+          {
+            error: "ValidationError",
+            message: '"Hà Nội" không nhận giao tuyến này.',
+          },
+          400,
+        );
+      }
+      return json(route, {
+        ...(orderDetail as object),
+        addressNormalized: true,
+        shippingAddress: [than.streetLine, than.wardName, than.provinceName].join(
+          ", ",
+        ),
+      });
     }
 
     if (path === "/orders/draft") {

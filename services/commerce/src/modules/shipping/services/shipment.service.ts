@@ -27,12 +27,15 @@ import {
   canAdvance,
   type ShippingAddress,
 } from "../carriers/index.js";
+import { config } from "../../../config.js";
 import { getCarrier } from "../carriers/index.js";
 import {
   AddressNotNormalizedError,
   CannotCancelShipmentError,
   CodNotAllowedError,
+  GhnHeavyShipmentNotSupportedError,
   InvalidManualShipmentStatusError,
+  InvalidSimulationStepError,
   OrderNotReadyForShipmentError,
   ShipmentAlreadyExistsError,
   ShipmentNotFoundError,
@@ -41,6 +44,7 @@ import {
   advanceStatus,
   findOrderForShipment,
   findShipmentById,
+  findShipmentParties,
   insertEvent,
   insertShipmentRequested,
   listEvents,
@@ -56,6 +60,13 @@ import {
   type VanDon,
 } from "../repositories/shipment.repository.js";
 import { apDungMocLon } from "./apply-shipment-status.js";
+import {
+  CHANG_GIA_LAP,
+  dungGoiTin,
+  headerXacThuc,
+  moPhongDuocBat,
+} from "./simulate-carrier.service.js";
+import { ShippingWebhookService } from "./shipping-webhook.service.js";
 
 /**
  * Link theo dõi sống bao nhiêu ngày kể từ lúc tạo vận đơn.
@@ -84,6 +95,15 @@ export class ShipmentService {
   async createShipment(input: TaoVanDonInput): Promise<VanDon> {
     const carrierName = input.carrier ?? undefined;
     const carrier = getCarrier(carrierName);
+
+    // GHN service 5 requires weight and dimensions for every item.
+    // The shipment form only collects dimensions for the whole parcel.
+    if (
+      carrier.name === "ghn" &&
+      (input.weightGram >= 20000 || Number(input.serviceCode) === 5)
+    ) {
+      throw new GhnHeavyShipmentNotSupportedError();
+    }
 
     // ── Giai đoạn 1: kiểm tra và đặt chỗ, rồi COMMIT ────────────────
     const client = await this.pool.connect();
@@ -147,6 +167,7 @@ export class ShipmentService {
         widthCm: input.widthCm ?? null,
         heightCm: input.heightCm ?? null,
         insuranceValue: input.insuranceValue ?? "0",
+        note: input.note ?? null,
       });
 
       // null = chỉ mục duy nhất một phần đã chặn. Đơn này đang có vận
@@ -228,6 +249,7 @@ export class ShipmentService {
         trackingCode: ketQua.trackingCode,
         feeQuoted: ketQua.fee,
         serviceCode: ketQua.serviceCode,
+        expectedDeliveryText: ketQua.expectedDeliveryText,
       });
 
       await insertEvent(client2, {
@@ -344,19 +366,103 @@ export class ShipmentService {
     }
   }
 
-  async getShipmentDetail(
-    shipmentId: string
-  ): Promise<VanDon & { events: unknown[] }> {
+  async getShipmentDetail(shipmentId: string): Promise<unknown> {
     const client = await this.pool.connect();
     try {
       const vanDon = await findShipmentById(client, shipmentId);
       if (!vanDon) {
         throw new ShipmentNotFoundError(shipmentId);
       }
-      return { ...vanDon, events: await listEvents(client, shipmentId) };
+      const [events, ben] = await Promise.all([
+        listEvents(client, shipmentId),
+        findShipmentParties(client, shipmentId),
+      ]);
+
+      return {
+        ...vanDon,
+        events,
+        ...ben,
+        // Kho gửi nằm trong cấu hình chứ không trong database, nhưng
+        // màn chi tiết vẫn cần nó: "hàng đi từ đâu" là câu shop hỏi
+        // ngay khi bưu tá báo không tìm thấy điểm lấy.
+        // Mốc giả lập được, để giao diện biết vẽ nút nào. Rỗng ở
+        // production, và rỗng với hãng không nhận webhook.
+        moPhong: moPhongDuocBat()
+          ? (CHANG_GIA_LAP[vanDon.carrier] ?? [])
+          : [],
+        nguoiGui: {
+          name: config.shipFrom.name,
+          phone: config.shipFrom.phone,
+          streetLine: config.shipFrom.address,
+          wardName: config.shipFrom.wardName || null,
+          districtName: config.shipFrom.districtName || null,
+          provinceName: config.shipFrom.provinceName,
+        },
+      };
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Đóng vai hãng bắn một mốc về, cho môi trường thử.
+   *
+   * Đi qua ĐÚNG đường mà gói tin thật đi: dựng gói tin đúng hình
+   * dạng hãng gửi, ký đúng cách hãng ký, rồi đưa vào
+   * `ShippingWebhookService`. Nhờ vậy ba lớp bảo vệ vẫn áp dụng —
+   * bấm hai lần cùng một mốc sẽ bị chặn đúng như hãng gửi trùng.
+   */
+  async simulateCarrierEvent(
+    shipmentId: string,
+    code: string
+  ): Promise<unknown> {
+    const client = await this.pool.connect();
+    let vanDon;
+    try {
+      vanDon = await findShipmentById(client, shipmentId);
+    } finally {
+      client.release();
+    }
+
+    if (!vanDon) {
+      throw new ShipmentNotFoundError(shipmentId);
+    }
+
+    const chang = CHANG_GIA_LAP[vanDon.carrier];
+    if (!chang) {
+      throw new InvalidSimulationStepError(
+        `Hãng "${vanDon.carrier}" không nhận webhook nên không giả lập ` +
+          `được. Đơn tự giao thì bấm tay, hãng giả thì tự chạy.`
+      );
+    }
+    if (!chang.some((c) => c.code === code)) {
+      throw new InvalidSimulationStepError(
+        `Mốc "${code}" không có trong hành trình của hãng ` +
+          `"${vanDon.carrier}".`
+      );
+    }
+
+    const than = JSON.stringify(
+      dungGoiTin(
+        {
+          carrier: vanDon.carrier,
+          trackingCode: vanDon.trackingCode,
+          clientOrderCode: vanDon.clientOrderCode,
+          codAmount: vanDon.codAmount,
+        },
+        code
+      )
+    );
+
+    const ketQua = await new ShippingWebhookService(this.pool).handle(
+      vanDon.carrier,
+      JSON.parse(than),
+      headerXacThuc(vanDon.carrier, than),
+      // Hãng ký theo thân NGUYÊN BẢN, nên phải đưa đúng chuỗi vừa ký.
+      than
+    );
+
+    return { ...ketQua, chiTiet: await this.getShipmentDetail(shipmentId) };
   }
 
   async listForMerchant(filter: Partial<LocVanDon>): Promise<unknown[]> {
