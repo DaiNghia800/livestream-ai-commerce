@@ -1,0 +1,70 @@
+/* "Đơn mua" — thẻ đơn kiểu sàn lớn. CSS module, dùng biến màu khu khách. */
+.page { display: grid; gap: var(--space-4); }
+.tieuDe { margin: 0; font-size: 1.5rem; }
+
+/* Thanh tab cuộn ngang trên máy nhỏ thay vì xuống dòng. */
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  appearance: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  padding: 10px 14px;
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+
+.danhSach { display: grid; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
+
+.the {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 12px);
+  background: var(--color-surface-container-lowest, #fff);
+}
+.theDau {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.phien { display: inline-flex; align-items: baseline; gap: var(--space-2); font-weight: 600; flex-wrap: wrap; }
+.maDon { color: var(--color-muted); font-weight: 400; font-size: var(--text-sm); }
+
+.items { display: grid; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.items li { display: flex; align-items: center; gap: var(--space-3); }
+.anh, .anhTrong { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 8px; object-fit: cover; background: var(--color-surface-container); }
+.itemThan { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.gia { white-space: nowrap; }
+
+.theChan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.thanhToan { color: var(--color-muted); font-size: var(--text-sm); }
+.tong { margin-left: auto; }
+.tong strong { color: var(--color-primary); font-size: 1.15rem; }
+
+.hanhDong { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }

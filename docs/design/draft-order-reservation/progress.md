@@ -589,3 +589,17 @@ trước đây ai cầm link cũng mở và xác nhận được.
 Kiểm ở service (`requireViewer`) chứ không ở middleware để GET và POST
 không bao giờ lệch nhau — chặn xem mà quên chặn xác nhận hộ là lỗ hổng.
 
+---
+
+## 2026-10-22 — Màn "Đơn mua" của khách
+
+| Thành phần | Nội dung |
+|---|---|
+| API | `GET /api/me/orders?group=` — đơn của mọi mã khách thuộc tài khoản (JOIN `customer_identities`), kèm dòng hàng, thanh toán, vận đơn còn sống; trả cả `confirmToken` vì người gọi là chủ đơn |
+| Web | `/orders`: tab Tất cả / Chờ xác nhận / Đang xử lý / Đang giao / Hoàn thành / Đã huỷ; mỗi đơn một thẻ; nút "Xác nhận đơn" (nháp) / "Xem đơn" / "Theo dõi vận đơn" |
+| Menu avatar | thêm mục "Đơn mua" |
+
+Chiều `user_id → customer_id` là **một-nhiều**: mỗi trình duyệt khách
+từng đăng nhập là một UUID. Vì vậy mọi truy vấn "đơn của tài khoản"
+phải đi qua bảng nối, không so một mã.
+

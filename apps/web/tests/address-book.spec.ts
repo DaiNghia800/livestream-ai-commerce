@@ -208,6 +208,7 @@ test.describe("Menu tài khoản", () => {
     const menu = page.getByRole("menu", { name: "Tài khoản của tôi" });
     await expect(menu.getByRole("menuitem")).toHaveText([
       "Thông tin cá nhân",
+      "Đơn mua",
       "Địa chỉ nhận hàng",
       "Đăng xuất",
     ]);

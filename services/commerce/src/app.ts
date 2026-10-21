@@ -10,6 +10,7 @@ import { createAdminUserRouter } from "./modules/login/routes/admin-user.routes.
 import { createAddressBookRouter } from "./modules/address-book/routes/address-book.routes.js";
 import { createProfileRouter } from "./modules/profile/routes/profile.routes.js";
 import { createCustomerIdentityRouter } from "./modules/profile/routes/customer-identity.routes.js";
+import { createMyOrdersRouter } from "./modules/order/routes/my-orders.routes.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
@@ -123,6 +124,7 @@ export function createApp(
   apiRouter.use("/me/addresses", createAddressBookRouter(authRepository));
   apiRouter.use("/me/profile", createProfileRouter(authRepository));
   apiRouter.use("/me/customer-ids", createCustomerIdentityRouter(authRepository));
+  apiRouter.use("/me/orders", createMyOrdersRouter(authRepository));
   apiRouter.use(
     "/livestreams",
     createLivestreamRouter(
