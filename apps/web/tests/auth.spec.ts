@@ -43,7 +43,7 @@ test("admin cannot use the shared shop login", async ({ page }) => {
       body: JSON.stringify({
         access_token: "admin-access-token",
         refresh_token: "admin-refresh-token",
-        user: { id: 1, email: "admin@example.com", role: "admin" },
+        user: { id: 1, email: "admin@example.com", full_name: "System Admin", role: "admin" },
       }),
     });
   });
@@ -62,6 +62,30 @@ test("admin cannot use the shared shop login", async ({ page }) => {
   expect(await page.evaluate(() => localStorage.getItem("admin_access_token"))).toBeNull();
 });
 
+test("shop owner login opens the merchant dashboard", async ({ page }) => {
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "shop-access-token",
+        refresh_token: "shop-refresh-token",
+        user: { id: 3, email: "shop@example.com", full_name: "Shop Owner", role: "shop_owner" },
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("shop@example.com");
+  await page.getByRole("textbox", { name: "Mật khẩu" }).fill("shop-pass");
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
+
+  await expect(page).toHaveURL(/\/shop$/);
+  expect(await page.evaluate(() => localStorage.getItem("user_role"))).toBe("shop_owner");
+  await expect(page.getByText("Shop Owner", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Chủ cửa hàng", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Tổng quan hoạt động Livestream & Đơn hàng" })).toBeVisible();
+});
 test("admin login opens the shared merchant invitation workspace", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "shared-shop-token");
@@ -73,7 +97,7 @@ test("admin login opens the shared merchant invitation workspace", async ({ page
       body: JSON.stringify({
         access_token: "admin-access-token",
         refresh_token: "admin-refresh-token",
-        user: { id: 1, email: "admin@example.com", role: "admin" },
+        user: { id: 1, email: "admin@example.com", full_name: "System Admin", role: "admin" },
       }),
     });
   });
@@ -94,6 +118,8 @@ test("admin login opens the shared merchant invitation workspace", async ({ page
 
   await expect(page).toHaveURL(/\/shop\/invitations$/);
   await expect(page.getByRole("heading", { name: "Quản trị hệ thống" })).toBeVisible();
+  await expect(page.getByText("System Admin", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Quản trị viên", { exact: true })).toHaveCount(1);
   const openMenu = page.getByRole("button", { name: "Mở menu quản lý" });
   if (await openMenu.isVisible()) await openMenu.click();
   await expect(page.getByRole("navigation", { name: "Điều hướng chủ shop" }))

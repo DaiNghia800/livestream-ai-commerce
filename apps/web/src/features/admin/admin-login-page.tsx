@@ -35,6 +35,12 @@ export function AdminLoginPage() {
       }
       localStorage.setItem("admin_access_token", data.access_token);
       localStorage.setItem("user_role", "admin");
+      if (data.user) {
+        localStorage.setItem(
+          "admin_auth_user",
+          JSON.stringify({ full_name: data.user.full_name, email: data.user.email })
+        );
+      }
       if (data.refresh_token) {
         localStorage.setItem("admin_refresh_token", data.refresh_token);
       }

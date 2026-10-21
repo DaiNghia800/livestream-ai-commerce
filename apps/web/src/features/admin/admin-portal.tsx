@@ -42,6 +42,7 @@ export function AdminPortal() {
     if (response.status === 401 || response.status === 403) {
       localStorage.removeItem("admin_access_token");
       localStorage.removeItem("admin_refresh_token");
+      localStorage.removeItem("admin_auth_user");
       localStorage.removeItem("user_role");
       setToken("");
       router.replace("/admin");
@@ -69,6 +70,7 @@ export function AdminPortal() {
         if (response.status === 401 || response.status === 403) {
           localStorage.removeItem("admin_access_token");
           localStorage.removeItem("admin_refresh_token");
+          localStorage.removeItem("admin_auth_user");
           localStorage.removeItem("user_role");
           if (active) {
             router.replace("/admin");

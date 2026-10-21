@@ -78,7 +78,7 @@ export function LoginForm() {
       if (data.refresh_token) {
         localStorage.setItem("refresh_token", data.refresh_token);
       }
-      router.push("/");
+      router.push(data.user?.role === "shop_owner" ? "/shop" : "/");
     } catch {
       setErrors({
         general: "Không thể kết nối đến server. Vui lòng thử lại.",

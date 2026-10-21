@@ -59,6 +59,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
     localStorage.removeItem("user_role");
     localStorage.removeItem("admin_access_token");
     localStorage.removeItem("admin_refresh_token");
+    localStorage.removeItem("admin_auth_user");
     router.replace("/login");
   }
 
