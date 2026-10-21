@@ -81,6 +81,13 @@ export default defineConfig({
       ZALOPAY_KEY1: "key1-gia",
       ZALOPAY_KEY2: "key2-gia",
       MOCK_GATEWAY_SECRET: "mock-secret-gia",
+
+      // Khoá GIẢ cho hãng vận chuyển. Chỉ để adapter dựng được;
+      // endpoint vẫn trỏ về sandbox và assertSandbox() chặn mọi host
+      // khác, nên không có cách nào gọi nhầm ra môi trường thật.
+      GHN_TOKEN: "ghn-token-gia",
+      GHN_SHOP_ID: "123456",
+      GHN_WEBHOOK_SECRET: "ghn-webhook-secret-gia",
     },
     coverage: {
       provider: "v8",
