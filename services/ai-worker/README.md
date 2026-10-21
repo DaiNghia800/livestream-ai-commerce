@@ -197,11 +197,11 @@ docker image ls livestream-ai-worker:midterm
 
 Các ví dụ chỉ dùng dữ liệu synthetic; JSON output chứa comment theo contract nên không dùng dữ liệu khách thật khi trình chiếu. Thời gian build, kích thước image và kết quả chạy phải đo thực tế, không suy ra từ test host. Nếu Docker daemon không truy cập được thì chưa thể kết luận Docker verification đạt. Full offline pytest vẫn chạy trong môi trường dev theo phần kiểm thử ở trên; image demo không chứa test suite. A7 không thêm Docker Hub publishing, SQS, Lambda hoặc Commerce integration.
 
-## AWS-2: SQS Lambda adapter offline — chưa deploy
+## AWS-2: SQS Lambda adapter và optional result publishing — chưa deploy
 
-Entry point là **`lambda_handler.handler`**, dự kiến dùng Python 3.13. Handler đọc từng JSON string trong `Records[].body`, gọi đúng `process_comment_event(event, use_ai=False)` và trả `batchItemFailures`. Không gọi CLI, AWS SDK, Commerce, database hoặc Gemini. API key trong environment không bật được AI; package offline không chứa Gemini client. Docker image A7 vẫn là demo CLI, không phải Lambda deployment image.
+Entry point là **`lambda_handler.handler`**, dự kiến dùng Python 3.13. Handler đọc từng JSON string trong `Records[].body`, gọi đúng `process_comment_event(event, use_ai=False)` và trả `batchItemFailures`. Khi `COMMERCE_RESULT_QUEUE_URL` được cấu hình, handler gửi intent result sang queue đó bằng SQS `SendMessage`; SDK `boto3` chỉ được import tại nhánh publish và được cung cấp bởi Lambda runtime. Không gọi Gemini hay database. API key trong environment không bật được AI; package offline không chứa Gemini client. Docker image A7 vẫn là demo CLI, không phải Lambda deployment image.
 
-`purchase_candidate`, `needs_clarification` và `no_purchase` đều là xử lý nghiệp vụ thành công. Adapter không tạo order, reservation hoặc proposal; không đổi output/contract của processor. Kết quả nghiệp vụ chỉ xuất hiện trong sanitized log, không gửi lại Frontend hay Commerce.
+`purchase_candidate`, `needs_clarification` và `no_purchase` đều là xử lý nghiệp vụ thành công. Adapter không tạo order, reservation hoặc proposal; không đổi output/contract của processor. Nếu đã cấu hình result queue, kết quả được gửi cho Commerce; nếu chưa cấu hình trong môi trường local thì chỉ còn sanitized log.
 
 ### Failure và logging
 
@@ -213,13 +213,50 @@ Mỗi record được xử lý độc lập. JSON sai, event không hợp lệ, 
 
 Nếu envelope không có `Records` dạng list, record không phải object, hoặc thiếu/không hợp lệ `messageId`, handler raise exception với thông báo cố định trước khi xử lý batch. Không bịa ID và không acknowledge thành công. Batch rỗng trả danh sách failures rỗng.
 
-Log JSON chỉ gồm `event_id`, `comment_id`, `sqs_message_id`, `decision`, `latency_ms`, `error_type`, `failure_kind`. ID chỉ được log nếu là chuỗi opaque 1–128 ký tự trong tập ASCII chữ/số/`_ . : -`; giá trị khác được redact thành null, không sửa ID xử lý/acknowledgment. `latency_ms` đo thời gian xử lý record bằng monotonic clock, không phải Gemini API latency.
+Log JSON chỉ gồm `event_id`, `comment_id`, `sqs_message_id`, `decision`, `latency_ms`, `error_type`, `failure_kind`. ID chỉ được log nếu là chuỗi opaque 1–128 ký tự trong tập ASCII chữ/số/`_ . : -`; giá trị khác được redact thành null, không sửa ID xử lý/acknowledgment. `latency_ms` đo thời gian xử lý record bằng monotonic clock, không phải Gemini API latency. Nội dung bình luận không được ghi vào CloudWatch.
 
 - `error_type` chỉ giữ mã hiện có trong processor/AI contracts. Body không phải string dùng `invalid_type`, thiếu body dùng `missing_field`, JSON không hợp lệ dùng `invalid_format`. NaN/Infinity bị từ chối.
 - `failure_kind` là metadata log nội bộ, **không phải public error/reason code mới**: `invalid_input`, `transient`, `technical`, `unexpected`; thành công là null. Các lỗi `ai_timeout`, `ai_network`, `ai_rate_limit`, `ai_transient` được phân biệt với lỗi input và configuration/auth/response.
 - Unexpected exception hoặc error label không được nhận biết có `error_type=null`, `failure_kind=unexpected`, record vẫn thất bại. Không log exception message/traceback, raw comment, customer identity, API keys hay toàn bộ processor result.
 
-Adapter không tự retry, sleep hoặc xóa message. Duplicate delivery có thể được parse và log lại; hiện không có durable deduplication hoặc exactly-once guarantee. Luồng chỉ tính intent và log nên không phát sinh external business side effect. Các task tạo proposal/order sau này cần idempotency riêng.
+Adapter không tự retry, sleep hoặc xóa message. Duplicate delivery có thể được parse, log và publish lại; hiện không có durable deduplication hoặc exactly-once guarantee. Publish chỉ gửi intent result, không tạo proposal/order. Các task tạo proposal/order sau này cần idempotency riêng.
+
+### Gửi intent result cho Commerce
+
+Đặt biến môi trường Lambda **`COMMERCE_RESULT_QUEUE_URL`** thành URL của SQS queue do nhóm Commerce sở hữu. Execution role cần quyền `sqs:SendMessage` giới hạn đúng queue ARN. Nếu handler chạy trong Lambda nhưng biến này thiếu, record hợp lệ sẽ được báo lỗi để không bị xóa âm thầm khi chưa có nơi nhận kết quả. Khi chạy offline/local và không đặt biến này, handler không tạo AWS client và chỉ trả kết quả xử lý như trước.
+
+Mỗi kết quả nghiệp vụ thành công gửi một JSON message có dạng:
+
+```json
+{
+  "schema_name": "ai-worker.intent-result",
+  "schema_version": 1,
+  "event_id": "source-event-id",
+  "comment_id": "source-comment-id",
+  "session_id": "source-session-id",
+  "customer_id": "opaque-source-customer-id",
+  "source_schema_version": 1,
+  "occurred_at": "2026-10-20T08:00:00Z",
+  "content": "  Chốt A12 2 cái  ",
+  "intent": {
+    "decision": "purchase_candidate"
+  }
+}
+```
+
+Ví dụ trên được rút gọn; message thực tế giữ nguyên object `intent` do processor trả về. Trường `content` lấy trực tiếp từ event nguồn và giữ nguyên khoảng trắng/ký tự gốc, khác với `content` đã trim bên trong kết quả legacy của processor. `customer_id` ở đây là ID nguồn chưa được xác thực; Commerce không được dùng nó thay cho identity từ trusted context. Message chỉ là kết quả phân tích và bằng chứng comment, không phải lệnh tạo đơn hay xác nhận tồn kho/giá.
+
+SQS Standard có thể giao lặp. Commerce cần deduplicate bằng `event_id` hoặc khóa idempotency đã thống nhất trước khi lưu. Nếu Lambda publish thành công nhưng mất ACK từ queue đầu vào, lần retry có thể gửi result trùng. Phải bật `ReportBatchItemFailures` trên event source mapping để record lỗi publish được retry riêng; kiểm tra DLQ/redrive và visibility timeout trước khi bật trigger production/staging. Chưa có kết nối thật tới queue Commerce trong task này.
+
+Build ZIP mới sau khi thay đổi code:
+
+```powershell
+$lambdaZip = Join-Path ([IO.Path]::GetTempPath()) ('ai-worker-result-' + [guid]::NewGuid().ToString('N') + '.zip')
+if (Test-Path -LiteralPath $lambdaZip) { throw 'ZIP target already exists' }
+python -X utf8 -B services/ai-worker/scripts/build_lambda_zip.py --output "$lambdaZip"
+```
+
+Sau đó upload ZIP trong Lambda Console và đặt `COMMERCE_RESULT_QUEUE_URL` cùng IAM permission trước khi bật trigger. Không dùng queue URL thật trong local tests; tests mock publisher và không gửi AWS message.
 
 ### Build ZIP từ Git root
 

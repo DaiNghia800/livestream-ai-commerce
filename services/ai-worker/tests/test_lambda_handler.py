@@ -240,3 +240,72 @@ def test_api_key_cannot_enable_ai(adapter, monkeypatch, caplog):
         "batchItemFailures": []}
     gemini.assert_not_called()
     assert summaries(caplog)[0]["decision"] == "needs_clarification"
+
+
+def test_configured_result_queue_receives_versioned_result_with_exact_content(
+        adapter, monkeypatch, caplog):
+    event = comment("  Chốt A12 2 cái  ")
+    client = Mock()
+    monkeypatch.setenv("COMMERCE_RESULT_QUEUE_URL", "https://sqs.example/result-queue")
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
+    monkeypatch.setattr(adapter, "_create_sqs_client", lambda: client)
+
+    assert adapter.handler({"Records": [record(event)]}, None) == {"batchItemFailures": []}
+
+    client.send_message.assert_called_once()
+    call = client.send_message.call_args.kwargs
+    assert call["QueueUrl"] == "https://sqs.example/result-queue"
+    payload = json.loads(call["MessageBody"])
+    assert payload == {
+        "schema_name": "ai-worker.intent-result",
+        "schema_version": 1,
+        "event_id": event["event_id"],
+        "comment_id": event["comment_id"],
+        "session_id": event["session_id"],
+        "customer_id": event["customer_id"],
+        "source_schema_version": event["schema_version"],
+        "occurred_at": event["occurred_at"],
+        "content": event["content"],
+        "intent": process_comment_event(event, use_ai=False)["intent"],
+    }
+    assert "  Chốt A12 2 cái  " not in caplog.text
+    assert "PRIVATE-CUSTOMER" not in caplog.text
+
+
+def test_result_publish_failure_fails_only_that_record(adapter, monkeypatch, caplog):
+    event = comment("Chốt A12 2 cái")
+    client = Mock()
+    client.send_message.side_effect = RuntimeError("PRIVATE-QUEUE-ERROR")
+    monkeypatch.setenv("COMMERCE_RESULT_QUEUE_URL", "https://sqs.example/result-queue")
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
+    monkeypatch.setattr(adapter, "_create_sqs_client", lambda: client)
+
+    assert adapter.handler({"Records": [record(event)]}, None) == {
+        "batchItemFailures": [{"itemIdentifier": "sqs-001"}]}
+    assert summaries(caplog)[0]["failure_kind"] == "technical"
+    assert "PRIVATE-QUEUE-ERROR" not in caplog.text
+
+
+def test_offline_mode_does_not_create_aws_client(adapter, monkeypatch, caplog):
+    monkeypatch.delenv("COMMERCE_RESULT_QUEUE_URL", raising=False)
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
+    client_factory = Mock(side_effect=AssertionError("AWS client must stay disabled"))
+    monkeypatch.setattr(adapter, "_create_sqs_client", client_factory)
+
+    assert adapter.handler({"Records": [record()]}, None) == {"batchItemFailures": []}
+    client_factory.assert_not_called()
+
+
+def test_lambda_without_result_queue_fails_valid_records(adapter, monkeypatch, caplog):
+    monkeypatch.delenv("COMMERCE_RESULT_QUEUE_URL", raising=False)
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "synthetic-worker")
+    client_factory = Mock(side_effect=AssertionError("Queue is not configured"))
+    monkeypatch.setattr(adapter, "_create_sqs_client", client_factory)
+
+    assert adapter.handler({"Records": [record()]}, None) == {
+        "batchItemFailures": [{"itemIdentifier": "sqs-001"}]}
+    entry, = summaries(caplog)
+    assert entry["decision"] == "purchase_candidate"
+    assert entry["error_type"] is None
+    assert entry["failure_kind"] == "technical"
+    client_factory.assert_not_called()

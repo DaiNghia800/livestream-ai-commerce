@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import time
 
@@ -20,6 +21,7 @@ _TRANSIENT_ERRORS = {"ai_timeout", "ai_network", "ai_rate_limit", "ai_transient"
 _TECHNICAL_ERRORS = {"ai_authentication", "ai_configuration", "ai_invalid_response"}
 _ERROR_TYPES = _INPUT_ERRORS | _TRANSIENT_ERRORS | _TECHNICAL_ERRORS
 _LOG_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
+_RESULT_QUEUE_ENV = "COMMERCE_RESULT_QUEUE_URL"
 
 
 def _safe_id(value):
@@ -41,6 +43,38 @@ def _failure_kind(error_type):
 def _reject_constant(value):
     """Reject NaN and Infinity, which are not JSON values."""
     raise ValueError("Invalid JSON constant")
+
+
+def _create_sqs_client():
+    """Load the Lambda-provided AWS SDK only when result publishing is enabled."""
+    import boto3
+
+    return boto3.client("sqs")
+
+
+def _result_message(event, result):
+    """Build a versioned result envelope while preserving the original comment text."""
+    return {
+        "schema_name": "ai-worker.intent-result",
+        "schema_version": 1,
+        "event_id": event["event_id"],
+        "comment_id": event["comment_id"],
+        "session_id": event["session_id"],
+        "customer_id": event["customer_id"],
+        "source_schema_version": event["schema_version"],
+        "occurred_at": event["occurred_at"],
+        "content": event["content"],
+        "intent": result["intent"],
+    }
+
+
+def _publish_result(event, result, queue_url):
+    """Publish one successful intent result; callers handle and sanitize failures."""
+    client = _create_sqs_client()
+    client.send_message(
+        QueueUrl=queue_url,
+        MessageBody=json.dumps(_result_message(event, result), ensure_ascii=False),
+    )
 
 
 def handler(event, context):
@@ -82,6 +116,15 @@ def handler(event, context):
                         decision = result["intent"]["decision"]
                         if decision not in _DECISIONS:
                             raise ValueError("Unexpected processor decision")
+                        queue_url = os.environ.get(_RESULT_QUEUE_ENV)
+                        if queue_url:
+                            try:
+                                _publish_result(comment, result, queue_url)
+                            except Exception:
+                                failure_kind = "technical"
+                        elif os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+                            # Never acknowledge a live event when its result has nowhere to go.
+                            failure_kind = "technical"
                     else:
                         raise ValueError("Unexpected processor status")
             if error_type is not None:
