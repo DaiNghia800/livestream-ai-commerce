@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "event_type": "livestream.create_requested",
+    "request": {
+        "title": "Live sale tối thứ 7",
+        "description": "Sale các sản phẩm mới",
+        "scheduledAt": "2026-10-10T19:30:00Z"
+    },
+    "response": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "merchantId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+        "title": "Live sale tối thứ 7",
+        "description": "Sale các sản phẩm mới",
+        "status": "draft",
+        "playbackUrl": null,
+        "scheduledAt": "2026-10-10T19:30:00Z",
+        "startedAt": null,
+        "endedAt": null,
+        "createdAt": "2026-10-03T12:00:00Z",
+        "updatedAt": "2026-10-03T12:00:00Z"
+    }
+}

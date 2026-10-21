@@ -1,4 +1,3 @@
-
 node_modules/
 .next/
 out/
@@ -16,6 +15,7 @@ __pycache__/
 coverage/
 htmlcov/
 .coverage
+services/commerce/uploads/
 playwright-report/
 test-results/
 .terraform/
@@ -25,4 +25,14 @@ test-results/
 *.tfvars.json
 .DS_Store
 Thumbs.db
+
+# Office lock files
+~$*
 *.tsbuildinfo
+next-env.d.ts
+
+docs/design/draft-order-reservation/templates/
+docs/test
+
+# Editor
+.vscode/

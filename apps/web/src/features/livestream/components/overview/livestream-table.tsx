@@ -1,0 +1,235 @@
+import { useEffect, useRef } from "react";
+import { AlertCircle, CirclePlus, RefreshCw, Video } from "lucide-react";
+import type { Livestream } from "../../types/livestream";
+import { mockLivestreams } from "../../mocks/livestream.mock";
+import { LivestreamPagination } from "./livestream-pagination";
+import { LivestreamTableRow } from "./livestream-table-row";
+
+interface LivestreamTableProps {
+  items?: Livestream[];
+  isLoading?: boolean;
+  isFetching?: boolean;
+  isError?: boolean;
+  errorMessage?: string;
+  onRetry?: () => void;
+  onCreateSession?: () => void;
+  totalCount?: number;
+  currentPage?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  onDeleteSession?: (session: Livestream) => void;
+  deletingSessionId?: string | null;
+  selectedIds?: string[];
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
+}
+
+export function LivestreamTable({
+  items = mockLivestreams,
+  isLoading = false,
+  isFetching = false,
+  isError = false,
+  errorMessage = "Không thể tải danh sách phiên livestream. Vui lòng thử lại sau.",
+  onRetry,
+  onCreateSession,
+  totalCount,
+  currentPage = 1,
+  pageSize = 10,
+  onPageChange,
+  onPageSizeChange,
+  onDeleteSession,
+  deletingSessionId,
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
+}: LivestreamTableProps) {
+  const displayTotalCount = totalCount !== undefined ? totalCount : items.length;
+
+  const selectableItems = items.filter(
+    (item) => item.status !== "LIVE" && item.status !== "STARTING"
+  );
+  const selectableIds = selectableItems.map((item) => item.id);
+  const isAllSelected =
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.includes(id));
+  const isIndeterminate =
+    !isAllSelected &&
+    selectableIds.some((id) => selectedIds.includes(id));
+
+  const headerCheckboxRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = isIndeterminate;
+    }
+  }, [isIndeterminate]);
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-xs">
+      {/* Top progress indicator when background fetching or debounced search */}
+      <div className="h-0.5 w-full bg-surface-container-low overflow-hidden">
+        {isFetching && (
+          <div className="h-full w-full bg-primary/70 animate-pulse transition-all duration-300" />
+        )}
+      </div>
+
+      {/* Scrollable table container */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-outline-variant bg-surface-container-low/60 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+              <th scope="col" className="py-3 px-3.5 w-10 text-center">
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={onToggleSelectAll}
+                  disabled={selectableIds.length === 0}
+                  aria-label="Chọn tất cả phiên phát có thể thao tác trên trang này"
+                  className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-1 focus:ring-primary/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                />
+              </th>
+              <th scope="col" className="py-3 px-3.5 min-w-[280px]">
+                Phiên Livestream &amp; Mã ID
+              </th>
+              <th scope="col" className="py-3 px-3.5 min-w-[160px]">
+                Thời gian phát
+              </th>
+              <th scope="col" className="py-3 px-3.5 text-center min-w-[90px]">
+                Số SP
+              </th>
+              <th scope="col" className="py-3 px-3.5 text-right min-w-[150px]">
+                Doanh thu &amp; Mắt xem
+              </th>
+              <th scope="col" className="py-3 px-3.5 text-center min-w-[125px]">
+                Trạng thái
+              </th>
+              <th scope="col" className="py-3 px-3.5 text-right min-w-[145px]">
+                Thao tác
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            className={`divide-y divide-outline-variant/40 text-xs font-normal transition-opacity duration-200 ${
+              isFetching ? "opacity-60" : "opacity-100"
+            }`}
+          >
+            {/* Loading Skeleton State: only when there are no items to show */}
+            {(isLoading || (isFetching && items.length === 0)) && items.length === 0 && (
+              Array.from({ length: 5 }).map((_, idx) => (
+                <tr key={idx} className="animate-pulse">
+                  <td className="py-3.5 px-3.5 text-center">
+                    <div className="mx-auto h-4 w-4 rounded bg-surface-container" />
+                  </td>
+                  <td className="py-3.5 px-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-16 rounded-lg bg-surface-container shrink-0" />
+                      <div className="space-y-1.5 flex-1">
+                        <div className="h-3.5 w-3/4 rounded bg-surface-container" />
+                        <div className="h-3 w-1/3 rounded bg-surface-container-low" />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-3.5 px-3.5">
+                    <div className="space-y-1">
+                      <div className="h-3.5 w-24 rounded bg-surface-container" />
+                      <div className="h-2.5 w-16 rounded bg-surface-container-low" />
+                    </div>
+                  </td>
+                  <td className="py-3.5 px-3.5 text-center">
+                    <div className="mx-auto h-5 w-12 rounded bg-surface-container" />
+                  </td>
+                  <td className="py-3.5 px-3.5 text-right">
+                    <div className="ml-auto h-3.5 w-20 rounded bg-surface-container" />
+                    <div className="ml-auto mt-1 h-2.5 w-12 rounded bg-surface-container-low" />
+                  </td>
+                  <td className="py-3.5 px-3.5 text-center">
+                    <div className="mx-auto h-5 w-20 rounded-full bg-surface-container" />
+                  </td>
+                  <td className="py-3.5 px-3.5 text-right">
+                    <div className="ml-auto h-7 w-20 rounded-lg bg-surface-container" />
+                  </td>
+                </tr>
+              ))
+            )}
+
+            {/* Error State */}
+            {!isLoading && !isFetching && isError && (
+              <tr>
+                <td colSpan={7} className="py-12 px-4 text-center">
+                  <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600 mb-3">
+                      <AlertCircle className="h-6 w-6" aria-hidden="true" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-on-surface">Tải dữ liệu thất bại</h3>
+                    <p className="mt-1 text-xs text-outline">{errorMessage}</p>
+                    <button
+                      type="button"
+                      onClick={onRetry}
+                      className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface hover:bg-surface-container-low active:scale-95 transition-all"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>Thử lại</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !isFetching && !isError && items.length === 0 && (
+              <tr>
+                <td colSpan={7} className="py-14 px-4 text-center">
+                  <div className="mx-auto flex max-w-md flex-col items-center justify-center text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-container-low text-primary mb-3.5">
+                      <Video className="h-7 w-7" aria-hidden="true" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-on-surface">
+                      Chưa có phiên livestream nào
+                    </h3>
+                    <p className="mt-1 text-xs text-outline max-w-xs">
+                      Không tìm thấy phiên livestream phù hợp với bộ lọc hiện tại hoặc bạn chưa tạo phiên nào.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onCreateSession}
+                      className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-primary-container active:scale-95 transition-all"
+                    >
+                      <CirclePlus className="h-4 w-4" aria-hidden="true" />
+                      <span>Tạo phiên Livestream đầu tiên</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
+
+            {/* Normal State: List of rows */}
+            {!isError && items.length > 0 && (
+              items.map((item) => (
+                <LivestreamTableRow
+                  key={item.id}
+                  item={item}
+                  onDelete={onDeleteSession}
+                  isDeleting={deletingSessionId === item.id}
+                  isSelected={selectedIds.includes(item.id)}
+                  onToggleSelect={onToggleSelect}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Footer */}
+      {!isLoading && !isError && items.length > 0 && (
+        <LivestreamPagination
+          totalCount={displayTotalCount}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,67 @@
+/*
+ * Menu tài khoản trên đầu trang khách. Đặt trong module riêng vì
+ * globals.css là của người khác.
+ */
+
+.khoiTaiKhoan { position: relative; }
+
+/* Khối avatar+tên giờ là <button> mở menu. Trình duyệt vẽ nút với
+   viền, nền xám, chữ căn giữa — gỡ hết để nó nhìn y như khối cũ. */
+.nutTaiKhoan {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.nutTaiKhoan:hover,
+.nutTaiKhoan[aria-expanded="true"] { background: var(--color-subtle); }
+.nutTaiKhoan:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.muiTen { color: var(--color-muted); transition: transform .15s; }
+.nutTaiKhoan[aria-expanded="true"] .muiTen { transform: rotate(180deg); }
+
+/* Menu thả xuống, neo mép phải dưới nút. */
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 220px;
+  padding: 6px;
+  margin: 0;
+  list-style: none;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 10px);
+  box-shadow: 0 10px 30px rgba(17, 20, 33, 0.12);
+}
+.menu li { margin: 0; }
+.menuMuc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.menuMuc:hover,
+.menuMuc:focus-visible { background: var(--color-subtle); outline: none; }
+.menuMuc svg { color: var(--color-muted); flex: 0 0 auto; }
+.menuChia { height: 1px; margin: 6px 4px; background: var(--color-border); }
+.menuDangXuat { color: var(--color-error); }
+.menuDangXuat svg { color: inherit; }

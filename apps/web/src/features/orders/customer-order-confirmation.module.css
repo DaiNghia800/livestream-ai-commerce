@@ -1,0 +1,110 @@
+.page { width: min(100%, 1040px); margin: 0 auto; padding: 36px 20px 72px; display: grid; gap: 24px; }
+.heading h1 { font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 750; margin: 4px 0 8px; }
+.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.columns h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 20px; }
+.items { list-style: none; padding: 0; margin: 0; }
+.items li { display: flex; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--color-outline-variant); }
+.items li > div { display: grid; gap: 3px; min-width: 0; }
+.items li > strong { white-space: nowrap; }
+.partial { color: var(--color-error); font-size: .875rem; }
+.total { display: flex; justify-content: space-between; gap: 16px; padding-top: 20px; font-size: 1.1rem; }
+.form { display: grid; gap: 14px; }
+.form textarea { width: 100%; min-height: 84px; resize: vertical; border: 1px solid var(--color-outline); border-radius: 8px; padding: 10px 12px; background: #fff; }
+.form button { justify-self: start; }
+.addressChoice { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--color-outline); border-radius: 8px; background: var(--color-surface); color: var(--color-on-surface); text-align: left; cursor: pointer; }
+.addressChoice:disabled { opacity: .55; cursor: not-allowed; }
+/* ── Địa chỉ nhận hàng của khách đã đăng nhập ──────────────────────
+   Một dòng như các sàn: tên (SĐT) · địa chỉ · nhãn · "Thay đổi". Popup
+   chọn và form nằm ở address-book-dialog. */
+.diaChiNhan { display: grid; gap: 8px; }
+.diaChiNhanDau { display: inline-flex; align-items: center; gap: 6px; color: var(--color-primary); font-weight: 600; font-size: .9rem; }
+.diaChiNhanThan { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.diaChiNhanNguoi { white-space: nowrap; }
+.diaChiNhanDong { color: var(--color-on-surface); overflow-wrap: anywhere; }
+.diaChiNhanNhan { display: inline-flex; gap: 6px; }
+.nhanMacDinh, .nhanLoai { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 3px; font-size: .75rem; border: 1px solid var(--color-outline-variant); color: var(--color-on-surface-variant); }
+.nhanMacDinh { border-color: var(--color-primary); color: var(--color-primary); }
+/* Chữ, không phải nút: `.form button` ở trên không được kéo nó về trái. */
+.doiDiaChi { margin-left: auto; appearance: none; border: 0; background: none; padding: 0; font: inherit; font-size: .9rem; color: var(--color-primary); cursor: pointer; }
+.doiDiaChi:hover { text-decoration: underline; }
+.diaChiTrong { display: grid; gap: 10px; justify-items: start; }
+.transfer { display: grid; gap: 14px; }
+.transferQr { width: min(260px, 100%); height: auto; border-radius: 10px; background: #fff; justify-self: center; }
+.transferValue { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
+/* ── Ba bước ────────────────────────────────────────────────────
+   Khách tới đây từ một bình luận, chưa chắc hiểu mình đang ở đâu
+   trong quy trình. Dùng cùng bộ biến màu với phần còn lại của khu
+   vực khách, không đặt màu cứng. */
+.baBuoc { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; margin: 0; padding: 14px 16px; background: var(--color-surface-container); border-radius: 12px; }
+.buoc { display: flex; align-items: center; gap: 8px; color: var(--color-on-surface-variant, #5a5a66); font-size: .9rem; }
+.buocSo { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--color-outline); font-size: .78rem; font-weight: 700; }
+.buocXong .buocSo { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary, #fff); }
+.buocHienTai { color: var(--color-on-surface); font-weight: 650; }
+.buocHienTai .buocSo { border-color: var(--color-primary); color: var(--color-primary); }
+
+/* ── Khối AI chốt đơn ──────────────────────────────────────────── */
+.aiDau { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.aiNhan { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--color-primary); }
+.aiPhien { font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
+/* Câu khách đã gõ: để nguyên văn và dùng chữ đơn cách, vì khách
+   nhận ra đơn của mình nhờ đúng chuỗi đó. */
+.aiCuPhap { display: grid; gap: 4px; margin: 12px 0 0; }
+.aiCuPhap span { font-size: .85rem; color: var(--color-on-surface-variant, #5a5a66); }
+.aiCuPhap code { padding: 8px 10px; border-radius: 8px; background: var(--color-surface-container); font-family: var(--font-mono, ui-monospace, monospace); overflow-wrap: anywhere; }
+
+/* ── Cột và ảnh sản phẩm ───────────────────────────────────────── */
+.cot { display: grid; gap: 20px; align-content: start; min-width: 0; }
+.items li { align-items: center; }
+.anh, .anhTrong { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 8px; object-fit: cover; background: var(--color-surface-container); }
+
+/* ── Đồng hồ giữ hàng ──────────────────────────────────────────── */
+/* Khung "giữ chỗ" — thay cho đồng hồ đếm ngược đã bỏ. Chỉ là chữ,
+   không có thanh rút dần: không có gì đang trôi đi cả. */
+.giuCho { display: grid; gap: 6px; }
+.giuChoNhan { font-size: .85rem; font-weight: 600; color: var(--color-primary); }
+.giuChoLoi { margin: 0; font-size: .9rem; line-height: 1.5; color: var(--color-on-surface-variant, #5a5a66); }
+
+/* ── Phương thức thanh toán ────────────────────────────────────── */
+.phuongThuc { display: grid; gap: 10px; }
+/* align-items PHẢI khai rõ. Mặc định của flex là stretch, nên ô
+   radio bị kéo cao bằng cả thẻ và hiện thành một vòng tròn to
+   tướng — đúng lỗi đã thấy trên màn thật. */
+.cachTra { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--color-outline); border-radius: 10px; cursor: pointer; }
+/* flex: 1 để khối chữ chiếm phần còn lại; thiếu nó thì chữ co lại
+   bằng nội dung rồi bị đẩy dạt sang phải. */
+.cachTra > span { flex: 1 1 auto; display: grid; gap: 3px; min-width: 0; }
+.cachTra input { flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--color-primary); }
+.cachTra:hover:not(.cachTraMo) { border-color: var(--color-primary); }
+
+/* Nhãn thương hiệu. KHÔNG phải logo chính thức — đây là chữ đặt
+   trên nền màu của hãng. Vẽ lại logo người khác cho giống là chuyện
+   khác hẳn việc dùng đúng tệp họ phát hành. */
+/* inline-flex + nowrap để nhãn tự nở theo chữ. Dùng grid với
+   min-width cố định thì "ZaloPay" tràn ra ngoài nền màu và bị
+   cắt mất chữ cuối — đã thấy trên ảnh chụp thật. */
+/* Phải viết `.cachTra > .hieu`, không phải `.hieu` trần.
+   `.cachTra > span` (1 lớp + 1 thẻ = 0,1,1) đặc hiệu hơn `.hieu`
+   (0,1,0) nên nó đè mất, và nhãn lĩnh nguyên flex:1 của khối
+   chữ — đó là lý do MoMo rộng 184px còn VNPAY chỉ 87px. */
+.cachTra > .hieu { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; height: 32px; padding: 0 12px; border-radius: 8px; font-size: .72rem; font-weight: 800; color: #fff; }
+.cachTra > .hieuVnpay { background: #0066b3; }
+.cachTra > .hieuMomo { background: #a50064; }
+.cachTra > .hieuZalopay { background: #0068ff; }
+.cachTra > .hieuMock { background: var(--color-surface-container); color: var(--color-on-surface-variant, #5a5a66); }
+
+/* Khoảng cách giữa danh sách cổng và nút — thiếu nó thì nút đè lên
+   thẻ cuối cùng. */
+.congBox { display: grid; gap: 16px; }
+.congBox > button { justify-self: start; }
+.cachTraChon { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary) inset; }
+/* Cổng chưa khai khoá: để mờ kèm lý do, KHÔNG ẩn. Ẩn đi thì shop
+   không biết thiếu gì để bật, khách không hiểu sao ít lựa chọn. */
+.cachTraMo { opacity: .55; cursor: not-allowed; }
+
+/* ── Tóm tắt tiền ──────────────────────────────────────────────── */
+.tomTat { display: grid; gap: 8px; }
+.tomTat > div { display: flex; justify-content: space-between; gap: 16px; font-size: .92rem; }
+.camKet { margin: 10px 0 0; font-size: .8rem; color: var(--color-on-surface-variant, #5a5a66); }
+
+@media (max-width: 720px) { .columns { grid-template-columns: 1fr; } .page { padding: 24px 16px 56px; } }
