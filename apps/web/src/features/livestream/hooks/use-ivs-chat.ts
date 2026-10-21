@@ -79,6 +79,11 @@ export function useIvsChat({
   const connectRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
+    setChatMessages(getCachedChatMessages(livestreamId));
+    recentSeenRef.current.clear();
+  }, [livestreamId]);
+
+  useEffect(() => {
     connectionStateRef.current = connectionState;
   }, [connectionState]);
 

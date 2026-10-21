@@ -28,6 +28,25 @@ export interface UpdateLivestreamDto {
   scheduledAt?: string | null;
 }
 
+export async function listPublicLiveSessions(): Promise<Array<{
+  id: string;
+  title: string;
+  playbackUrl: string | null;
+}>> {
+  const result = await pool.query<{
+    id: string;
+    title: string;
+    playbackUrl: string | null;
+  }>(
+    `SELECT id, title, playback_url AS "playbackUrl"
+       FROM livestreams
+      WHERE status = 'live'
+      ORDER BY started_at DESC NULLS LAST
+      LIMIT 30`
+  );
+  return result.rows;
+}
+
 export interface ILivestreamRepository {
   create(dto: CreateLivestreamDto): Promise<Livestream>;
   findById(id: string): Promise<Livestream | null>;

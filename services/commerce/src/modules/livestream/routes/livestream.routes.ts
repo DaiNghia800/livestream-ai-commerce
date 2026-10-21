@@ -6,6 +6,7 @@ import { requireMerchantHeader } from "../../../shared/middleware/merchant.middl
 import {
   ILivestreamRepository,
   PostgresLivestreamRepository,
+  listPublicLiveSessions,
 } from "../repositories/livestream.repository.js";
 import {
   ILivestreamProductRepository,
@@ -82,6 +83,14 @@ export function createLivestreamRouter(
   const commentController = new LivestreamCommentController(commentService);
 
   // Livestream session
+  router.get("/public/live", async (_req, res) => {
+    try {
+      res.json({ items: await listPublicLiveSessions() });
+    } catch (error) {
+      console.error("[Livestream] Failed to list public live sessions:", error);
+      res.status(500).json({ error: "InternalServerError" });
+    }
+  });
   router.post("/", requireMerchantHeader, controller.create);
   router.get("/", requireMerchantHeader, controller.list);
   router.get("/:id", controller.getById);
