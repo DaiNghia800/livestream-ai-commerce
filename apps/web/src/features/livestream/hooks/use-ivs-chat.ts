@@ -26,6 +26,32 @@ export interface SendMessageParams {
   attributes?: Record<string, string>;
 }
 
+const LOCAL_CACHE_KEY_PREFIX = "liveorder_chat_cache_";
+const MAX_LOCAL_CACHE = 100;
+
+function getCachedChatMessages(livestreamId: string): StudioChatMessage[] {
+  if (typeof window === "undefined" || !livestreamId) return [];
+  try {
+    const raw = localStorage.getItem(`${LOCAL_CACHE_KEY_PREFIX}${livestreamId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedChatMessages(livestreamId: string, messages: StudioChatMessage[]): void {
+  if (typeof window === "undefined" || !livestreamId) return;
+  try {
+    // Keep most recent messages up to MAX_LOCAL_CACHE (tail of chronological list)
+    const trimmed = messages.slice(-MAX_LOCAL_CACHE);
+    localStorage.setItem(`${LOCAL_CACHE_KEY_PREFIX}${livestreamId}`, JSON.stringify(trimmed));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
 export function useIvsChat({
   livestreamId,
   userId = "merchant-host",
@@ -36,7 +62,9 @@ export function useIvsChat({
 }: UseIvsChatOptions) {
   const [connectionState, setConnectionState] =
     useState<IvsChatConnectionState>("DISCONNECTED");
-  const [chatMessages, setChatMessages] = useState<StudioChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<StudioChatMessage[]>(() => {
+    return getCachedChatMessages(livestreamId);
+  });
   const [chatError, setChatError] = useState<string | null>(null);
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
   const [hasMoreEarlier, setHasMoreEarlier] = useState(true);
@@ -46,6 +74,9 @@ export function useIvsChat({
   const connectionStateRef = useRef<IvsChatConnectionState>(connectionState);
   const onMessageReceivedRef = useRef(onMessageReceived);
   const recentSeenRef = useRef<Map<string, number>>(new Map());
+  const isManuallyDisconnectedRef = useRef(false);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const connectRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     connectionStateRef.current = connectionState;
@@ -56,25 +87,54 @@ export function useIvsChat({
   }, [onMessageReceived]);
 
   /**
-   * Tự động nạp lịch sử bình luận từ PostgreSQL khi load lại trang
+   * 2. Đồng bộ lịch sử bình luận từ Redis Cache / Backend khi load lại trang
+   * Host lấy 100 tin gần nhất; Viewer lấy 50 tin gần nhất (chuẩn TikTok).
+   * Lịch sử được trả về theo thứ tự thời gian tăng dần [cũ nhất -> mới nhất].
    */
   useEffect(() => {
     if (!livestreamId || !isValidUuid(livestreamId)) return;
 
     let isMounted = true;
-    getLivestreamComments(livestreamId, { limit: 50 })
+    const fetchLimit = role === "HOST" ? 100 : 50;
+
+    getLivestreamComments(livestreamId, { limit: fetchLimit })
       .then((historicalMsgs) => {
         if (!isMounted) return;
-        if (historicalMsgs.length < 50) {
+        if (historicalMsgs.length < fetchLimit) {
           setHasMoreEarlier(false);
         }
-        // Studio Chat hiển thị tin mới nhất ở trên đầu mảng (newest-first)
-        const newestFirst = [...historicalMsgs].reverse();
-        setChatMessages(newestFirst);
+
+        // historicalMsgs đã ở thứ tự thời gian [cũ nhất -> mới nhất]
+        const chronological = historicalMsgs;
+
+        setChatMessages((prev) => {
+          const mapById = new Map<string, StudioChatMessage>();
+          const seenFingerprints = new Set<string>();
+
+          // 1. Dữ liệu từ Server (Redis/DB) là Nguồn Chân Lý (Source of Truth)
+          chronological.forEach((m) => {
+            mapById.set(m.id, m);
+            const fp = `${m.userId || "anon"}:${m.content.trim().toLowerCase()}`;
+            seenFingerprints.add(fp);
+          });
+
+          // 2. Chỉ giữ lại các tin local chưa kịp đồng bộ nếu chưa tồn tại trên server (loại bỏ duplicate)
+          prev.forEach((m) => {
+            const fp = `${m.userId || "anon"}:${m.content.trim().toLowerCase()}`;
+            if (!mapById.has(m.id) && !seenFingerprints.has(fp)) {
+              mapById.set(m.id, m);
+              seenFingerprints.add(fp);
+            }
+          });
+
+          const merged = Array.from(mapById.values());
+          saveCachedChatMessages(livestreamId, merged);
+          return merged;
+        });
 
         // Đánh dấu vào cache recentSeen để tránh hiển thị trùng nếu IVS phát lại
         const now = Date.now();
-        newestFirst.forEach((msg) => {
+        chronological.forEach((msg) => {
           const key = `${msg.userId || "anon"}:${msg.content.trim().toLowerCase()}`;
           recentSeenRef.current.set(key, now);
         });
@@ -86,17 +146,17 @@ export function useIvsChat({
     return () => {
       isMounted = false;
     };
-  }, [livestreamId]);
+  }, [livestreamId, role]);
 
   /**
-   * Tải tiếp các tin nhắn cũ hơn khi người dùng cuộn xem lịch sử
+   * Tải tiếp các tin nhắn cũ hơn khi người dùng cuộn lên trên xem lịch sử
    */
   const loadEarlierMessages = useCallback(async () => {
     if (!livestreamId || !isValidUuid(livestreamId)) return;
     if (isLoadingEarlier || !hasMoreEarlier) return;
 
-    // Tin nhắn cũ nhất hiện tại nằm ở cuối mảng chatMessages
-    const oldestMsg = chatMessages[chatMessages.length - 1];
+    // Tin nhắn cũ nhất hiện tại nằm ở đầu mảng (index 0)
+    const oldestMsg = chatMessages[0];
     if (!oldestMsg || !oldestMsg.createdAt) {
       setHasMoreEarlier(false);
       return;
@@ -114,11 +174,13 @@ export function useIvsChat({
       }
 
       if (olderMsgs.length > 0) {
-        const olderNewestFirst = [...olderMsgs].reverse();
         setChatMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
-          const uniqueOlder = olderNewestFirst.filter((m) => !existingIds.has(m.id));
-          return [...prev, ...uniqueOlder];
+          const uniqueOlder = olderMsgs.filter((m) => !existingIds.has(m.id));
+          // Chèn các tin cũ hơn lên đầu danh sách
+          const updated = [...uniqueOlder, ...prev];
+          saveCachedChatMessages(livestreamId, updated);
+          return updated;
         });
       }
     } catch (err) {
@@ -160,6 +222,12 @@ export function useIvsChat({
     if (typeof window === "undefined") return;
     if (!livestreamId) return;
     if (isConnectingRef.current || connectionStateRef.current === "CONNECTED") return;
+
+    isManuallyDisconnectedRef.current = false;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
 
     // Nếu ID không phải UUID hợp lệ (mock session như LIVE-2025-08 hoặc preview demo):
     // Hoạt động ở chế độ Local Mock Chat để không phát sinh ngoại lệ console
@@ -233,18 +301,29 @@ export function useIvsChat({
       room.addListener("disconnect", () => {
         setConnectionState("DISCONNECTED");
         isConnectingRef.current = false;
+
+        // Tự động kết nối lại sau 3s nếu autoConnect bật và không phải do unmount/ngắt thủ công
+        if (autoConnect && !isManuallyDisconnectedRef.current) {
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            if (!isManuallyDisconnectedRef.current && connectionStateRef.current !== "CONNECTED") {
+              console.log("[useIvsChat] Tự động thử kết nối lại IVS Chat sau ngắt kết nối...");
+              void connectRef.current?.();
+            }
+          }, 3000);
+        }
       });
 
       room.addListener("message", (msg: ChatMessage) => {
         const timestamp = msg.sendTime
           ? new Date(msg.sendTime).toLocaleTimeString("vi-VN", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
+            hour: "2-digit",
+            minute: "2-digit",
+          })
           : new Date().toLocaleTimeString("vi-VN", {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
+            hour: "2-digit",
+            minute: "2-digit",
+          });
 
         const studioMsg: StudioChatMessage = {
           id: msg.id || `msg-${Date.now()}-${Math.random()}`,
@@ -267,7 +346,30 @@ export function useIvsChat({
           if (prev.some((m) => m.id === studioMsg.id)) {
             return prev;
           }
-          return [studioMsg, ...prev];
+
+          // Thay thế tin nhắn tạm local (nếu có) bằng tin nhắn thực từ IVS
+          const fp = `${studioMsg.userId || "anon"}:${studioMsg.content.trim().toLowerCase()}`;
+          const hasLocalOptimistic = prev.some(
+            (m) =>
+              (m.id.startsWith("local-") || m.id.startsWith("msg-")) &&
+              `${m.userId || "anon"}:${m.content.trim().toLowerCase()}` === fp
+          );
+
+          let updated: StudioChatMessage[];
+          if (hasLocalOptimistic) {
+            updated = prev.map((m) =>
+              (m.id.startsWith("local-") || m.id.startsWith("msg-")) &&
+              `${m.userId || "anon"}:${m.content.trim().toLowerCase()}` === fp
+                ? studioMsg
+                : m
+            );
+          } else {
+            // Thứ tự tự nhiên: tin nhắn mới được THÊM VÀO CUỐI MẢNG
+            updated = [...prev, studioMsg];
+          }
+
+          saveCachedChatMessages(livestreamId, updated);
+          return updated;
         });
         onMessageReceivedRef.current?.(studioMsg);
       });
@@ -277,13 +379,13 @@ export function useIvsChat({
         if (evt.eventName === "app:comment" && evt.attributes) {
           const timestamp = evt.sendTime
             ? new Date(evt.sendTime).toLocaleTimeString("vi-VN", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
+              hour: "2-digit",
+              minute: "2-digit",
+            })
             : new Date().toLocaleTimeString("vi-VN", {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
+              hour: "2-digit",
+              minute: "2-digit",
+            });
 
           const studioMsg: StudioChatMessage = {
             id: evt.attributes.id || evt.id || `evt-${Date.now()}`,
@@ -299,8 +401,8 @@ export function useIvsChat({
               evt.attributes.role === "host"
                 ? "Chủ shop"
                 : evt.attributes.role === "moderator"
-                ? "Quản trị viên"
-                : undefined,
+                  ? "Quản trị viên"
+                  : undefined,
             status: evt.attributes.orderStatus as StudioChatMessage["status"],
           };
 
@@ -312,7 +414,30 @@ export function useIvsChat({
             if (prev.some((m) => m.id === studioMsg.id)) {
               return prev;
             }
-            return [studioMsg, ...prev];
+
+            // Thay thế tin nhắn tạm local nếu trùng khớp nội dung
+            const fp = `${studioMsg.userId || "anon"}:${studioMsg.content.trim().toLowerCase()}`;
+            const hasLocalOptimistic = prev.some(
+              (m) =>
+                (m.id.startsWith("local-") || m.id.startsWith("msg-")) &&
+                `${m.userId || "anon"}:${m.content.trim().toLowerCase()}` === fp
+            );
+
+            let updated: StudioChatMessage[];
+            if (hasLocalOptimistic) {
+              updated = prev.map((m) =>
+                (m.id.startsWith("local-") || m.id.startsWith("msg-")) &&
+                `${m.userId || "anon"}:${m.content.trim().toLowerCase()}` === fp
+                  ? studioMsg
+                  : m
+              );
+            } else {
+              // Thứ tự tự nhiên: tin nhắn mới được THÊM VÀO CUỐI MẢNG
+              updated = [...prev, studioMsg];
+            }
+
+            saveCachedChatMessages(livestreamId, updated);
+            return updated;
           });
           onMessageReceivedRef.current?.(studioMsg);
         }
@@ -327,12 +452,21 @@ export function useIvsChat({
       setConnectionState("CONNECTED");
       isConnectingRef.current = false;
     }
-  }, [livestreamId, userId, username, role, isDuplicateMessage]);
+  }, [livestreamId, userId, username, role, isDuplicateMessage, autoConnect]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   /**
    * Ngắt kết nối phòng chat
    */
   const disconnect = useCallback(() => {
+    isManuallyDisconnectedRef.current = true;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     if (roomRef.current) {
       try {
         roomRef.current.disconnect();
@@ -346,22 +480,21 @@ export function useIvsChat({
   }, []);
 
   /**
-   * Gửi tin nhắn vào IVS Chat Room & đẩy vào hàng đợi SQS (không lưu DB)
-   * TikTok-style: comments are ephemeral, only persisted via SQS for AI processing.
+   * Gửi tin nhắn vào IVS Chat Room & đồng bộ Redis Cache
+   * TikTok-style: comments are ephemeral, cached in Redis and only persisted via SQS if AI purchase intent is detected.
    */
   const sendMessage = useCallback(
     async (content: string, attributes?: Record<string, string>) => {
       const cleanContent = content.trim();
       if (!cleanContent) return;
 
-      // 1. Chỉ đẩy vào Amazon SQS queue (comment.created) nếu là khách hàng (buyer) để AI chốt đơn.
-      // Chủ shop (HOST) và Quản trị viên (MODERATOR) không cần đẩy vào SQS, tiết kiệm 1 request HTTP.
-      if (isValidUuid(livestreamId) && role !== "HOST" && role !== "MODERATOR") {
+      // 1. Lưu vào Redis Cache (và đẩy SQS nếu là buyer có tín hiệu mua)
+      if (isValidUuid(livestreamId)) {
         void postLivestreamComment(livestreamId, {
           userId,
           username,
           content: cleanContent,
-          role: "buyer",
+          role: role === "HOST" ? "host" : role === "MODERATOR" ? "moderator" : "buyer",
           skipIvsBroadcast: true,
         });
       }
@@ -373,14 +506,26 @@ export function useIvsChat({
             "amazon-ivs-chat-messaging"
           );
           const req = new SendMessageRequest(cleanContent, attributes);
-          await roomRef.current.sendMessage(req);
+
+          // Khống chế timeout 3.5 giây để không bị treo Promise khi rớt mạng
+          const sendPromise = roomRef.current.sendMessage(req);
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(
+              () => reject(new Error("IVS sendMessage timeout (3500ms)")),
+              3500
+            );
+          });
+          await Promise.race([sendPromise, timeoutPromise]);
           return;
         } catch (err) {
-          console.warn("[useIvsChat] Error sending to IVS:", err);
+          console.warn(
+            "[useIvsChat] Error sending to IVS (fallback sang hiển thị local):",
+            err
+          );
         }
       }
 
-      // Local / Offline fallback: Tự tạo tin nhắn hiển thị ngay lập tức
+      // Local / Offline fallback: Tự tạo tin nhắn hiển thị ngay lập tức (thêm vào cuối mảng)
       const localMsg: StudioChatMessage = {
         id: `local-${Date.now()}`,
         userId,
@@ -393,7 +538,11 @@ export function useIvsChat({
         }),
       };
 
-      setChatMessages((prev) => [localMsg, ...prev]);
+      setChatMessages((prev) => {
+        const updated = [...prev, localMsg];
+        saveCachedChatMessages(livestreamId, updated);
+        return updated;
+      });
       onMessageReceivedRef.current?.(localMsg);
     },
     [livestreamId, userId, username, role]
@@ -420,6 +569,25 @@ export function useIvsChat({
       disconnect();
     };
   }, [autoConnect, livestreamId, connect, disconnect]);
+
+  // Tự động hồi sinh kết nối khi trình duyệt phát hiện có mạng Internet trở lại
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleOnline = () => {
+      console.log("[useIvsChat] Trình duyệt có mạng trở lại (Online event)");
+      if (autoConnect && livestreamId && connectionStateRef.current !== "CONNECTED") {
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        isManuallyDisconnectedRef.current = false;
+        void connect();
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [autoConnect, livestreamId, connect]);
 
   return {
     connectionState,

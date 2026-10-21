@@ -16,9 +16,9 @@ import {
   PanelRight,
   Maximize2,
   Minimize2,
-  Copy,
   Check,
   ExternalLink,
+  Share2,
 } from "lucide-react";
 import type { LivestreamStatus } from "../../types/livestream";
 
@@ -49,7 +49,7 @@ export function StudioSessionBar({
   likesCount = "14.2K",
   chatCount = "—",
   aiOrdersCount = "—",
-  isLeftSidebarOpen = true,
+  isLeftSidebarOpen = false,
   onToggleLeftSidebar,
   isRightSidebarOpen = true,
   onToggleRightSidebar,
@@ -99,15 +99,20 @@ export function StudioSessionBar({
     }
   };
 
-  const [copiedId, setCopiedId] = useState(false);
+  const [copiedWatchLink, setCopiedWatchLink] = useState(false);
   const isLive = status === "LIVE";
   const isEnded = status === "ENDED";
 
-  const handleCopySessionId = () => {
+  const handleCopyWatchLink = async () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(sessionId);
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2000);
+      const url = `${window.location.origin}/live/${sessionId}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopiedWatchLink(true);
+        setTimeout(() => setCopiedWatchLink(false), 2000);
+      } catch (err) {
+        console.warn("Failed to copy watch link:", err);
+      }
     }
   };
 
@@ -137,6 +142,30 @@ export function StudioSessionBar({
           <ExternalLink className="h-3 w-3" />
           <span>DS Live (Tab mới)</span>
         </Link>
+
+        {/* Nút Sao chép link xem Live cho khách */}
+        <button
+          type="button"
+          onClick={handleCopyWatchLink}
+          className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border transition-colors cursor-pointer shrink-0 ${
+            copiedWatchLink
+              ? "bg-emerald-950/80 text-emerald-300 border-emerald-700"
+              : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 border-slate-800"
+          }`}
+          title={`Sao chép link xem live gửi khách hàng: /live/${sessionId}`}
+        >
+          {copiedWatchLink ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-400" aria-hidden="true" />
+              <span>Đã chép link</span>
+            </>
+          ) : (
+            <>
+              <Share2 className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+              <span>Link khách xem</span>
+            </>
+          )}
+        </button>
 
         {/* Nút Toggle Left Sidebar (Nguồn & Cảnh) kèm badge phím [ */}
         {onToggleLeftSidebar && (

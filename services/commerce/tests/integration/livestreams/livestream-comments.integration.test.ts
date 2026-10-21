@@ -73,7 +73,7 @@ describe("Livestream Comments - PostgreSQL Integration Tests", () => {
       .send({ status: "live" });
     expect(patchRes.status).toBe(200);
 
-    // 4. Thêm bình luận thứ nhất khi đang live
+    // 4. Thêm bình luận thứ nhất khi đang live (từ Buyer)
     const cmt1Res = await request(app)
       .post(`/api/livestreams/${livestreamId}/comments`)
       .send({
@@ -87,9 +87,10 @@ describe("Livestream Comments - PostgreSQL Integration Tests", () => {
     expect(UUID_REGEX.test(cmt1Res.body.data.id)).toBe(true);
     expect(cmt1Res.body.data.content).toBe("Shop ơi áo này có size L không?");
 
-    // 5. Thêm bình luận thứ hai (từ Host)
+    // 5. Thêm bình luận thứ hai (từ Host có X-Merchant-Id xác thực)
     const cmt2Res = await request(app)
       .post(`/api/livestreams/${livestreamId}/comments`)
+      .set("X-Merchant-Id", merchantId)
       .send({
         userId: merchantId,
         username: "Chủ shop",

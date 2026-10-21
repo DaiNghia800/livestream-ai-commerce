@@ -29,6 +29,7 @@ import { IIvsService } from "./shared/ivs/ivs.service.js";
 import { IIvsChatService } from "./shared/ivs/ivs-chat.service.js";
 import { ILivestreamCommentRepository } from "./modules/livestream/repositories/livestream-comment.repository.js";
 import { ISqsService } from "./shared/queue/sqs.service.js";
+import { IRedisService } from "./shared/redis/redis.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
@@ -41,7 +42,8 @@ export function createApp(
   customIvsService?: IIvsService,
   customIvsChatService?: IIvsChatService,
   customCommentRepository?: ILivestreamCommentRepository,
-  customSqsService?: ISqsService
+  customSqsService?: ISqsService,
+  customRedisService?: IRedisService
 ): Express {
 
   const app = express();
@@ -122,7 +124,8 @@ export function createApp(
       customIvsService,
       customIvsChatService,
       customCommentRepository,
-      customSqsService
+      customSqsService,
+      customRedisService
     )
   );
   apiRouter.use("/orders", createOrderRouter());

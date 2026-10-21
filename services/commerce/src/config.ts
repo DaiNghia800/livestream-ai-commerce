@@ -18,6 +18,7 @@ export interface AppConfig {
   s3BucketName?: string;
   s3MediaBucketName?: string;
   sqsQueueUrl?: string;
+  redisUrl: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
   holdConfirmSeconds: number;
@@ -182,6 +183,7 @@ export const config: AppConfig = {
     process.env.S3_BUCKET_NAME ||
     undefined,
   sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
+  redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   // 5 phút khi vừa chốt, 15 phút sau khi khách mở link xác nhận,
   // trần cứng 30 phút để không gia hạn vô hạn.
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),

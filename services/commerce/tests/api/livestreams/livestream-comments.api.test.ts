@@ -193,5 +193,44 @@ describe("Livestream Comments Endpoints - API Tests", () => {
       expect(getRes.body.data[0].content).toBe(payload.content);
       expect(getRes.body.data[0].userId).toBe(payload.userId);
     });
+    it("trả về 403 Forbidden nếu người gửi mạo danh role 'host' mà không có X-Merchant-Id của chủ phòng", async () => {
+      // Chuyển sang live
+      await request(app)
+        .patch(`/api/livestreams/${createdSessionId}/status`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      const res = await request(app)
+        .post(`/api/livestreams/${createdSessionId}/comments`)
+        .send({
+          userId: "hacker-1",
+          username: "Fake Host",
+          content: "Tôi là chủ shop uy tín nè",
+          role: "host",
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe("Forbidden");
+    });
+
+    it("trả về 400 ProhibitedContent nếu buyer gửi nội dung lừa đảo chuyển khoản ngân hàng (STK/CK gấp)", async () => {
+      // Chuyển sang live
+      await request(app)
+        .patch(`/api/livestreams/${createdSessionId}/status`)
+        .set("X-Merchant-Id", VALID_MERCHANT_ID)
+        .send({ status: "live" });
+
+      const res = await request(app)
+        .post(`/api/livestreams/${createdSessionId}/comments`)
+        .send({
+          userId: "buyer-scammer",
+          username: "HỖ TRỢ CHỐT ĐƠN LIVESTREAM",
+          content: "Shop hết hàng trên giỏ, khách CK gấp vào STK 1903... để giữ đơn nhé!",
+          role: "buyer",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("ProhibitedContent");
+    });
   });
 });

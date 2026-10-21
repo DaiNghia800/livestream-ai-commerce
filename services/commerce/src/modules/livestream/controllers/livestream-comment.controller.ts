@@ -3,6 +3,8 @@ import {
   LivestreamCommentService,
   LivestreamNotFoundError,
   InvalidLivestreamStatusError,
+  ProhibitedCommentError,
+  UnauthorizedRoleClaimError,
 } from "../services/livestream-comment.service.js";
 import {
   createCommentSchema,
@@ -72,7 +74,12 @@ export class LivestreamCommentController {
         return;
       }
 
-      const comment = await this.service.addComment(id, bodyParsed.data);
+      const merchantId = req.header ? req.header("X-Merchant-Id") : req.merchantId;
+      const comment = await this.service.addComment(
+        id,
+        bodyParsed.data,
+        merchantId
+      );
 
       if (comment === null) {
         res.status(404).json({
@@ -97,6 +104,22 @@ export class LivestreamCommentController {
       if (error instanceof InvalidLivestreamStatusError) {
         res.status(400).json({
           error: "InvalidLivestreamStatus",
+          message: error.message,
+        });
+        return;
+      }
+
+            if (error instanceof UnauthorizedRoleClaimError) {
+        res.status(403).json({
+          error: "Forbidden",
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof ProhibitedCommentError) {
+        res.status(400).json({
+          error: "ProhibitedContent",
           message: error.message,
         });
         return;
