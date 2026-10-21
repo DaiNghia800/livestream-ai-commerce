@@ -65,6 +65,10 @@ export function LoginForm() {
         return;
       }
 
+      // A shop/customer login must not keep a previous admin session in this browser.
+      localStorage.removeItem("admin_access_token");
+      localStorage.removeItem("admin_refresh_token");
+      localStorage.removeItem("admin_auth_user");
       localStorage.setItem("access_token", data.access_token);
       if (data.user) {
         localStorage.setItem(

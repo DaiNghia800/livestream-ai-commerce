@@ -55,6 +55,10 @@ export function AdminPortal() {
   }, [router]);
 
   useEffect(() => {
+    if (localStorage.getItem("user_role") !== "admin") {
+      router.replace(localStorage.getItem("user_role") === "shop_owner" ? "/shop" : "/admin");
+      return;
+    }
     const savedToken = localStorage.getItem("admin_access_token") ?? "";
     if (savedToken.length === 0) {
       router.replace("/admin");
