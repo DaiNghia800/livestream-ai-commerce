@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { chuanHoaIp } from "../gateways/index.js";
 import crypto from "crypto";
 import { ZodError } from "zod";
 import { config } from "../../../config.js";
@@ -268,9 +269,9 @@ export class PaymentController {
   private clientIp(req: Request): string {
     const forwarded = req.header("x-forwarded-for");
     if (forwarded) {
-      return forwarded.split(",")[0].trim();
+      return chuanHoaIp(forwarded.split(",")[0]);
     }
-    return req.ip || req.socket?.remoteAddress || "127.0.0.1";
+    return chuanHoaIp(req.ip || req.socket?.remoteAddress);
   }
 
   /**
