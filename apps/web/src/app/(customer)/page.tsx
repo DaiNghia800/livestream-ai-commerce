@@ -1,4 +1,4 @@
-import { CustomerLive } from "@/features/livestream/customer-live";
+import { CustomerLiveConnected } from "@/features/livestream/customer-live-connected";
 export default function Page() {
-  return <CustomerLive />;
+  return <CustomerLiveConnected />;
 }

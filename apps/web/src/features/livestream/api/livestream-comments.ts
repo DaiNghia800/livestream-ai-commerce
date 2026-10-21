@@ -97,6 +97,14 @@ export async function postLivestreamComment(
   livestreamId: string,
   payload: PostCommentPayload
 ): Promise<StudioChatMessage | null> {
+  const result = await postLivestreamCommentWithReceipt(livestreamId, payload);
+  return result?.comment ?? null;
+}
+
+export async function postLivestreamCommentWithReceipt(
+  livestreamId: string,
+  payload: PostCommentPayload
+): Promise<{ comment: StudioChatMessage; confirmationReceipt: string | null } | null> {
   if (!isValidUuid(livestreamId)) {
     return null;
   }
@@ -118,9 +126,26 @@ export async function postLivestreamComment(
     }
 
     const data = await res.json();
-    return mapBackendCommentToStudioChatMessage(data.data);
+    return {
+      comment: mapBackendCommentToStudioChatMessage(data.data),
+      confirmationReceipt: typeof data.confirmationReceipt === "string"
+        ? data.confirmationReceipt
+        : null,
+    };
   } catch (err) {
     console.warn("[postLivestreamComment] Failed to post comment:", err);
     return null;
   }
+}
+
+export async function getCommentConfirmation(
+  commentId: string,
+  receipt: string
+): Promise<{ status: "processing" | "needs_review" | "ready" | "unavailable"; orderCode?: string; confirmPath?: string }> {
+  const response = await fetch(
+    `${COMMERCE_API_BASE_URL}/api/orders/by-comment/${encodeURIComponent(commentId)}/confirmation`,
+    { headers: { "X-Comment-Receipt": receipt }, cache: "no-store" }
+  );
+  if (!response.ok) throw new Error(`Không thể tải trạng thái đơn (HTTP ${response.status})`);
+  return response.json();
 }
