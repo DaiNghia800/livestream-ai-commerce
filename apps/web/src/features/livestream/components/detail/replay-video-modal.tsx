@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   X,
   Copy,
@@ -24,15 +24,87 @@ export function ReplayVideoModal({
   onClose,
   sessionTitle,
   replayUrl,
-  livestreamId: _livestreamId,
 }: ReplayVideoModalProps) {
   const [copied, setCopied] = useState(false);
-
-  if (!isOpen) return null;
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const effectiveUrl =
     replayUrl ||
     "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const video = videoRef.current;
+    if (!video || !effectiveUrl) return;
+
+    // 1. Nếu trình duyệt hỗ trợ Native HLS (Safari WebKit, iOS...)
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = effectiveUrl;
+      video.play().catch(() => {});
+      return;
+    }
+
+    // 2. Với Chrome / Edge / Firefox trên Desktop: Nhúng Hls.js tự động
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let hlsInstance: any = null;
+
+    const initHls = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const Hls = (window as any).Hls;
+      if (Hls && Hls.isSupported()) {
+        try {
+          hlsInstance = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+          });
+          hlsInstance.loadSource(effectiveUrl);
+          hlsInstance.attachMedia(video);
+          hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(() => {});
+          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          hlsInstance.on(Hls.Events.ERROR, (_event: any, data: any) => {
+            if (data?.fatal) {
+              console.warn("[ReplayModal] HLS fatal error:", data);
+              setLoadError("Không thể tải luồng video HLS. Vui lòng kiểm tra lại đường dẫn.");
+            }
+          });
+        } catch (hlsErr) {
+          console.warn("[ReplayModal] Failed to initialize HLS:", hlsErr);
+        }
+      }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).Hls) {
+      initHls();
+    } else {
+      const scriptId = "hls-js-cdn-script";
+      let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement("script");
+        script.id = scriptId;
+        script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
+        script.async = true;
+        script.onload = initHls;
+        script.onerror = () => {
+          setLoadError("Không thể tải thư viện giải mã HLS trên trình duyệt này.");
+        };
+        document.head.appendChild(script);
+      } else {
+        script.addEventListener("load", initHls);
+      }
+    }
+
+    return () => {
+      if (hlsInstance) {
+        hlsInstance.destroy();
+      }
+    };
+  }, [isOpen, effectiveUrl]);
+
+  if (!isOpen) return null;
 
   const handleCopy = async () => {
     try {
@@ -83,15 +155,18 @@ export function ReplayVideoModal({
         {/* Video Player Section */}
         <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
           <video
-            src={effectiveUrl}
+            ref={videoRef}
             controls
-            autoPlay
             playsInline
             className="w-full h-full object-contain"
           >
-            <source src={effectiveUrl} type="application/x-mpegURL" />
             Trình duyệt của bạn không hỗ trợ thẻ video HTML5.
           </video>
+          {loadError && (
+            <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4 text-center">
+              <p className="text-xs text-rose-300 font-medium">{loadError}</p>
+            </div>
+          )}
         </div>
 
         {/* S3 Storage & Stream Metadata */}

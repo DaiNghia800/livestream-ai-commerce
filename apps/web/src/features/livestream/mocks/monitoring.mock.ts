@@ -8,6 +8,7 @@ import type {
 } from "../types/monitoring";
 import { mockLivestreams } from "./livestream.mock";
 import { mockStudioChatMessages } from "./studio.mock";
+import type { Livestream } from "../types/livestream";
 
 /**
  * Danh sách tin nhắn phong phú với chi tiết trích xuất AI
@@ -121,8 +122,9 @@ export const defaultMonitoringQueueStatus: MonitoringQueueStatus = {
  */
 export function getMonitoringContextBySessionId(
   livestreamId: string,
+  customSession?: Livestream,
 ): MonitoringSessionContext | null {
-  const session = mockLivestreams.find((s) => s.id === livestreamId);
+  const session = customSession || mockLivestreams.find((s) => s.id === livestreamId);
   if (!session) return null;
 
   // 1. Đồng bộ sản phẩm từ session

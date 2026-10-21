@@ -51,6 +51,7 @@ export function StudioChatPanel({
   const [inputText, setInputText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
 
   const handleFilterSelect = (newFilter: ChatFilter) => {
     if (activeFilter === undefined) {
@@ -58,25 +59,28 @@ export function StudioChatPanel({
     }
     onFilterChange?.(newFilter);
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
-    // Khi cuộn xuống gần đáy danh sách tin nhắn, tải thêm tin nhắn cũ hơn
+    // Kiểm tra xem người dùng có đang ở gần đáy (trong vòng 80px) không
     const isNearBottom =
-      target.scrollHeight - target.scrollTop - target.clientHeight < 50;
-    if (isNearBottom && hasMoreEarlier && !isLoadingEarlier) {
+      target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+    shouldAutoScrollRef.current = isNearBottom;
+
+    // Khi cuộn lên đỉnh (gần đầu danh sách), tải thêm tin nhắn cũ hơn
+    if (target.scrollTop < 40 && hasMoreEarlier && !isLoadingEarlier) {
       onLoadEarlier?.();
     }
   };
 
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
+    if (scrollContainerRef.current && shouldAutoScrollRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  }, [currentFilter]);
+  }, [messages, currentFilter]);
 
   const counts = useMemo(() => {
     return {
@@ -335,8 +339,16 @@ export function StudioChatPanel({
           if (!inputText.trim() || isSubmitting) return;
           try {
             setIsSubmitting(true);
-            await onSendMessage?.(inputText.trim());
+            const content = inputText.trim();
+            // Khống chế timeout tối đa 4 giây để isSubmitting không bao giờ bị kẹt
+            const sendPromise = Promise.resolve(onSendMessage?.(content));
+            const timeoutPromise = new Promise((resolve) =>
+              setTimeout(resolve, 4000)
+            );
+            await Promise.race([sendPromise, timeoutPromise]);
             setInputText("");
+          } catch (err) {
+            console.warn("[StudioChatPanel] Lỗi gửi tin nhắn:", err);
           } finally {
             setIsSubmitting(false);
           }
@@ -365,7 +377,11 @@ export function StudioChatPanel({
             title="Gửi tin nhắn (Enter)"
             aria-label="Gửi tin nhắn"
           >
-            <Send className="h-4 w-4" />
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </button>
         </div>
       </form>
