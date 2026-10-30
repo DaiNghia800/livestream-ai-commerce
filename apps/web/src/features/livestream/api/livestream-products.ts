@@ -13,6 +13,15 @@ import {
   ApiErrorResponse,
 } from "./create-livestream";
 
+export interface BackendLivestreamProductSku {
+  id: string;
+  skuCode: string;
+  variantName?: string | null;
+  price: number;
+  availableStock?: number;
+  imageUrl?: string | null;
+}
+
 export interface BackendLivestreamProduct {
   id: string;
   livestreamId: string;
@@ -27,6 +36,7 @@ export interface BackendLivestreamProduct {
   variantName?: string | null;
   price?: number | null;
   imageUrl?: string | null;
+  variants?: BackendLivestreamProductSku[];
 }
 
 export interface AddLivestreamProductPayload {

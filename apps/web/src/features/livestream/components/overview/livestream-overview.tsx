@@ -10,6 +10,28 @@ import { LivestreamKpiGrid } from "./livestream-kpi-grid";
 import { LivestreamTable } from "./livestream-table";
 import { DeleteLivestreamModal } from "./delete-livestream-modal";
 
+function formatDeleteLivestreamError(rawMsg: string): string {
+  const lower = rawMsg.toLowerCase();
+  if (
+    lower.includes("associated customer orders") ||
+    lower.includes("đơn hàng") ||
+    lower.includes("409") ||
+    lower.includes("conflict")
+  ) {
+    return "Phiên livestream này đã phát sinh đơn hàng của khách. Để bảo vệ quyền lợi người mua và số liệu kế toán shop, hệ thống không cho phép xóa vĩnh viễn phiên này.";
+  }
+  if (lower.includes("status") && (lower.includes("live") || lower.includes("đang phát"))) {
+    return "Phiên livestream đang phát sóng trực tiếp. Vui lòng kết thúc phiên trước khi thực hiện xóa.";
+  }
+  if (lower.includes("not found") || lower.includes("không tìm thấy")) {
+    return "Không tìm thấy thông tin phiên livestream này trên hệ thống.";
+  }
+  if (lower.includes("403") || lower.includes("quyền") || lower.includes("unauthorized")) {
+    return "Bạn không có quyền thực hiện xóa phiên livestream này.";
+  }
+  return rawMsg;
+}
+
 export function LivestreamOverview() {
   const [, startTransition] = useTransition();
   const [searchInput, setSearchInput] = useState("");
@@ -340,6 +362,18 @@ export function LivestreamOverview() {
       return;
     }
 
+    if (session.aiOrderCount && session.aiOrderCount > 0) {
+      setDeleteModal({
+        isOpen: true,
+        sessions: [session],
+        errorMessage:
+          session.status === "ENDED"
+            ? "Phiên livestream này đã phát sinh đơn hàng của khách hàng và hiện đang được lưu trữ trong danh mục 'Đã kết thúc'. Hệ thống bảo lưu phiên vĩnh viễn để phục vụ tra cứu đơn hàng và đối soát doanh thu shop."
+            : "Phiên livestream này đã có đơn hàng của khách hàng phát sinh. Để bảo vệ quyền lợi người mua và số liệu kế toán, hệ thống không cho phép xóa vĩnh viễn.",
+      });
+      return;
+    }
+
     setDeleteModal({
       isOpen: true,
       sessions: [session],
@@ -378,7 +412,13 @@ export function LivestreamOverview() {
   };
 
   const handleConfirmDelete = async () => {
-    const targets = deleteModal.sessions;
+    // Chỉ thực hiện xóa đối với các phiên đủ điều kiện (chưa có đơn hàng, không live/starting)
+    const targets = deleteModal.sessions.filter(
+      (s) =>
+        s.status !== "LIVE" &&
+        s.status !== "STARTING" &&
+        (!s.aiOrderCount || s.aiOrderCount === 0)
+    );
     if (targets.length === 0) return;
 
     setIsDeletingSessions(true);
@@ -402,10 +442,11 @@ export function LivestreamOverview() {
         deletedIds.push(session.id);
       } catch (err: unknown) {
         console.error(`[LivestreamOverview] Lỗi xóa phiên ${session.id}:`, err);
-        const errMsg =
+        const rawMsg =
           err instanceof Error
             ? err.message
             : "Lỗi hệ thống khi xóa phiên livestream.";
+        const errMsg = formatDeleteLivestreamError(rawMsg);
         failedItems.push({ title: session.title, reason: errMsg });
       }
     }
@@ -418,14 +459,23 @@ export function LivestreamOverview() {
       handleRefresh();
     }
 
+    const protectedCount = deleteModal.sessions.length - targets.length;
+
     if (failedItems.length === 0) {
       setDeleteModal({ isOpen: false, sessions: [], errorMessage: null });
-      showToast(
-        "success",
-        targets.length === 1
-          ? `Đã xóa thành công phiên "${targets[0].title}".`
-          : `Đã xóa thành công ${deletedIds.length} phiên livestream.`
-      );
+      if (protectedCount > 0) {
+        showToast(
+          "success",
+          `Đã xóa thành công ${deletedIds.length} phiên. ${protectedCount} phiên đã có đơn hàng được giữ lại an toàn.`
+        );
+      } else {
+        showToast(
+          "success",
+          targets.length === 1
+            ? `Đã xóa thành công phiên "${targets[0].title}".`
+            : `Đã xóa thành công ${deletedIds.length} phiên livestream.`
+        );
+      }
     } else if (deletedIds.length > 0) {
       // Xóa thành công một phần
       setDeleteModal({
