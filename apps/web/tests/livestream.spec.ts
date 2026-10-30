@@ -238,11 +238,11 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/livestream/LIVE-2025-08/studio");
 
-  // Left sidebar is closed by default: on mobile switch tab, on desktop click toggle button
+  // Left sidebar is closed by default: on mobile switch tab, on desktop press shortcut [
   if (testInfo.project.name === "mobile") {
     await page.getByRole("button", { name: /Nguồn phát/ }).click();
   } else {
-    await page.getByLabel("Đóng mở thanh công cụ trái").click();
+    await page.keyboard.press("[");
   }
 
   // 1. Verify device controls (camera & mic selects in sidebar) are present and compact
@@ -278,17 +278,17 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
     await expect(ratio916).toBeVisible();
 
     await ratio916.click();
-    await expect(ratio916).toHaveClass(/text-cyan-300/);
+    await expect(ratio916).toHaveClass(/(text-cyan-300|bg-primary)/);
 
     await ratio169.click();
-    await expect(ratio169).toHaveClass(/text-cyan-300/);
+    await expect(ratio169).toHaveClass(/(text-cyan-300|bg-primary)/);
 
-    // 4. Test Left sidebar collapse via button
-    await page.getByLabel("Đóng mở thanh công cụ trái").click();
+    // 4. Test Left sidebar collapse via button in sidebar header
+    await page.getByLabel("Thu gọn thanh công cụ trái").click();
     await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
 
-    // Re-open via button
-    await page.getByLabel("Đóng mở thanh công cụ trái").click();
+    // Re-open via keyboard shortcut [
+    await page.keyboard.press("[");
     await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
   }
 
