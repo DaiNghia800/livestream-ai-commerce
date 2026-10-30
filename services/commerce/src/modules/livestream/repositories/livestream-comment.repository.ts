@@ -29,13 +29,14 @@ export class PostgresLivestreamCommentRepository
   ): Promise<LivestreamComment> {
     const query = `
       INSERT INTO livestream_comments (
+        id,
         livestream_id,
         user_id,
         username,
         avatar_url,
         content,
         role
-      ) VALUES ($1, $2, $3, $4, $5, $6)
+      ) VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
       RETURNING
         id,
         livestream_id AS "livestreamId",
@@ -48,6 +49,7 @@ export class PostgresLivestreamCommentRepository
     `;
 
     const values = [
+      input.id || null,
       livestreamId,
       input.userId,
       input.username,

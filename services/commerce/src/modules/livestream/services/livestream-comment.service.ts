@@ -84,6 +84,36 @@ export function validateCommentContent(content: string, role: string): void {
   }
 }
 
+/**
+ * Chuẩn hóa bình luận tiếng Việt tự nhiên sang định dạng chuẩn hợp đồng (A12 / SP01) cho AI Worker.
+ * Ví dụ: "chốt mã 2 2 cái" -> "Chốt SP02 2 cái", "Mã 1 x1" -> "Chốt SP01 1 cái".
+ */
+export function normalizeCommentForAi(rawContent: string): string {
+  let text = rawContent.trim();
+
+  // Chuẩn hóa ký tự nhân × (\u00d7) sang x
+  text = text.replace(/×/g, "x");
+
+  // 1. Chuẩn hóa "mã 2", "mã số 2", "#2", "số 2" -> "SP02" (hoặc SP + 2 chữ số)
+  text = text.replace(/(?:mã\s*(?:số)?|số|#)\s*0*(\d{1,3})\b/gi, (_, num) => {
+    return num.length === 1 ? `SP0${num}` : `SP${num}`;
+  });
+
+  // 2. Chuẩn hóa cú pháp nhanh: "SP01 x1" -> "Chốt SP01 1 cái", "SP02 x 2" -> "Chốt SP02 2 cái"
+  text = text.replace(/x\s*(\d+)\b/gi, "$1 cái");
+
+  // 3. Nếu câu có chứa SP01, SP02... hoặc mã sản phẩm (TUI-XACH-DA, BLAZER-HANQUOC...) mà chưa có từ khóa chốt/mua/đặt/lấy/order:
+  const hasBuyKeyword = /(?:\b)(?:chốt|mua|order|đặt|lấy|cho)(?:\b)/i.test(text);
+  if (
+    !hasBuyKeyword &&
+    (/\bSP\d+\b/i.test(text) || /\b[A-Za-z0-9]+-[A-Za-z0-9_-]+\b/.test(text))
+  ) {
+    text = `Chốt ${text}`;
+  }
+
+  return text;
+}
+
 export class LivestreamCommentService {
   constructor(
     private readonly livestreamRepository: ILivestreamRepository,
@@ -183,6 +213,18 @@ export class LivestreamCommentService {
         createdAt: new Date().toISOString(),
       };
       await this.redisService.pushComment(livestreamId, savedComment);
+
+      // Persist in DB repository so downstream SQS consumers can look up author identity
+      try {
+        await this.commentRepository.create(livestreamId, {
+          ...input,
+          id: savedComment.id,
+          role: resolvedRole,
+        });
+      } catch (dbErr) {
+        // Non-blocking in case DB is momentarily unavailable or mocked
+        console.warn("[LivestreamCommentService] Background DB write warning:", dbErr);
+      }
     } else {
       // Fallback to database repository when Redis is offline or not injected
       savedComment = await this.commentRepository.create(livestreamId, {

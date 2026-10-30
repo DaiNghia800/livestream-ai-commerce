@@ -59,7 +59,7 @@ export class InvalidLivestreamEditStatusError extends Error {
 export class InvalidLivestreamDeleteStatusError extends Error {
   constructor(status: string) {
     super(
-      `Cannot delete livestream in '${status}' status. Please end or cancel the stream before deleting.`
+      `Không thể xóa phiên livestream đang ở trạng thái '${status}'. Vui lòng kết thúc phiên trước khi xóa.`
     );
     this.name = "InvalidLivestreamDeleteStatusError";
   }
@@ -67,7 +67,7 @@ export class InvalidLivestreamDeleteStatusError extends Error {
 
 export class LivestreamHasOrdersError extends Error {
   constructor(
-    message = "Cannot delete livestream session because it has associated customer orders"
+    message = "Không thể xóa phiên livestream vì đã có đơn hàng của khách hàng phát sinh trong phiên. Vui lòng kết thúc phiên để lưu trữ lịch sử đối soát."
   ) {
     super(message);
     this.name = "LivestreamHasOrdersError";
