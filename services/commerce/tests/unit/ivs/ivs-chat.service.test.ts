@@ -278,4 +278,79 @@ describe("IvsChatService Unit Tests", () => {
     );
     expect(await failingService.getRoom("arn:aws:ivschat:room/1")).toBeNull();
   });
+
+  it("getRoom handles AccessDeniedException by extracting roomId from roomArn", async () => {
+    const accessDeniedErr = new Error("User is not authorized to perform: ivschat:GetRoom");
+    accessDeniedErr.name = "AccessDeniedException";
+    const mockSend = vi.fn().mockRejectedValue(accessDeniedErr);
+    const service = new IvsChatService(
+      { region: "ap-southeast-1" },
+      { send: mockSend } as any
+    );
+
+    const room = await service.getRoom(
+      "arn:aws:ivschat:ap-southeast-1:123456789012:room/room-fallback-123"
+    );
+    expect(room).toEqual({
+      roomArn: "arn:aws:ivschat:ap-southeast-1:123456789012:room/room-fallback-123",
+      roomId: "room-fallback-123",
+    });
+  });
+
+  it("createChatToken includes avatarUrl in attributes when provided", async () => {
+    const mockSend = vi.fn().mockResolvedValue({
+      token: "tok-with-avatar",
+      sessionExpirationTime: new Date(),
+    });
+    const service = new IvsChatService(
+      { region: "ap-southeast-1" },
+      { send: mockSend } as any
+    );
+
+    await service.createChatToken({
+      roomArn: "arn:aws:ivschat:room/1",
+      userId: "u-1",
+      username: "Lan",
+      avatarUrl: "https://cdn.example.com/avatar.jpg",
+    });
+
+    const sentCommand = mockSend.mock.calls[0][0];
+    expect(sentCommand.input.attributes.avatarUrl).toBe(
+      "https://cdn.example.com/avatar.jpg"
+    );
+  });
+
+  it("createRoom falls back to mock in dev and re-throws in prod on error", async () => {
+    const mockSend = vi.fn().mockRejectedValue(new Error("AWS IVS Chat Outage"));
+    const service = new IvsChatService(
+      { region: "ap-southeast-1" },
+      { send: mockSend } as any
+    );
+
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const room = await service.createRoom("dev-chat");
+      expect(room.roomArn).toContain("arn:aws:ivschat:");
+      expect(room.roomId).toBeDefined();
+
+      process.env.NODE_ENV = "production";
+      await expect(service.createRoom("prod-chat")).rejects.toThrow(
+        "AWS IVS Chat Outage"
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("getRoom returns null on ResourceNotFoundException", async () => {
+    const err = new Error("Room not found");
+    (err as any).name = "ResourceNotFoundException";
+    const mockSend = vi.fn().mockRejectedValue(err);
+    const service = new IvsChatService(
+      { region: "ap-southeast-1" },
+      { send: mockSend } as any
+    );
+    expect(await service.getRoom("arn:aws:ivschat:room/not-found")).toBeNull();
+  });
 });

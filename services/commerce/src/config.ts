@@ -18,6 +18,7 @@ export interface AppConfig {
   s3BucketName?: string;
   s3MediaBucketName?: string;
   sqsQueueUrl?: string;
+  sqsAiResultsQueueUrl?: string;
   redisUrl: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
@@ -183,6 +184,7 @@ export const config: AppConfig = {
     process.env.S3_BUCKET_NAME ||
     undefined,
   sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
+  sqsAiResultsQueueUrl: process.env.SQS_AI_RESULTS_QUEUE_URL || undefined,
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   // 5 phút khi vừa chốt, 15 phút sau khi khách mở link xác nhận,
   // trần cứng 30 phút để không gia hạn vô hạn.

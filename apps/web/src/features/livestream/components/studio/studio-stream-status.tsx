@@ -17,32 +17,34 @@ export function StudioStreamStatus({
   const isPausedLive = isLive && !isIvsLive && !isIvsConnecting;
 
   return (
-    <div className="h-8 px-3 sm:px-4 bg-[#0B1220] flex items-center justify-between text-xs text-slate-300 select-none shrink-0">
+    <div className="h-8 px-3 sm:px-4 bg-surface-container-low/60 flex items-center justify-between text-xs text-on-surface-variant select-none shrink-0 border-b border-outline-variant/30">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] sm:text-[11px] truncate">
           <span
             className={`w-2 h-2 rounded-full shrink-0 ${isReconnecting
-                ? "bg-amber-400 animate-ping"
+                ? "bg-amber-500 animate-ping"
                 : isIvsLive
-                  ? "bg-emerald-400 animate-ping"
+                  ? "bg-emerald-500 animate-ping"
                   : isPausedLive
-                    ? "bg-amber-400 animate-pulse"
+                    ? "bg-amber-500 animate-pulse"
                     : isLive
-                      ? "bg-emerald-400 animate-pulse"
+                      ? "bg-emerald-500 animate-pulse"
                       : isIvsConnecting
-                        ? "bg-amber-400 animate-pulse"
+                        ? "bg-amber-500 animate-pulse"
                         : hasVideoSignal
-                          ? "bg-cyan-400"
-                          : "bg-slate-500"
+                          ? "bg-primary"
+                          : "bg-outline/60"
               }`}
           />
           <span
             className={
               isIvsLive
-                ? "text-emerald-400"
+                ? "text-emerald-700 font-extrabold"
                 : isPausedLive || isReconnecting
-                  ? "text-amber-300"
-                  : "text-slate-200"
+                  ? "text-amber-800 font-bold"
+                  : hasVideoSignal
+                    ? "text-primary font-bold"
+                    : "text-outline font-semibold"
             }
           >
             {isReconnecting

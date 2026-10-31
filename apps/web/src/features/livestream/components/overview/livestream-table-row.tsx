@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  Archive,
   BarChart3,
   Clapperboard,
   Eye,
@@ -33,6 +34,7 @@ export function LivestreamTableRow({
   const isScheduled = item.status === "SCHEDULED";
   const isDraft = item.status === "DRAFT";
   const isEnded = item.status === "ENDED";
+  const hasOrders = Boolean(item.aiOrderCount && item.aiOrderCount > 0);
   const isSelectable = !isLive && !isStarting;
 
   return (
@@ -293,29 +295,41 @@ export function LivestreamTableRow({
             </>
           )}
 
-          {/* Thao tác phụ: Xóa bản nháp / phiên lên lịch / phiên đã kết thúc (cấm xóa phiên đang live hoặc đang kết nối) */}
+          {/* Thao tác phụ: Xóa hoặc xem thông tin lưu trữ */}
           {!isLive && !isStarting ? (
             <button
               type="button"
               onClick={() => onDelete?.(item)}
               disabled={isDeleting}
               title={
-                isDraft
+                hasOrders
+                  ? "Phiên đã phát sinh đơn hàng (Được lưu trữ để bảo vệ dữ liệu)"
+                  : isDraft
                   ? "Xóa bản nháp"
                   : isScheduled
                   ? "Xóa phiên lên lịch"
                   : "Xóa phiên livestream"
               }
               aria-label={
-                isDraft
+                hasOrders
+                  ? "Phiên đã phát sinh đơn hàng (Được lưu trữ để bảo vệ dữ liệu)"
+                  : isDraft
                   ? "Xóa bản nháp"
                   : isScheduled
                   ? "Xóa phiên lên lịch"
                   : "Xóa phiên livestream"
               }
-              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-outline transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 cursor-pointer"
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:opacity-50 cursor-pointer ${
+                hasOrders
+                  ? "text-outline/70 hover:bg-surface-container hover:text-on-surface"
+                  : "text-outline hover:bg-red-50 hover:text-red-600"
+              }`}
             >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              {hasOrders ? (
+                <Archive className="h-3.5 w-3.5 text-outline/80" aria-hidden="true" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
             </button>
           ) : (
             <button

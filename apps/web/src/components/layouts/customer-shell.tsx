@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { LogOut, UserRound } from "lucide-react";
 import { Brand } from "./brand";
@@ -45,6 +45,9 @@ function parseAuthUser(snapshot: string | null): AuthUser | null {
 
 export function CustomerShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const isLivestreamPage = pathname === "/" || pathname?.startsWith("/live");
+
   const userSnapshot = useSyncExternalStore(
     subscribeToAuthUser,
     getAuthUserSnapshot,
@@ -61,6 +64,14 @@ export function CustomerShell({ children }: { children: ReactNode }) {
     localStorage.removeItem("admin_refresh_token");
     localStorage.removeItem("admin_auth_user");
     router.replace("/login");
+  }
+
+  if (isLivestreamPage) {
+    return (
+      <main id="main-content" className="w-full h-full min-h-screen overflow-hidden">
+        {children}
+      </main>
+    );
   }
 
   return (
