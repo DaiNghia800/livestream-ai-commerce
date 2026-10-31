@@ -366,7 +366,7 @@ export function CustomerLiveProducts({
   };
 
   const handleCopy = (code: string, variantLabel?: string | null) => {
-    const syntax = variantLabel ? `Chốt ${code} ${variantLabel} x1` : `Chốt ${code} x1`;
+    const syntax = variantLabel ? `${code} ${variantLabel} x1` : `${code} x1`;
     onSelectSyntax(syntax);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 1500);
@@ -384,7 +384,7 @@ export function CustomerLiveProducts({
             Sản phẩm đang bán trong Livestream
           </h3>
           <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-xs">
-            {products.length} mặt hàng
+            {products.length} sản phẩm
           </span>
         </div>
         <span className="text-xs text-outline hidden sm:inline">
@@ -399,7 +399,7 @@ export function CustomerLiveProducts({
           <div className="flex items-center justify-between mb-2">
             <span className="bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
               <span>#{heroIndex}</span>
-              <span>Mã {heroIndex}</span>
+              <span>Mã: {heroProduct.code}</span>
             </span>
             <span className="bg-primary text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -569,14 +569,14 @@ export function CustomerLiveProducts({
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-on-surface-variant font-medium">Cú pháp:</span>
                   <button
-                    onClick={() => handleCopy(`Mã ${heroIndex}`, activeVariantText)}
+                    onClick={() => handleCopy(heroProduct.code, activeVariantText)}
                     className="bg-primary-container text-white font-mono font-bold text-xs px-2.5 py-1 rounded shadow-xs hover:bg-primary transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                    title={`Click để tự điền cú pháp Chốt Mã ${heroIndex}${activeVariantText ? ` ${activeVariantText}` : ""} x1 vào khung chat`}
+                    title={`Click để tự điền cú pháp Chốt ${heroProduct.code}${activeVariantText ? ` ${activeVariantText}` : ""} x1 vào khung chat`}
                     type="button"
-                    aria-label={`Mã ${heroIndex}`}
+                    aria-label={heroProduct.code}
                   >
-                    <span>Mã {heroIndex}{activeVariantText ? ` • ${activeVariantText}` : ""}</span>
-                    {copiedCode === `Mã ${heroIndex}` ? (
+                    <span>{heroProduct.code}{activeVariantText ? ` • ${activeVariantText}` : ""}</span>
+                    {copiedCode === heroProduct.code ? (
                       <Check className="w-3.5 h-3.5 text-emerald-300" />
                     ) : (
                       <Copy className="w-3 h-3 text-white/80" />
@@ -642,10 +642,10 @@ export function CustomerLiveProducts({
             <div className="flex items-center gap-2">
               <span className="text-xs lg:text-sm font-bold text-on-surface flex items-center gap-1.5">
                 <ShoppingBag className="w-4 h-4 text-primary" />
-                <span>Sản phẩm khác trên phiên Live</span>
+                <span>Các sản phẩm khác trong giỏ hàng</span>
               </span>
               <span className="px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-bold text-[11px]">
-                {remainingProducts.length}
+                {products.length} mặt hàng
               </span>
               {onOpenCart && (
                 <button
@@ -722,8 +722,9 @@ export function CustomerLiveProducts({
                           <Package className="w-7 h-7" />
                         </div>
                       )}
-                      <span className="absolute top-1.5 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs">
-                        #{itemIndex}
+                      <span className="absolute top-1.5 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-1">
+                        <span>#{itemIndex}</span>
+                        <span className="font-mono">{product.code}</span>
                       </span>
                       {product.discountPercent && (
                         <span className="absolute top-1.5 right-1.5 bg-rose-600 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow-xs">
@@ -770,13 +771,13 @@ export function CustomerLiveProducts({
                       </span>
 
                       <button
-                        onClick={() => handleCopy(`Mã ${itemIndex}`)}
+                        onClick={() => handleCopy(product.code)}
                         className="bg-surface-container hover:bg-primary hover:text-white text-primary font-mono text-[11px] font-bold px-2 py-0.5 rounded transition-colors active:scale-95 shadow-2xs cursor-pointer whitespace-nowrap flex-none"
-                        title={`Click để tự động điền cú pháp Mã ${itemIndex} x1 vào khung chat`}
-                        aria-label={`Điền cú pháp Mã ${itemIndex}`}
+                        title={`Click để tự động điền cú pháp ${product.code} x1 vào khung chat`}
+                        aria-label={`Điền cú pháp ${product.code}`}
                         type="button"
                       >
-                        + Mã {itemIndex}
+                        + {product.code}
                       </button>
                     </div>
 

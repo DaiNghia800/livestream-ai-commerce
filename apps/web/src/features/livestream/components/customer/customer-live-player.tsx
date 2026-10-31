@@ -735,7 +735,7 @@ export function CustomerLivePlayer({
                       <span>Đang ghim</span>
                     </span>
                     <span className="bg-white/15 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">
-                      #1
+                      #{pinnedProduct.code || "A001"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -824,13 +824,13 @@ export function CustomerLivePlayer({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onBuyPinnedProduct?.("Mã 1 x1")}
+                        onClick={() => onBuyPinnedProduct?.(`${pinnedProduct.code || "A001"} x1`)}
                         className="bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-300 text-[11px] font-bold py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
-                        title="Chốt Mã 1"
-                        aria-label="Chốt Mã 1"
+                        title={`Chốt ${pinnedProduct.code || "A001"}`}
+                        aria-label={`Chốt ${pinnedProduct.code || "A001"}`}
                       >
                         <Zap className="w-3 h-3 fill-amber-300 text-amber-300" />
-                        <span>Chốt Mã 1</span>
+                        <span>Chốt {pinnedProduct.code || "A001"}</span>
                       </button>
                     </div>
                   </div>

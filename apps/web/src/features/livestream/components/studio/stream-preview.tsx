@@ -122,7 +122,7 @@ export function StudioStreamPreview({
             !isLeftSidebarOpen ? "w-6 text-primary font-bold" : ""
           }`}
           title={isLeftSidebarOpen ? "Thu gọn thanh công cụ trái (Phím [)" : "Mở thanh công cụ trái (Phím [)"}
-          aria-label="Thu gọn hoặc mở thanh công cụ trái"
+          aria-label="Đóng mở thanh công cụ trái"
         >
           {isLeftSidebarOpen ? (
             <ChevronLeft className="h-3.5 w-3.5 -ml-0.5" />

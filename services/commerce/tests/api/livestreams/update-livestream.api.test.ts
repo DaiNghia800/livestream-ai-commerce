@@ -85,16 +85,17 @@ describe("PATCH /api/livestreams/:id - API Tests", () => {
       endedAt: null,
     });
 
+    const futureDate = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
     const res = await request(app)
       .patch(`/api/livestreams/${created.id}`)
       .set("X-Merchant-Id", VALID_MERCHANT_ID)
       .send({
-        scheduledAt: "2026-10-25T15:00:00.000Z",
+        scheduledAt: futureDate,
         coverImageKey: "covers/summer.jpg",
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.scheduledAt).toBe("2026-10-25T15:00:00.000Z");
+    expect(res.body.scheduledAt).toBe(futureDate);
     expect(res.body.coverImageKey).toBe("covers/summer.jpg");
   });
 

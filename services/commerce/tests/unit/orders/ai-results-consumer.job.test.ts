@@ -154,7 +154,7 @@ describe("AiResultsConsumerJob - Unit Tests", () => {
     mockDraftOrderService.createDraftOrder.mockResolvedValueOnce({
       id: "ord-999",
       orderCode: "LIVE-20261028-0001",
-      confirmToken: "tok-abc123xyz",
+      confirmToken: "tok-test",
       heldUntil: "2026-10-28T16:00:00.000Z",
       totalAmount: "300000",
       status: "DRAFT",
@@ -194,7 +194,7 @@ describe("AiResultsConsumerJob - Unit Tests", () => {
         productCode: "AO01",
         quantity: "2",
         customerName: "Mai Phương",
-        confirmToken: "tok-abc123xyz",
+        confirmToken: "tok-test",
       })
     );
 

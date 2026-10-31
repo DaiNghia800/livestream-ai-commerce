@@ -238,11 +238,11 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
   const consoleErrors = collectConsoleErrors(page);
   await page.goto("/shop/livestream/LIVE-2025-08/studio");
 
-  // Left sidebar is closed by default: on mobile switch tab, on desktop press shortcut [
+  // Left sidebar is closed by default: on mobile switch tab, on desktop click toggle button
   if (testInfo.project.name === "mobile") {
     await page.getByRole("button", { name: /Nguồn phát/ }).click();
   } else {
-    await page.keyboard.press("[");
+    await page.getByLabel("Đóng mở thanh công cụ trái").click();
   }
 
   // 1. Verify device controls (camera & mic selects in sidebar) are present and compact
@@ -287,8 +287,8 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
     await page.getByLabel("Thu gọn thanh công cụ trái").click();
     await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
 
-    // Re-open via keyboard shortcut [
-    await page.keyboard.press("[");
+    // Re-open via button
+    await page.getByLabel("Đóng mở thanh công cụ trái").click();
     await expect(page.getByText("Nguồn & Cảnh Studio")).toBeVisible();
   }
 

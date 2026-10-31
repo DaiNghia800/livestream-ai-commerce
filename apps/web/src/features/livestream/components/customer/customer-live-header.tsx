@@ -94,6 +94,12 @@ export function CustomerLiveHeader({
             </span>
           )}
         </div>
+
+        {/* Low latency live stream badge */}
+        <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 text-xs font-semibold">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Độ trễ thấp</span>
+        </div>
       </div>
 
       {/* Right: Actions & Customer Profile */}

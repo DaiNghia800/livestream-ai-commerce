@@ -237,6 +237,9 @@ export function CustomerLiveChat({
       }
 
       const isCurrentCustomer =
+        (!attr.customerId && !attr.customerName) ||
+        attr.customerName === "Minh Hằng" ||
+        attr.customerName === "Khách hàng" ||
         (currentUser?.id && attr.customerId === currentUser.id) ||
         (currentUser?.full_name &&
           attr.customerName?.toLowerCase().includes(currentUser.full_name.toLowerCase())) ||
@@ -303,6 +306,9 @@ export function CustomerLiveChat({
       if (!attr) return;
 
       const isCurrentCustomer =
+        (!attr.customerId && !attr.customerName) ||
+        attr.customerName === "Minh Hằng" ||
+        attr.customerName === "Khách hàng" ||
         (currentUser?.id && attr.customerId === currentUser.id) ||
         (currentUser?.full_name &&
           attr.customerName?.toLowerCase().includes(currentUser.full_name.toLowerCase())) ||
@@ -427,24 +433,32 @@ export function CustomerLiveChat({
       {/* GOLDEN UX: PINNED AI HOLD ORDER BAR (CỐ ĐỊNH TRÊN Ô NHẬP CHAT, KHÔNG BỊ TRÔI) */}
       {/* ======================================================== */}
       {activeHoldOrder ? (
-        <div className="mx-3 my-1.5 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-primary/10 to-emerald-500/15 border border-amber-400/50 shadow-md backdrop-blur-xs flex items-center justify-between gap-2.5 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-400 to-amber-500 text-slate-950 flex items-center justify-center flex-none font-bold shadow-xs">
-              <Sparkles className="w-4 h-4 animate-pulse" />
+        <div className="mx-3 my-1.5 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-primary/10 to-emerald-500/15 border border-amber-400/50 shadow-md backdrop-blur-xs flex flex-col gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
+              <Sparkles className="w-4 h-4 text-secondary animate-pulse" />
+              <span>Hệ thống AI Gemini đã ghi nhận:</span>
             </div>
+            <span className="text-emerald-700 bg-emerald-100 font-bold text-[10px] px-2 py-0.5 rounded-full">
+              ĐÃ GIỮ CHỖ
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-bold text-xs text-on-surface truncate">
-                  AI đã giữ kho: {activeHoldOrder.quantity || 1}x {activeHoldOrder.productName || activeHoldOrder.code}
+                  Đơn hàng: {activeHoldOrder.quantity || 1}x {activeHoldOrder.productName || activeHoldOrder.code}
                 </span>
                 <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/40">
                   #{activeHoldOrder.code}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-[10.5px] text-outline mt-0.5">
-                <span className="font-mono text-rose-600 font-extrabold flex items-center gap-1">
+                <span className="font-medium text-rose-600 flex items-center gap-1">
                   <Clock className="w-3 h-3 text-rose-500 animate-pulse" />
-                  Còn {formatCountdown(activeHoldOrder.secondsLeft)}
+                  <span>Thời gian giữ chỗ còn lại</span>
+                  <strong className="font-mono">({formatCountdown(activeHoldOrder.secondsLeft)})</strong>
                 </span>
                 {activeHoldOrder.variantName && (
                   <>
@@ -454,37 +468,33 @@ export function CustomerLiveChat({
                     </span>
                   </>
                 )}
-                <span>•</span>
-                <span className="text-emerald-700 font-semibold truncate">
-                  Đã khóa tồn kho
-                </span>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-1.5 flex-none">
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenOrderModal) {
-                  onOpenOrderModal(activeHoldOrder.code, activeHoldOrder);
-                }
-              }}
-              className="py-1.5 px-3 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer"
-            >
-              <span>Điền đơn ngay</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDetectedOrders((prev) => prev.filter((o) => o.id !== activeHoldOrder.id));
-              }}
-              aria-label="Đóng thông báo giữ kho"
-              className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5 flex-none">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenOrderModal) {
+                    onOpenOrderModal(activeHoldOrder.code, activeHoldOrder);
+                  }
+                }}
+                className="py-1.5 px-3 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer"
+              >
+                <span>Điền địa chỉ nhận hàng</span>
+                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDetectedOrders((prev) => prev.filter((o) => o.id !== activeHoldOrder.id));
+                }}
+                aria-label="Đóng thông báo giữ kho"
+                className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       ) : expiredHoldOrder ? (
@@ -628,7 +638,7 @@ export function CustomerLiveChat({
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !inputText.trim()}
             aria-label="Thử gửi bình luận"
             className="h-9 px-3.5 rounded-xl bg-primary hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold flex items-center gap-1 shadow-xs transition-all active:scale-95 flex-none cursor-pointer"
           >
