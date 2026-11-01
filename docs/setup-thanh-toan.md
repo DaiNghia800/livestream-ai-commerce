@@ -88,6 +88,28 @@ VNPAY_PAY_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
 > là mọi giao dịch bị từ chối — hệ thống đã đọc `x-forwarded-for`,
 > nhưng proxy của bạn phải thật sự gửi header đó.
 
+### Kiểm tra khoá VNPay trước khi cho khách dùng
+
+```bash
+cd services/commerce && npm run vnpay:check
+```
+
+Script dựng một URL thanh toán bằng đúng lớp `VnpayGateway` đang chạy,
+mở thử và đọc mã lỗi VNPay trả về:
+
+| VNPay trả | Nghĩa | Sửa ở đâu |
+|---|---|---|
+| 200, trang chọn ngân hàng | Khoá dùng được | — |
+| 302 → `Error.html?code=71` | **Terminal (website) chưa được duyệt / không hoạt động** | Tài khoản VNPay: đăng ký merchant sandbox mới tại `sandbox.vnpayment.vn/devreg` hoặc kiểm tra terminal trong `merchantv2` |
+| 302 → `code=72` | TmnCode không tồn tại trên sandbox | Gõ sai, hoặc dùng nhầm mã của môi trường thật |
+| 302 → `code=70` | Sai chữ ký | HashSecret không đi cùng TmnCode này |
+
+VNPay kiểm trạng thái terminal **trước** chữ ký, nên còn 71 thì đổi
+code ký cũng vô ích. Đã gặp đúng ca này ngày 22/10/2026 với một
+TmnCode cũ từ dự án khác: VNPay trả 71 cho cả chữ ký đúng lẫn sai,
+và 72 cho mã bịa — tức mã cũ còn trong hệ thống nhưng không còn được
+duyệt.
+
 ---
 
 ## 4. Chuyển khoản VietQR qua SePay
