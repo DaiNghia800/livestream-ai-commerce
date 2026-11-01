@@ -20,6 +20,7 @@
     "test:coverage": "vitest run --coverage",
     "backfill:addresses": "tsx scripts/backfill-addresses.ts",
     "shipping:simulate": "tsx scripts/shipping-simulate.ts",
+    "vnpay:check": "tsx scripts/vnpay-check.ts",
     "confirm-link:by-comment": "tsx scripts/confirm-link-by-comment.ts"
   },
   "dependencies": {
