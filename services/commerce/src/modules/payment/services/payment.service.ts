@@ -24,6 +24,7 @@ import {
   UnknownTransferError,
 } from "../errors/payment.errors.js";
 import { appendOutboxEvent } from "../../order/repositories/order.repository.js";
+import { OrderLifecycleService } from "../../order/services/order-lifecycle.service.js";
 import {
   findOrderForPayment,
   findPaymentByOrder,
@@ -45,7 +46,8 @@ import {
 } from "../gateways/index.js";
 
 /** Chỉ thu tiền cho đơn đã chốt địa chỉ và chưa bị huỷ. */
-const THU_DUOC = new Set(["CONFIRMED", "PROCESSING", "COMPLETED"]);
+// AWAITING_PAYMENT: đơn chọn online đang chờ tiền; khách chọn cổng ở đây.
+const THU_DUOC = new Set(["AWAITING_PAYMENT", "CONFIRMED", "PROCESSING", "COMPLETED"]);
 
 export interface CreatePaymentParams {
   orderId: string;
@@ -78,7 +80,11 @@ export interface BankTransferParams {
 }
 
 export class PaymentService {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    // Giữ tồn cho đơn chờ thanh toán khi tiền về; mặc định dựng trên cùng pool.
+    private readonly lifecycle: OrderLifecycleService = new OrderLifecycleService(pool)
+  ) {}
 
   /**
    * Tạo khoản thu. Gọi lại nhiều lần trả về đúng khoản thu cũ.
@@ -204,6 +210,13 @@ export class PaymentService {
       }
 
       const updated = await recalcPaidAmount(client, payment.id);
+
+      // Đơn chọn online chỉ giữ tồn khi tiền về: giữ NGAY trong transaction
+      // này. Hết hàng thì đơn bị huỷ (OUT_OF_STOCK_AT_PAYMENT), khoản thu
+      // vẫn PAID để shop hoàn tiền.
+      if (updated.status === "PAID") {
+        await this.lifecycle.giuHangSauThanhToan(client, payment.orderId);
+      }
 
       await appendOutboxEvent(client, {
         aggregateId: payment.orderId,
@@ -354,6 +367,13 @@ export class PaymentService {
       }
 
       const updated = await recalcPaidAmount(client, payment.id);
+
+      // Đơn chọn online chỉ giữ tồn khi tiền về: giữ NGAY trong transaction
+      // này. Hết hàng thì đơn bị huỷ (OUT_OF_STOCK_AT_PAYMENT), khoản thu
+      // vẫn PAID để shop hoàn tiền.
+      if (updated.status === "PAID") {
+        await this.lifecycle.giuHangSauThanhToan(client, payment.orderId);
+      }
 
       await appendOutboxEvent(client, {
         aggregateId: payment.orderId,

@@ -43,6 +43,10 @@ export function CustomerBankTransfer({ token }: { token: string }) {
     }
   }
 
+  // Shop chưa khai tài khoản SePay Test: khách không làm gì được ở đây,
+  // ẩn cả khối thay vì in "shop chưa cấu hình" cho khách xem.
+  if (data && !data.available && data.status === null && data.reason === "UNCONFIGURED") return null;
+
   return (
     <Card>
       <h2>Thanh toán chuyển khoản</h2>

@@ -603,3 +603,55 @@ Chiều `user_id → customer_id` là **một-nhiều**: mỗi trình duyệt kh
 từng đăng nhập là một UUID. Vì vậy mọi truy vấn "đơn của tài khoản"
 phải đi qua bảng nối, không so một mã.
 
+---
+
+## 2026-10-24 — Giỏ hàng trong phiên live
+
+**Giỏ hàng = đơn nháp đang mở của khách trong phiên.** Không có bảng giỏ
+riêng: bình luận AI chốt cộng dồn vào đơn nháp, nháp không giữ tồn và
+không hết hạn, nên xem/sửa giỏ không đụng kho; tồn chỉ được giữ khi
+khách bấm "Xác nhận đơn hàng" trong giỏ.
+
+| Thành phần | Nội dung |
+|---|---|
+| API | `GET /api/me/cart?livestreamId=` (không đánh dấu "đã mở link"), `PATCH/DELETE /api/me/cart/items/:itemId`; bỏ món cuối → huỷ đơn nháp |
+| Quy tắc gộp | Migration 026: index `uq_orders_open_draft` bao cả `PENDING_CONFIRMATION` — mở giỏ rồi chốt thêm mã vẫn vào cùng giỏ (trước đây đẻ đơn thứ hai) |
+| Trang live | Nút giỏ + huy hiệu số món ở đầu cột chat; AI xử lý xong → toast "Đã thêm 3 × Áo mmm vào giỏ hàng" (so giỏ trước/sau, không cần backend ghi món theo bình luận) + nút "Xem giỏ"; khách vãng lai giữ link mở form như cũ |
+| Ngăn kéo | Trượt từ phải, không rời trang. Bước 1 giỏ (−/+, Xoá, tạm tính) → bước 2 xác nhận (dòng địa chỉ + Thay đổi, ghi chú, COD/online) → bước 3 đã chốt (online: khối chọn cổng + QR ngay trong ngăn) |
+| Dùng chung | `checkout-parts.tsx`: dòng địa chỉ, thẻ chọn cách trả, câu lỗi hết hàng — trang /confirm và ngăn kéo cùng dùng |
+
+Giỏ cần đăng nhập (như các sàn). `source_comment_id` trên dòng hàng
+chưa được ghi ở luồng AI, nên toast tính món mới bằng cách so giỏ
+trước/sau thay vì hỏi máy chủ "bình luận này thêm gì".
+
+---
+
+## 2026-11-02 — Nút mua trên trang live và giữ tồn theo cách trả
+
+**Nút "Mua ngay" / "Mua hàng" trong giỏ cá nhân giờ tạo đơn thật**, theo
+nhịp TikTok Shop: sheet chọn phân loại → màn Thanh toán (sổ địa chỉ +
+Thay đổi, sản phẩm, vận chuyển, cách trả, lời nhắn, tổng, "Đặt hàng") →
+kết quả. `POST /api/me/cart/items` đưa SKU của phiên vào giỏ server
+(nguồn `BUTTON`, gộp vào giỏ đang mở như bình luận), rồi
+`POST /orders/confirm/:token` với địa chỉ trong sổ.
+
+**Luật giữ tồn theo cách trả** (quyết định của nhóm):
+
+| Cách trả | Lúc xác nhận | Khi tiền về | Khi hãng trả hàng |
+|---|---|---|---|
+| COD | giữ tồn ngay, `CONFIRMED` | (tiền về lúc giao) | `RETURNED` → trả tồn (đã có) |
+| Online / chuyển khoản | **không giữ**, đơn `AWAITING_PAYMENT`, tạo khoản thu | giữ tồn **trong transaction của khoản thu** → `CONFIRMED`; hết hàng → `CANCELLED` lý do `OUT_OF_STOCK_AT_PAYMENT`, khoản thu vẫn `PAID` để shop hoàn | như COD |
+
+- Migration 027 thêm trạng thái; `markAwaitingPayment`, `markPaidAndConfirmed`,
+  `OrderLifecycleService.giuHangSauThanhToan` (SAVEPOINT để trả lại dòng giữ
+  dở khi hết hàng); `PaymentService` gọi nó ở cả hai đường tiền về (IPN cổng
+  và webhook chuyển khoản).
+- Không có hạn giữ: đơn chờ thanh toán không chiếm tồn. `ExpireAwaitingPaymentJob`
+  huỷ đơn chưa trả quá `AWAITING_PAYMENT_TTL_HOURS` (mặc định 24, 0 = tắt)
+  chỉ để danh sách đơn sạch, lý do `PAYMENT_TIMEOUT`.
+- Màn khách (trang `/confirm` và màn Thanh toán trên live) chỉ nói "thành
+  công" khi đơn rời `AWAITING_PAYMENT`: poll trạng thái 5 giây/lần; hết hàng
+  lúc tiền về thì báo huỷ + hoàn tiền. Tab "Chờ thanh toán" trong Đơn mua.
+- Chưa làm: hoàn tiền tự động (shop đánh dấu tay ở trang Thanh toán), phí
+  vận chuyển lúc đặt, mã giảm giá.
+

@@ -42,6 +42,9 @@ import {
   isValidUuid,
   type BackendLivestreamProductItem,
 } from "../../api/get-livestreams";
+import { LiveCheckoutDialog, type LiveCheckoutLine } from "@/features/orders/live-checkout-dialog";
+import { layTokenKhach } from "@/lib/api";
+import { useDaGan } from "@/lib/use-da-gan";
 
 /** Web Audio API chime when AI locks stock for the customer */
 function playOrderSuccessChime() {
@@ -624,6 +627,22 @@ export function CustomerLiveView({
 
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
 
+  // Đã đăng nhập THẬT (có access_token) thì lấy địa chỉ từ sổ của tài khoản
+  // như trang xác nhận; đăng nhập mô phỏng (chỉ auth_user) hay khách vãng lai
+  // vẫn gõ tay. useDaGan: chỉ đọc localStorage sau khi gắn để không lệch SSR.
+  // Đã đăng nhập THẬT (có access_token): mua bằng nút đi qua màn "Thanh toán"
+  // kiểu TikTok Shop (LiveCheckoutDialog) với sổ địa chỉ của tài khoản và
+  // đơn thật trên server. Khách vãng lai / đăng nhập mô phỏng vẫn đi form cũ.
+  const daGan = useDaGan();
+  const dungSoDiaChi = daGan && Boolean(currentUser) && Boolean(layTokenKhach());
+  const [manThanhToan, setManThanhToan] = useState<{ lines: LiveCheckoutLine[]; tuGio?: string[] } | null>(null);
+  const livestreamThat = isRealLiveSession && isValidUuid(activeLivestreamId) ? activeLivestreamId : null;
+  const moManThanhToan = (lines: LiveCheckoutLine[], tuGio?: string[]) => {
+    setCheckoutProduct(null);
+    setIsPersonalCartOpen(false);
+    setManThanhToan({ lines, tuGio });
+  };
+
   useEffect(() => {
     const handleStorageChange = () => {
       try {
@@ -1192,13 +1211,6 @@ export function CustomerLiveView({
       return;
 
     const totalQty = checkoutCartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const simulatedOrderCode = generateOrderCode("ORD-CART");
-
-    if (sendChatNotification) {
-      sendMessage?.(
-        `🎉 ${customerName} vừa chốt thành công đơn hàng gộp ${totalQty} món từ giỏ hàng livestream!`
-      );
-    }
 
     const itemsSummary = checkoutCartItems
       .map(
@@ -1208,6 +1220,23 @@ export function CustomerLiveView({
             .join(" ")}) x${i.quantity}`
       )
       .join(", ");
+
+    const baoChat = () => {
+      if (!sendChatNotification) return;
+      sendMessage?.(
+        `🎉 ${customerName} vừa chốt thành công đơn hàng gộp ${totalQty} món từ giỏ hàng livestream!`
+      );
+    };
+    const checkedOutIds = new Set(checkoutCartItems.map((i) => i.id));
+    const donDaDat = () => {
+      // Chỉ xoá các mặt hàng ĐÃ ĐƯỢC CHỌN thanh toán
+      setPersonalCart((prev) => prev.filter((i) => !checkedOutIds.has(i.id)));
+      setCheckoutCartItems([]);
+      setIsCartCheckoutOpen(false);
+    };
+
+    const simulatedOrderCode = generateOrderCode("ORD-CART");
+    baoChat();
 
     const totalAmount = checkoutCartItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -1222,11 +1251,7 @@ export function CustomerLiveView({
       totalAmount: totalAmount,
     });
 
-    // Chỉ xoá các mặt hàng ĐÃ ĐƯỢC CHỌN thanh toán
-    const checkedOutIds = new Set(checkoutCartItems.map((i) => i.id));
-    setPersonalCart((prev) => prev.filter((i) => !checkedOutIds.has(i.id)));
-    setCheckoutCartItems([]);
-    setIsCartCheckoutOpen(false);
+    donDaDat();
   };
 
   const handleConfirmQuickOrder = (e: React.FormEvent) => {
@@ -1235,9 +1260,6 @@ export function CustomerLiveView({
     if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim())
       return;
 
-    // Simulated order reference (teammate maintains backend order persistence)
-    const simulatedOrderCode = generateOrderCode("ORD");
-
     const variantTokens: string[] = [];
     if (checkoutSelectedColor) variantTokens.push(checkoutSelectedColor);
     if (checkoutSelectedSize) variantTokens.push(`Size ${checkoutSelectedSize}`);
@@ -1245,17 +1267,21 @@ export function CustomerLiveView({
       ? variantTokens.join(" • ")
       : selectedVariant?.name || selectedSize;
 
-    if (sendChatNotification) {
-      const pIdx = products.findIndex((p) => p.id === checkoutProduct.id);
-      const displayLabel = pIdx >= 0 ? `Mã ${pIdx + 1}` : checkoutProduct.code;
-      sendMessage?.(
-        `🎉 ${customerName} vừa đặt mua thành công ${checkoutProduct.name} (${displayLabel} - ${variantLabel} x${orderQuantity})!`
-      );
-    }
-
     const opts = parseProductOptions(checkoutProduct);
     const activeCheckoutVariant =
       opts.findVariant(checkoutSelectedColor, checkoutSelectedSize) || selectedVariant;
+
+    const pIdx = products.findIndex((p) => p.id === checkoutProduct.id);
+    const displayLabel = pIdx >= 0 ? `Mã ${pIdx + 1}` : checkoutProduct.code;
+    const baoChat = () => {
+      if (!sendChatNotification) return;
+      sendMessage?.(
+        `🎉 ${customerName} vừa đặt mua thành công ${checkoutProduct.name} (${displayLabel} - ${variantLabel} x${orderQuantity})!`
+      );
+    };
+
+    const simulatedOrderCode = generateOrderCode("ORD");
+    baoChat();
 
     setOrderSuccessInfo({
       orderCode: simulatedOrderCode,
@@ -1841,8 +1867,8 @@ export function CustomerLiveView({
 
               <div className="bg-surface-container-low rounded-xl p-3 text-left space-y-2 text-xs border border-outline-variant/40">
                 <div className="flex justify-between items-center pb-2 border-b border-outline-variant/30">
-                  <span className="text-outline">Sản phẩm:</span>
-                  <span className="font-semibold text-on-surface text-right truncate max-w-[200px]">
+                  <span className="text-outline flex-none">Sản phẩm:</span>
+                  <span className="font-semibold text-on-surface text-right break-words min-w-0">
                     {orderSuccessInfo.productName}
                   </span>
                 </div>
@@ -1865,8 +1891,9 @@ export function CustomerLiveView({
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-outline">Giao tới:</span>
-                  <span className="font-medium text-on-surface text-right truncate max-w-[200px]">
+                  <span className="text-outline flex-none">Giao tới:</span>
+                  {/* Địa chỉ phải đọc được trọn vẹn, không cắt ba chấm. */}
+                  <span className="font-medium text-on-surface text-right break-words min-w-0">
                     {customerAddress}
                   </span>
                 </div>
@@ -2144,6 +2171,45 @@ export function CustomerLiveView({
                     )}
                   </div>
 
+                  {dungSoDiaChi ? (
+                    // Đã đăng nhập: không hỏi địa chỉ ở đây. "Mua ngay" mở màn
+                    // Thanh toán kiểu TikTok Shop (sổ địa chỉ, vận chuyển, cách
+                    // trả, đặt hàng thật).
+                    <div className="flex items-center justify-end gap-2.5 pt-2.5 border-t border-outline-variant/30">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          handleAddToCart(checkoutProduct, displayVariantLabel, orderQuantity);
+                          setCheckoutProduct(null);
+                        }}
+                        className="px-3 py-2 text-xs font-bold rounded-lg flex items-center gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        <span>Thêm vào giỏ</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        data-testid="mua-ngay-thanh-toan"
+                        onClick={() =>
+                          moManThanhToan([{
+                            skuId: activeCheckoutVariant?.id,
+                            skuCode: activeCheckoutVariant?.skuCode,
+                            name: checkoutProduct.name,
+                            variantLabel: displayVariantLabel,
+                            quantity: orderQuantity,
+                            price: activeCheckoutVariant?.price || checkoutProduct.price,
+                            imageUrl: activeCheckoutVariant?.imageUrl || checkoutProduct.imageUrl || null,
+                          }])
+                        }
+                        className="flex-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-extrabold text-xs py-2 px-4 rounded-lg whitespace-nowrap flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-98"
+                      >
+                        <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        <span>Mua ngay • {formatMoney((activeCheckoutVariant?.price || checkoutProduct.price) * orderQuantity)}</span>
+                      </Button>
+                    </div>
+                  ) : (
+                  <>
                   {/* Recipient Details Fields */}
                   <div className="space-y-2.5">
                     <div>
@@ -2313,6 +2379,8 @@ export function CustomerLiveView({
                       </span>
                     </Button>
                   </div>
+                  </>
+                  )}
                 </form>
               );
             })() : null}
@@ -2438,11 +2506,61 @@ export function CustomerLiveView({
         onRemoveItem={handleRemoveCartItem}
         onClearCart={handleClearCart}
         onProceedToCheckout={(selectedItems) => {
+          // Đã đăng nhập: thẳng vào màn Thanh toán kiểu TikTok Shop với các
+          // món đã chọn (từng món tìm ra SKU của phiên); không tìm được SKU
+          // thì rơi về form cũ.
+          if (dungSoDiaChi) {
+            const lines = selectedItems.map((item): LiveCheckoutLine | null => {
+              const sp = products.find((p) => p.id === item.productId);
+              const bienThe = sp
+                ? parseProductOptions(sp).findVariant(item.selectedColor ?? null, item.selectedSize ?? null)
+                : undefined;
+              if (!bienThe) return null;
+              return {
+                skuId: bienThe.id,
+                skuCode: bienThe.skuCode,
+                name: item.name,
+                variantLabel:
+                  [item.selectedColor, item.selectedSize ? `Size ${item.selectedSize}` : null]
+                    .filter(Boolean)
+                    .join(" • ") || null,
+                quantity: item.quantity,
+                price: item.price,
+                imageUrl: item.imageUrl ?? null,
+              };
+            });
+            if (lines.every((l): l is LiveCheckoutLine => l !== null)) {
+              moManThanhToan(lines, selectedItems.map((i) => i.id));
+              return;
+            }
+          }
           setCheckoutCartItems(selectedItems);
           setIsPersonalCartOpen(false);
           setIsCartCheckoutOpen(true);
         }}
         onExploreCatalog={() => setIsOuterCartOpen(true)}
+      />
+
+      {/* Màn Thanh toán kiểu TikTok Shop (đơn thật) cho khách đã đăng nhập */}
+      <LiveCheckoutDialog
+        open={Boolean(manThanhToan)}
+        livestreamId={livestreamThat}
+        shopName={shopName}
+        lines={manThanhToan?.lines ?? []}
+        onClose={() => setManThanhToan(null)}
+        onPlaced={(kq) => {
+          if (kq.thongBaoChat) {
+            const ten = currentUser?.full_name || "Khách";
+            const tomTat = kq.order.items
+              .map((it) => `${it.productName ?? it.skuCode} x${it.quantity}`)
+              .join(", ");
+            sendMessage?.(`🎉 ${ten} vừa đặt mua thành công ${tomTat}!`);
+          }
+          if (manThanhToan?.tuGio?.length) {
+            const daMua = new Set(manThanhToan.tuGio);
+            setPersonalCart((prev) => prev.filter((i) => !daMua.has(i.id)));
+          }
+        }}
       />
 
       {/* 6. MULTI-ITEM CART CHECKOUT DIALOG */}

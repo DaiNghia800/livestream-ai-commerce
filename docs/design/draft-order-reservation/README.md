@@ -56,6 +56,23 @@ Ngoài phạm vi: thanh toán, vận đơn, đối soát ngân hàng, mô hình 
 >   nghị, thay vì chỉ lượt giữ.
 > - Điểm rủi ro BẪY-08 chỉ còn tăng khi shop huỷ vì nghi gian lận;
 >   `expired_count` giữ nguyên cho dữ liệu cũ.
+
+> **Sửa đổi 2026-11-02 — giữ tồn theo cách trả.** Vế "giữ đúng lúc
+> khách bấm xác nhận" ở trên chỉ còn đúng với **COD**:
+>
+> - COD: xác nhận → giữ tồn ngay → `CONFIRMED`. Bom hàng thì vận đơn
+>   `RETURNED` trả tồn về kho (đã có từ module vận chuyển).
+> - Online / chuyển khoản: xác nhận chỉ lưu địa chỉ + tạo khoản thu, đơn
+>   vào **`AWAITING_PAYMENT`, không giữ tồn**. Tiền về (IPN cổng hoặc
+>   webhook ngân hàng) mới giữ tồn **trong cùng transaction với khoản
+>   thu** rồi chuyển `CONFIRMED`. Hết hàng đúng lúc tiền về → đơn
+>   `CANCELLED` lý do `OUT_OF_STOCK_AT_PAYMENT`, khoản thu vẫn `PAID`
+>   để shop hoàn tiền; màn khách nói thẳng điều đó.
+> - Không có hạn giữ cho đơn chờ thanh toán (không chiếm tồn). Job
+>   `ExpireAwaitingPaymentJob` huỷ đơn chưa trả quá
+>   `AWAITING_PAYMENT_TTL_HOURS` (24 giờ, 0 = tắt) chỉ để dọn danh sách.
+> - Màn khách chỉ báo "thành công" khi đơn rời `AWAITING_PAYMENT`.
+>   Migration 027; chi tiết ở progress.md mục 2026-11-02.
 >
 > Migration `023_drop_draft_hold.sql` trả về kho mọi lượt giữ của đơn
 > nháp đang có, gỡ `chk_orders_hold_until` và `idx_orders_pending_hold`.

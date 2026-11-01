@@ -22,6 +22,7 @@ import {
   InvalidOrderStateError,
   OrderAccessError,
   OrderNotFoundError,
+  OutOfStockError,
 } from "../../../shared/errors/domain.errors.js";
 import { findOwnerUserIdByConfirmToken } from "../../profile/repositories/customer-identity.repository.js";
 import {
@@ -36,10 +37,12 @@ import {
   findOrderDetailByCode,
   findOrderItemsForHold,
   listOrders,
+  markAwaitingPayment,
   markCancelled,
   markCompleted,
   markConfirmed,
   markConfirmLinkOpened,
+  markPaidAndConfirmed,
   markProcessing,
   recordStatusHistory,
   saveShippingInfo,
@@ -78,7 +81,7 @@ import type { Order, OrderStatus } from "../types/order.types.js";
  * COMPLETED/CANCELLED/RETURNED thì địa chỉ là dữ liệu lịch sử —
  * sửa vào chỉ làm sai chứng từ của một việc đã xong.
  */
-const SUA_DUOC_DIA_CHI = new Set<OrderStatus>(["CONFIRMED", "PROCESSING"]);
+const SUA_DUOC_DIA_CHI = new Set<OrderStatus>(["AWAITING_PAYMENT", "CONFIRMED", "PROCESSING"]);
 
 export type ShippingInfo = ConfirmOrderInput;
 
@@ -152,7 +155,7 @@ export class OrderLifecycleService {
 
       // Xác nhận lại đơn đã xác nhận thì coi như thành công, trả về
       // nguyên trạng. Khách bấm hai lần không phải là lỗi của khách.
-      if (order.status === "CONFIRMED") {
+      if (order.status === "CONFIRMED" || order.status === "AWAITING_PAYMENT") {
         const current = await loadOrder(client, order.id);
         await client.query("COMMIT");
         return current;
@@ -207,7 +210,12 @@ export class OrderLifecycleService {
       // lần chốt lại có thể không còn hàng.
       await applyBestPrice(client, order.id);
 
-      const changed = await markConfirmed(client, order.id);
+      // Chọn trả online: chưa giữ tồn, đơn chờ tiền về (AWAITING_PAYMENT).
+      // COD (hay không chọn): giữ tồn ngay như trước.
+      const choThanhToan = shipping.paymentMethod === "ONLINE";
+      const changed = choThanhToan
+        ? await markAwaitingPayment(client, order.id)
+        : await markConfirmed(client, order.id);
       if (!changed) {
         // Đơn vừa bị huỷ, hoặc vừa được xác nhận ở một tab khác.
         throw new InvalidOrderStateError(order.id, order.status, "xác nhận");
@@ -224,14 +232,10 @@ export class OrderLifecycleService {
       //
       // Giữ ĐỦ hoặc không giữ gì: khách vừa đọc tổng tiền rồi mới bấm,
       // âm thầm bớt số lượng sau lưng họ là đổi hợp đồng.
-      for (const item of await findOrderItemsForHold(client, order.id)) {
-        await holdStock(client, item.skuId, item.quantity);
-        await upsertReservation(client, {
-          orderId: order.id,
-          orderItemId: item.id,
-          skuId: item.skuId,
-          quantity: item.quantity,
-        });
+      //
+      // Trả online thì KHÔNG giữ ở đây: tiền về mới giữ (giuHangSauThanhToan).
+      if (!choThanhToan) {
+        await this.giuTonChoDon(client, order.id);
       }
 
       // Ghi phương thức khách vừa chọn — CHỈ khi họ có chọn.
@@ -267,21 +271,25 @@ export class OrderLifecycleService {
       await recordStatusHistory(client, {
         orderId: order.id,
         fromStatus: order.status,
-        toStatus: "CONFIRMED",
-        note: "Khách xác nhận qua link",
+        toStatus: choThanhToan ? "AWAITING_PAYMENT" : "CONFIRMED",
+        note: choThanhToan
+          ? "Khách xác nhận qua link, chờ thanh toán online"
+          : "Khách xác nhận qua link",
       });
 
       await appendOutboxEvent(client, {
         aggregateId: order.id,
-        eventType: "order.confirmed",
+        eventType: choThanhToan ? "order.awaiting_payment" : "order.confirmed",
         payload: { orderId: order.id, orderCode: order.orderCode },
       });
 
       // Tồn khả dụng vừa giảm — màn hình shop phải thấy ngay.
-      await appendInventoryChangedEvents(client, {
-        orderId: order.id,
-        reason: "ORDER_CONFIRMED",
-      });
+      if (!choThanhToan) {
+        await appendInventoryChangedEvents(client, {
+          orderId: order.id,
+          reason: "ORDER_CONFIRMED",
+        });
+      }
 
       const result = await loadOrder(client, order.id);
       await client.query("COMMIT");
@@ -292,6 +300,91 @@ export class OrderLifecycleService {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * GIỮ TỒN cho mọi dòng của đơn — nơi duy nhất tồn được giữ.
+   *
+   * Đơn nháp không giữ gì, nên N khách cùng chốt món cuối đều tới được
+   * đây. holdStock là nơi phân thắng thua: điều kiện "còn đủ hàng" nằm
+   * ngay trong câu UPDATE, hai transaction tranh món cuối thì đúng một
+   * bên qua; bên kia nhận OutOfStock và transaction gọi phải ROLLBACK.
+   *
+   * Giữ ĐỦ hoặc không giữ gì: khách vừa đọc tổng tiền rồi mới bấm, âm
+   * thầm bớt số lượng sau lưng họ là đổi hợp đồng.
+   */
+  private async giuTonChoDon(client: PoolClient, orderId: string): Promise<void> {
+    for (const item of await findOrderItemsForHold(client, orderId)) {
+      await holdStock(client, item.skuId, item.quantity);
+      await upsertReservation(client, {
+        orderId,
+        orderItemId: item.id,
+        skuId: item.skuId,
+        quantity: item.quantity,
+      });
+    }
+  }
+
+  /**
+   * Tiền về cho đơn CHỜ THANH TOÁN (chọn online): giờ mới giữ tồn.
+   *
+   * Chạy TRONG transaction của khoản thu (cùng client) để "đã thu" và
+   * "đã giữ hàng" cùng sống hoặc cùng chết. Hết hàng lúc này thì huỷ
+   * đơn với lý do OUT_OF_STOCK_AT_PAYMENT; khoản thu vẫn PAID để shop
+   * hoàn tiền — cái giá của việc không giữ hàng trước khi khách trả.
+   *
+   * Đơn không còn chờ thanh toán (COD, đã huỷ, đã giữ rồi) thì không
+   * làm gì: khoản thu COD về lúc giao cũng đi qua đây.
+   */
+  async giuHangSauThanhToan(
+    client: PoolClient,
+    orderId: string
+  ): Promise<"CONFIRMED" | "OUT_OF_STOCK" | "SKIPPED"> {
+    const order = await findOrderById(client, orderId);
+    if (!order || order.status !== "AWAITING_PAYMENT") return "SKIPPED";
+
+    await client.query("SAVEPOINT giu_hang");
+    try {
+      await this.giuTonChoDon(client, orderId);
+    } catch (err) {
+      if (!(err instanceof OutOfStockError)) throw err;
+      // Trả lại những dòng đã giữ dở, rồi huỷ đơn — KHÔNG huỷ khoản thu.
+      await client.query("ROLLBACK TO SAVEPOINT giu_hang");
+      await markCancelled(client, { orderId, reason: "OUT_OF_STOCK_AT_PAYMENT" });
+      await recordStatusHistory(client, {
+        orderId,
+        fromStatus: "AWAITING_PAYMENT",
+        toStatus: "CANCELLED",
+        note: "Tiền về nhưng hết hàng — cần hoàn tiền cho khách",
+      });
+      await appendOutboxEvent(client, {
+        aggregateId: orderId,
+        eventType: "order.cancelled",
+        payload: { orderId, orderCode: order.orderCode, reason: "OUT_OF_STOCK_AT_PAYMENT" },
+      });
+      return "OUT_OF_STOCK";
+    }
+
+    // Đơn vừa bị huỷ ở nơi khác trong lúc giữ: trả lại tồn vừa giữ.
+    if (!(await markPaidAndConfirmed(client, orderId))) {
+      await client.query("ROLLBACK TO SAVEPOINT giu_hang");
+      return "SKIPPED";
+    }
+    await client.query("RELEASE SAVEPOINT giu_hang");
+
+    await recordStatusHistory(client, {
+      orderId,
+      fromStatus: "AWAITING_PAYMENT",
+      toStatus: "CONFIRMED",
+      note: "Đã thanh toán, giữ hàng",
+    });
+    await appendOutboxEvent(client, {
+      aggregateId: orderId,
+      eventType: "order.confirmed",
+      payload: { orderId, orderCode: order.orderCode },
+    });
+    await appendInventoryChangedEvents(client, { orderId, reason: "ORDER_CONFIRMED" });
+    return "CONFIRMED";
   }
 
   /**
