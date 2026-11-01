@@ -1,6 +1,8 @@
 export type OrderStatus =
   | "DRAFT"
   | "PENDING_CONFIRMATION"
+  /** Đã xác nhận địa chỉ, chọn trả online, chưa giữ tồn — tiền về mới giữ. */
+  | "AWAITING_PAYMENT"
   | "CONFIRMED"
   | "PROCESSING"
   | "SHIPPING"
@@ -14,6 +16,9 @@ export type OrderSource =
   | "COMMENT_SYNTAX"
   | "COMMENT_AI"
   | "PURCHASE_REQUEST";
+
+/** Lý do huỷ đặc biệt: tiền online về nhưng hết hàng, shop phải hoàn tiền. */
+export const HUY_VI_HET_HANG_LUC_THANH_TOAN = "OUT_OF_STOCK_AT_PAYMENT";
 
 export interface OrderItem {
   id: string;
@@ -50,6 +55,8 @@ export interface Order {
   addressNormalized?: boolean;
   /** Tên phiên live đã chốt đơn này. */
   livestreamTitle?: string | null;
+  /** Lý do huỷ (chỉ có khi CANCELLED), ví dụ OUT_OF_STOCK_AT_PAYMENT. */
+  cancelReason?: string | null;
   items: OrderItem[];
 }
 

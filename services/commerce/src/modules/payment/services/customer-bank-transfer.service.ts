@@ -43,7 +43,8 @@ export class CustomerBankTransferService {
         bank.merchantId && bank.bankCode && bank.accountNumber &&
         bank.accountName && bank.sepayWebhookSecret && bank.merchantId === order.merchantId,
       );
-      const active = ["CONFIRMED", "PROCESSING"].includes(order.status);
+      // AWAITING_PAYMENT: đơn online chờ tiền về — đúng lúc cần hướng dẫn chuyển khoản.
+      const active = ["AWAITING_PAYMENT", "CONFIRMED", "PROCESSING"].includes(order.status);
       const available = configured && active && (!payment || payment.method === "ONLINE" &&
         (!payment.provider || payment.provider === "sepay-test"));
       const reason = !configured ? "UNCONFIGURED" : !active ? "ORDER_CLOSED" :
@@ -80,7 +81,7 @@ export class CustomerBankTransferService {
           !bank.accountNumber || !bank.accountName || !bank.sepayWebhookSecret) {
         throw new CustomerTransferError(503, "Shop chưa cấu hình chuyển khoản thử nghiệm.");
       }
-      if (order.status !== "CONFIRMED" && order.status !== "PROCESSING") {
+      if (order.status !== "AWAITING_PAYMENT" && order.status !== "CONFIRMED" && order.status !== "PROCESSING") {
         throw new CustomerTransferError(409, "Đơn không còn ở trạng thái nhận thanh toán.");
       }
       orderId = order.id;
@@ -168,7 +169,7 @@ export class CustomerBankTransferService {
       if (!order) {
         throw new CustomerTransferError(404, "Không tìm thấy liên kết đơn hàng.");
       }
-      if (order.status !== "CONFIRMED" && order.status !== "PROCESSING") {
+      if (order.status !== "AWAITING_PAYMENT" && order.status !== "CONFIRMED" && order.status !== "PROCESSING") {
         throw new CustomerTransferError(
           409,
           "Đơn không còn ở trạng thái nhận thanh toán."

@@ -51,6 +51,7 @@ type HopThoai = "hoSo" | "diaChi" | null;
 export function CustomerShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  // Trang live toàn màn hình (/ và /live*) có header riêng của nó.
   const isLivestreamPage = pathname === "/" || pathname?.startsWith("/live");
 
   const userSnapshot = useSyncExternalStore(
