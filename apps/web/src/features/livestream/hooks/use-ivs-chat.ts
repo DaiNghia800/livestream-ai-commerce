@@ -446,6 +446,88 @@ export function useIvsChat({
           });
           onMessageReceivedRef.current?.(studioMsg);
         }
+
+        // Bắt sự kiện đơn hàng được AI nhận diện & giữ kho thành công
+        if (evt.eventName === "app:order_detected" && evt.attributes) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("liveorder:order_detected", { detail: evt.attributes })
+            );
+          }
+
+          const timestamp = evt.sendTime
+            ? new Date(evt.sendTime).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : new Date().toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+          const systemOrderMsg: StudioChatMessage = {
+            id: `order-sys-${evt.attributes.orderId || Date.now()}`,
+            userId: "ai-system",
+            userName: "🤖 Trợ lý AI",
+            content: `🎉 Chúc mừng ${evt.attributes.customerName} đã chốt thành công ${evt.attributes.quantity || 1}x ${evt.attributes.productName || evt.attributes.productCode}! Hệ thống đã giữ tồn kho trong 2 phút.`,
+            timestamp,
+            badge: "AI Chốt Đơn",
+            status: "PARSED",
+            extractedSku: evt.attributes.productCode,
+            extractedQuantity: Number(evt.attributes.quantity) || 1,
+            orderCreated: true,
+            orderId: evt.attributes.orderId,
+          };
+
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === systemOrderMsg.id)) return prev;
+            const updated = [...prev, systemOrderMsg];
+            saveCachedChatMessages(livestreamId, updated);
+            return updated;
+          });
+          onMessageReceivedRef.current?.(systemOrderMsg);
+        }
+
+        // Bắt sự kiện AI yêu cầu khách làm rõ thông tin chốt đơn
+        if (evt.eventName === "app:order_needs_clarification" && evt.attributes) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("liveorder:order_needs_clarification", {
+                detail: evt.attributes,
+              })
+            );
+          }
+
+          const timestamp = evt.sendTime
+            ? new Date(evt.sendTime).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : new Date().toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+          const systemClarifyMsg: StudioChatMessage = {
+            id: `clarify-sys-${Date.now()}`,
+            userId: "ai-system",
+            userName: "🤖 Trợ lý AI",
+            content:
+              evt.attributes.message ||
+              `@${evt.attributes.customerName} vui lòng bình luận thêm màu sắc hoặc kích thước để shop giữ hàng nhé!`,
+            timestamp,
+            badge: "AI Hỗ Trợ",
+            status: "NEEDS_REVIEW",
+            reviewReason: "Cần bổ sung chi tiết",
+          };
+
+          setChatMessages((prev) => {
+            const updated = [...prev, systemClarifyMsg];
+            saveCachedChatMessages(livestreamId, updated);
+            return updated;
+          });
+          onMessageReceivedRef.current?.(systemClarifyMsg);
+        }
       });
 
       roomRef.current = room;

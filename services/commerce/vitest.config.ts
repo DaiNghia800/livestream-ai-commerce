@@ -72,6 +72,8 @@ export default defineConfig({
       DATABASE_URL: defaultTestDb,
       COMMERCE_DATABASE_URL: defaultTestDb,
       PUBLIC_BASE_URL: "http://localhost:8000",
+      HOLD_SOFT_SECONDS: "300",
+      HOLD_RISKY_SECONDS: "180",
       VNPAY_TMN_CODE: "TESTTMN1",
       VNPAY_HASH_SECRET: "khoa-gia-chi-dung-cho-test-khong-phai-khoa-that",
       MOMO_PARTNER_CODE: "MOMOTEST",

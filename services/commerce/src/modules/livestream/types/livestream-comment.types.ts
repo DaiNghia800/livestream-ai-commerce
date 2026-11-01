@@ -12,6 +12,7 @@ export interface LivestreamComment {
 }
 
 export interface CreateCommentInput {
+  id?: string;
   userId: string;
   username: string;
   avatarUrl?: string | null;

@@ -83,6 +83,44 @@ describe("LivestreamCommentRepository Unit Tests", () => {
       ]);
     });
 
+    it("tạo comment thành công với id chỉ định sẵn (explicit id)", async () => {
+      const mockRow = {
+        id: "explicit-cmt-id",
+        livestreamId: "live-1",
+        userId: "user-1",
+        username: "user_a",
+        avatarUrl: null,
+        content: "Test explicit id",
+        role: "buyer",
+        createdAt: new Date().toISOString(),
+      };
+
+      const querySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
+        rows: [mockRow],
+      } as any);
+
+      const result = await repo.create("live-1", {
+        id: "explicit-cmt-id",
+        userId: "user-1",
+        username: "user_a",
+        content: "Test explicit id",
+      });
+
+      expect(result).toEqual(mockRow);
+      expect(querySpy).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO livestream_comments"),
+        [
+          "explicit-cmt-id",
+          "live-1",
+          "user-1",
+          "user_a",
+          null,
+          "Test explicit id",
+          "buyer",
+        ]
+      );
+    });
+
     it("findByLivestreamId gọi query với limit mặc định và limit tùy chọn", async () => {
       const querySpy = vi.spyOn(pool, "query").mockResolvedValue({
         rows: [],

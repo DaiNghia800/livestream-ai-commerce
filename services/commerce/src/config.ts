@@ -19,6 +19,7 @@ export interface AppConfig {
   s3MediaBucketName?: string;
   sqsQueueUrl?: string;
   aiWorkerResultQueueUrl?: string;
+  sqsAiResultsQueueUrl?: string;
   redisUrl: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
@@ -190,6 +191,7 @@ export const config: AppConfig = {
     undefined,
   sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
   aiWorkerResultQueueUrl: process.env.AI_WORKER_RESULT_QUEUE_URL || undefined,
+  sqsAiResultsQueueUrl: process.env.SQS_AI_RESULTS_QUEUE_URL || undefined,
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   // Đề nghị nằm trong hàng đợi duyệt giữ tồn tối đa chừng này rồi tự
   // hết hạn. ĐƠN NHÁP thì không giữ tồn và không có hạn: tồn chỉ được

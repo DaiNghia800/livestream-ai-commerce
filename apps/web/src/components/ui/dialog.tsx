@@ -24,6 +24,12 @@ export function Dialog({
     if (!open || !dialog) return;
     const previousFocus = document.activeElement as HTMLElement | null;
     dialog.showModal();
+    requestAnimationFrame(() => {
+      const closeBtn = dialog.querySelector<HTMLButtonElement>(
+        "#dialog-default-close-btn",
+      );
+      closeBtn?.focus();
+    });
     return () => {
       dialog.close();
       previousFocus?.focus();
@@ -56,8 +62,15 @@ export function Dialog({
           </button>
         </div>
         {children}
-        {footer ?? (
-          <Button variant="secondary" autoFocus onClick={onClose}>
+        {footer !== undefined ? (
+          footer
+        ) : (
+          <Button
+            id="dialog-default-close-btn"
+            variant="secondary"
+            autoFocus
+            onClick={onClose}
+          >
             Đóng
           </Button>
         )}
