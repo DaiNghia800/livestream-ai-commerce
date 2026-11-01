@@ -170,6 +170,66 @@ export async function markConfirmed(
 }
 
 /**
+ * Khách xác nhận nhưng chọn trả online: đơn chờ tiền về, CHƯA giữ tồn.
+ * confirmed_at để trống tới khi thật sự chuyển CONFIRMED.
+ */
+export async function markAwaitingPayment(
+  client: PoolClient,
+  orderId: string
+): Promise<boolean> {
+  const result = await client.query(
+    `UPDATE orders
+        SET status = 'AWAITING_PAYMENT'
+      WHERE id = $1
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')`,
+    [orderId]
+  );
+  return result.rowCount === 1;
+}
+
+/** Tiền về và đã giữ được tồn: AWAITING_PAYMENT → CONFIRMED. */
+export async function markPaidAndConfirmed(
+  client: PoolClient,
+  orderId: string
+): Promise<boolean> {
+  const result = await client.query(
+    `UPDATE orders
+        SET status       = 'CONFIRMED',
+            confirmed_at = NOW()
+      WHERE id = $1
+        AND status = 'AWAITING_PAYMENT'`,
+    [orderId]
+  );
+  return result.rowCount === 1;
+}
+
+/**
+ * Đơn chờ thanh toán đã quá hạn (tính từ lúc vào AWAITING_PAYMENT, theo
+ * lịch sử trạng thái). Job dọn gọi hàm này; giới hạn mỗi lượt để không
+ * khoá bảng lâu.
+ */
+export async function findAwaitingPaymentOlderThan(
+  client: PoolClient,
+  hours: number,
+  limit = 100
+): Promise<string[]> {
+  const result = await client.query<{ id: string }>(
+    `SELECT o.id
+       FROM orders o
+      WHERE o.status = 'AWAITING_PAYMENT'
+        AND COALESCE(
+              (SELECT max(h.created_at) FROM order_status_history h
+                WHERE h.order_id = o.id AND h.to_status = 'AWAITING_PAYMENT'),
+              o.created_at
+            ) < NOW() - make_interval(hours => $1)
+      ORDER BY o.created_at
+      LIMIT $2`,
+    [hours, limit]
+  );
+  return result.rows.map((r) => r.id);
+}
+
+/**
  * Huỷ đơn. Cho phép từ mọi trạng thái chưa kết thúc.
  *
  * Người gọi phải trả tồn (releaseStock) TRONG CÙNG transaction nếu
@@ -186,7 +246,7 @@ export async function markCancelled(
             cancelled_at  = NOW(),
             cancel_reason = $2
       WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'PROCESSING')
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION', 'AWAITING_PAYMENT', 'CONFIRMED', 'PROCESSING')
         AND NOT EXISTS (
           SELECT 1 FROM shipments s WHERE s.order_id = orders.id
             AND s.status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
@@ -376,12 +436,21 @@ export async function findOrderDetailByCode(
                            'id', oi.id,
                            'skuId', oi.sku_id::text,
                            'skuCode', s.sku_code,
+                           'productId', pr.id::text,
+                           'productCode', pr.code,
                            'productName', pr.name,
                            'variantName', s.variant_name,
                            'quantity', oi.quantity,
                            'requestedQty', oi.requested_qty,
                            'isPartial', oi.is_partial,
-                           'unitPrice', oi.unit_price
+                           'unitPrice', oi.unit_price,
+                           -- Ảnh của đúng biến thể nếu có, không thì ảnh sản phẩm;
+                           -- cùng cách chọn với màn khách (loadOrder).
+                           'imageUrl', (SELECT img.url FROM product_images img
+                                         WHERE img.sku_id = s.id OR img.product_id = pr.id
+                                         ORDER BY (img.sku_id = s.id) DESC, img.is_primary DESC,
+                                                  img.sort_order
+                                         LIMIT 1)
                        ) ORDER BY oi.created_at)
                   FROM order_items oi
                   JOIN product_skus s ON s.id = oi.sku_id

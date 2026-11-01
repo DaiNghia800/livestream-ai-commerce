@@ -140,11 +140,46 @@ test("order detail renders items, history and the payment box", async ({
   // exact: true để không dính luôn dòng trong phiếu in (ẩn, nhưng
   // vẫn nằm trong DOM và ghi "Áo sơ mi lụa · Be · L").
   await expect(page.getByText("Áo sơ mi lụa", { exact: true })).toBeVisible();
+  // Tên sản phẩm là link sang trang sản phẩm đó.
+  await expect(page.getByRole("link", { name: "Áo sơ mi lụa" })).toHaveAttribute(
+    "href",
+    "/shop/products/31/edit",
+  );
   await expect(page.getByText("Khách xác nhận qua link")).toBeVisible();
   // Đơn đã xác nhận nhưng chưa có khoản thu — phải mời tạo.
   await expect(page.getByText("Đơn chưa có khoản thu.")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   expect(consoleErrors).toEqual([]);
+});
+
+test("long payment link and recipient values stay inside their cards", async ({ page }) => {
+  // Trước đây .link-inline có nowrap nên "Xem chi tiết khoản thu LIVE-…-pay"
+  // tràn ra khỏi thẻ Thanh toán rộng 360px.
+  await stubApi(page, { orderDetail: {
+    ...ORDER_DETAIL,
+    recipientName: "Nguyễn Thị Phương Thảo Nguyễn Thị Phương Thảo",
+    recipientPhone: "0989541246",
+    shippingAddress: "Số 12 Nguyễn Huệ, Phường Hưng Phú, Quận Cái Răng, Thành phố Cần Thơ, Việt Nam",
+    payment: {
+      id: "pay-1", method: "ONLINE", status: "PENDING", amount: "398000.00",
+      paidAmount: "0.00", txnRef: "LIVE-20261022-98eac0-pay", provider: "VNPAY",
+    },
+  } });
+  await page.goto(`/shop/orders/${ORDER_DETAIL.orderCode}`);
+
+  const link = page.getByRole("link", { name: /Xem chi tiết khoản thu/ });
+  await expect(link).toBeVisible();
+  const card = page.locator("#order-payment");
+  const [a, c] = await Promise.all([link.boundingBox(), card.boundingBox()]);
+  expect(a && c && a.x + a.width <= c.x + c.width + 1).toBe(true);
+
+  // Khoanh vào #main-content: phiếu in ẩn (#print-root) cũng ghi tên này.
+  const nguoiNhan = page
+    .locator("#main-content dd")
+    .filter({ hasText: "Nguyễn Thị Phương Thảo Nguyễn Thị Phương Thảo" });
+  const theNguoiNhan = nguoiNhan.locator("xpath=ancestor::*[contains(@class,'card')][1]");
+  const [n, t] = await Promise.all([nguoiNhan.boundingBox(), theNguoiNhan.boundingBox()]);
+  expect(n && t && n.x + n.width <= t.x + t.width + 1).toBe(true);
 });
 
 test("active shipment routes staff to tracking instead of manual completion", async ({ page }) => {

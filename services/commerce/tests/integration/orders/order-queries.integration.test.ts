@@ -127,6 +127,11 @@ describe("GET /api/orders/by-code/:orderCode", () => {
     expect(res.body.items[0].productName).toBeTruthy();
     expect(res.body.items[0].skuCode).toBeTruthy();
     expect(res.body.items[0].quantity).toBe(3);
+    // Màn chi tiết đơn của shop cần id để link sang trang sản phẩm và
+    // ảnh để nhận ra món; chưa có ảnh thì là null chứ không thiếu khoá.
+    expect(res.body.items[0].productId).toBeTruthy();
+    expect(res.body.items[0].productCode).toBeTruthy();
+    expect(res.body.items[0]).toHaveProperty("imageUrl");
   });
 
   it("trả customerId và merchantId để tạo lại đơn được", async () => {

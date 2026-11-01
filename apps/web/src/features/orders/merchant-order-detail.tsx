@@ -33,6 +33,7 @@ import {
   paymentMethods,
   paymentStatuses,
 } from "./labels";
+import styles from "./merchant-order-detail.module.css";
 
 const HOLDING = ["DRAFT", "PENDING_CONFIRMATION"];
 
@@ -155,7 +156,7 @@ function OrderDetailView({
   }
 
   return (
-    <>
+    <div className={styles.chiTiet}>
       <div className="page-head">
         <div>
           <nav className="breadcrumb" aria-label="Đường dẫn trang">
@@ -263,6 +264,16 @@ function OrderDetailView({
             Không khôi phục lại được — hàng có thể đã bán cho khách khác.
             Bấm <strong>Tạo lại đơn</strong> để giữ hàng lại từ đầu; mã nào
             hết sẽ được báo ngay.
+          </p>
+        </div>
+      )}
+
+      {order.status === "AWAITING_PAYMENT" && (
+        <div className="notice notice-warning" role="status">
+          <h3>Đơn chờ thanh toán online</h3>
+          <p>
+            Khách chọn trả online nhưng tiền chưa về. Hàng <strong>chưa được giữ</strong>;
+            hệ thống sẽ giữ và chuyển đơn sang đã xác nhận ngay khi cổng báo đã thu.
           </p>
         </div>
       )}
@@ -383,7 +394,26 @@ function OrderDetailView({
                   {order.items.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <strong>{item.productName}</strong>
+                        <div className={styles.oSanPham}>
+                          {/* Ảnh để nhận ra món ngay, như bảng sản phẩm.
+                              Chưa có ảnh thì ô trống có biểu tượng, không
+                              để lỗ hổng làm hàng lệch. */}
+                          <span className={styles.khungAnh} aria-hidden="true">
+                            {item.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img className={styles.anh} src={item.imageUrl} alt="" />
+                            ) : (
+                              <Package size={20} />
+                            )}
+                          </span>
+                          <div className={styles.tenSanPham}>
+                            {/* Trang sản phẩm duy nhất hiện có là trang sửa. */}
+                            <Link href={`/shop/products/${item.productId}/edit`}>
+                              {item.productName}
+                            </Link>
+                            <p className={styles.maSanPham}>{item.productCode}</p>
+                          </div>
+                        </div>
                         {/* Giữ được ít hơn khách muốn — BẪY-06. Shop cần
                             thấy ngay để còn nhắn lại khách. */}
                         {item.isPartial && (
@@ -563,7 +593,7 @@ function OrderDetailView({
           onChanged();
         }}
       />
-    </>
+    </div>
   );
 }
 
