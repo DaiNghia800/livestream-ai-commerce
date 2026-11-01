@@ -134,6 +134,10 @@ export async function readLivestreamStatus(
 /**
  * Tìm đơn nháp đang mở của khách trong phiên, KHOÁ dòng lại.
  *
+ * "Đang mở" = DRAFT hoặc PENDING_CONFIRMATION (đã mở link/giỏ nhưng
+ * chưa xác nhận). Khách mở giỏ xem rồi chốt thêm mã thì mã đó phải vào
+ * cùng giỏ, không đẻ đơn thứ hai.
+ *
  * `FOR UPDATE` là bắt buộc: hai bình luận của cùng một khách đến gần
  * như đồng thời sẽ cùng tìm thấy đơn này: khoá dòng buộc chúng xếp hàng
  * để cộng dồn tuần tự, thay vì cùng ghi rồi mất một bên.
@@ -148,7 +152,8 @@ export async function findOpenDraftForUpdate(
 ): Promise<{ id: string } | null> {
   const result = await client.query<{ id: string }>(
     `SELECT id FROM orders
-      WHERE customer_id = $1 AND livestream_id = $2 AND status = 'DRAFT'
+      WHERE customer_id = $1 AND livestream_id = $2
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
       FOR UPDATE`,
     [params.customerId, params.livestreamId]
   );
@@ -191,7 +196,8 @@ export async function insertOrder(
                  || '-' || substring(replace(id::text, '-', '') FROM 1 FOR 6),
          $1, $2, $3, $4, $5, 'DRAFT', $6, $7
      FROM new_order
-     ON CONFLICT (livestream_id, customer_id) WHERE status = 'DRAFT' DO NOTHING
+     ON CONFLICT (livestream_id, customer_id)
+         WHERE status IN ('DRAFT', 'PENDING_CONFIRMATION') DO NOTHING
      RETURNING id, order_code, confirm_token`,
     [
       dto.customerId,
@@ -434,6 +440,7 @@ export async function loadOrder(
             o.merchant_id   AS "merchantId",
             o.livestream_id AS "livestreamId",
             o.status,
+            o.cancel_reason AS "cancelReason",
             o.source,
             o.total_amount  AS "totalAmount",
             o.held_until    AS "heldUntil",

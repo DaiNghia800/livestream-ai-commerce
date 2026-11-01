@@ -17,35 +17,26 @@
 
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
-import { MapPin, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import {
-  ApiError,
   addressBookApi,
   layTokenKhach,
   ordersApi,
   paymentsApi,
   shippingApi,
-  type CustomerOrder,
   type UserAddress,
 } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
 import styles from "./customer-order-confirmation.module.css";
-import {
-  AddressFormDialog,
-  ChonDiaChiDialog,
-  TEN_NHAN,
-  docDiaChi,
-} from "./address-book-dialog";
+import { AddressFormDialog, ChonDiaChiDialog } from "./address-book-dialog";
 import { AddressPicker } from "./address-picker";
+import { ChonCachTra, DiaChiNhanHang, loiXacNhan, type PhuongThuc } from "./checkout-parts";
 import { CustomerBankTransfer } from "./customer-bank-transfer";
 import { CustomerOnlinePayment } from "./customer-online-payment";
-
-type PhuongThuc = "COD" | "ONLINE";
 
 export function CustomerOrderConfirmation({ token }: { token: string }) {
   const { data, error, loading, reload } = useApi(
@@ -77,6 +68,11 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
   // hỏi lại thì màn hình đứng ở "chờ thanh toán" dù đã thu xong, và
   // khách rất dễ trả thêm lần nữa.
   const { daThu, phuongThuc } = useThanhToanXong(token, data?.status);
+  // Tiền về thì đơn đổi trạng thái phía server (giữ hàng → CONFIRMED, hay
+  // hết hàng → CANCELLED): đọc lại để màn hình nói đúng chuyện đã xảy ra.
+  useEffect(() => {
+    if (daThu) reload();
+  }, [daThu, reload]);
   // Chọn COD là xong việc tại đây: không có cổng nào để đi tiếp, và
   // không được lẫn với khối chuyển khoản.
   const laCod = phuongThuc === "COD";
@@ -183,10 +179,22 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
         <p className="muted">Kiểm tra sản phẩm và địa chỉ trước khi chốt đơn.</p>
       </div>
 
-      {daThu && (
+      {data.status === "CANCELLED" && data.cancelReason === "OUT_OF_STOCK_AT_PAYMENT" ? (
+        <div className="notice notice-danger" role="alert">
+          <strong>Rất tiếc, hết hàng đúng lúc tiền về.</strong> Đơn đã bị huỷ
+          và shop sẽ hoàn lại số tiền bạn đã chuyển.
+        </div>
+      ) : daThu && data.status !== "AWAITING_PAYMENT" ? (
         <div className="notice notice-info" role="status">
-          <strong>Đã nhận được thanh toán.</strong> Shop sẽ đóng gói và bàn
-          giao cho đơn vị vận chuyển.
+          <strong>Đã nhận được thanh toán, hàng đã được giữ cho bạn.</strong> Shop
+          sẽ đóng gói và bàn giao cho đơn vị vận chuyển.
+        </div>
+      ) : null}
+      {data.status === "AWAITING_PAYMENT" && !laCod && (
+        <div className="notice notice-warning" role="status">
+          <strong>Đơn đang chờ thanh toán.</strong> Hàng chưa được giữ; ngay
+          khi tiền về, hệ thống giữ hàng và chuyển đơn sang đã xác nhận.
+          Chọn cổng thanh toán bên dưới.
         </div>
       )}
       {laCod && !daThu && (
@@ -195,7 +203,7 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
           nhận hàng. Shop sẽ đóng gói và bàn giao cho đơn vị vận chuyển.
         </div>
       )}
-      {!canConfirm && !daThu && !laCod && (
+      {!canConfirm && !daThu && !laCod && data.status !== "AWAITING_PAYMENT" && !(data.status === "CANCELLED" && data.cancelReason === "OUT_OF_STOCK_AT_PAYMENT") && (
         <div className={data.status === "CONFIRMED" || data.status === "PROCESSING" || data.status === "SHIPPING" || data.status === "COMPLETED" ? "notice notice-info" : "notice notice-warning"} role="status">
           {data.status === "EXPIRED" || data.status === "CANCELLED" || data.status === "RETURNED"
             ? "Đơn này đã đóng. Hãy liên hệ shop nếu bạn vẫn muốn mua."
@@ -310,7 +318,7 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
 
           {/* Khối QR nằm ở cột trái cho cân: cột phải sau khi xác
               nhận đã dài gấp đôi, còn bên này trống một mảng lớn. */}
-          {!laCod && ["CONFIRMED", "PROCESSING", "SHIPPING", "COMPLETED"].includes(data.status) && (
+          {!laCod && ["AWAITING_PAYMENT", "CONFIRMED", "PROCESSING", "SHIPPING", "COMPLETED"].includes(data.status) && (
             <CustomerBankTransfer token={token} />
           )}
         </div>
@@ -385,7 +393,7 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
           {/* Thu xong thì GIẤU hẳn. Để nguyên là mời khách trả lần
               hai cho một đơn đã thanh toán — lỗi tiền bạc, không
               phải lỗi hiển thị. */}
-          {!daThu && !laCod && ["CONFIRMED", "PROCESSING"].includes(data.status) && (
+          {!daThu && !laCod && ["AWAITING_PAYMENT", "CONFIRMED", "PROCESSING"].includes(data.status) && (
             <CustomerOnlinePayment token={token} amount={data.totalAmount} />
           )}
         </div>
@@ -492,115 +500,6 @@ function GiuCho({ soMon }: { soMon: number }) {
 }
 
 /**
- * Câu báo lỗi khi xác nhận thất bại.
- *
- * Riêng 409 OutOfStock nói thẳng mã nào thiếu và còn bao nhiêu: đơn
- * nháp không giữ tồn, người khác vừa bấm trước. Khách cần biết để
- * liên hệ shop sửa đơn — bấm lại không giải quyết được gì.
- */
-function loiXacNhan(cause: unknown, items: CustomerOrder["items"]): string {
-  if (cause instanceof ApiError && cause.status === 409) {
-    const body = cause.body as
-      | { error?: string; rejected?: Array<{ skuId: string; requested: number; sellable: number }> }
-      | undefined;
-    if (body?.error === "OutOfStock" && body.rejected?.length) {
-      const dong = body.rejected.map((r) => {
-        const item = items.find((i) => i.skuId === r.skuId);
-        const ten = item?.productName || item?.skuCode || `Mã ${r.skuId}`;
-        return r.sellable > 0
-          ? `${ten} chỉ còn ${r.sellable} (bạn chọn ${r.requested})`
-          : `${ten} đã hết hàng`;
-      });
-      return `Rất tiếc, ${dong.join("; ")} — người khác vừa xác nhận trước. Liên hệ shop để sửa đơn.`;
-    }
-  }
-  return cause instanceof Error ? cause.message : "Không xác nhận được đơn.";
-}
-
-function ChonCachTra({
-  value,
-  chon,
-  onChon,
-  ten,
-  mo,
-}: {
-  value: PhuongThuc;
-  chon: PhuongThuc;
-  onChon: (v: PhuongThuc) => void;
-  ten: string;
-  mo: string;
-}) {
-  return (
-    <label className={`${styles.cachTra} ${chon === value ? styles.cachTraChon : ""}`}>
-      <input
-        type="radio"
-        name="phuong-thuc-thanh-toan"
-        value={value}
-        checked={chon === value}
-        onChange={() => onChon(value)}
-      />
-      <span>
-        <strong>{ten}</strong>
-        <span className="muted">{mo}</span>
-      </span>
-    </label>
-  );
-}
-
-/**
- * Dòng "Địa chỉ nhận hàng" của khách đã đăng nhập — như các sàn lớn:
- * tên (SĐT) · địa chỉ · nhãn, và một chữ "Thay đổi". Không có ô để gõ
- * lại; muốn khác thì chọn hoặc thêm trong sổ.
- */
-function DiaChiNhanHang({
-  dangTai,
-  diaChi,
-  onDoi,
-  onThem,
-}: {
-  dangTai: boolean;
-  diaChi: UserAddress | null;
-  onDoi: () => void;
-  onThem: () => void;
-}) {
-  if (dangTai) {
-    return <p className="muted">Đang tải sổ địa chỉ…</p>;
-  }
-  if (!diaChi) {
-    return (
-      <div className={styles.diaChiTrong}>
-        <p className="muted">Bạn chưa có địa chỉ nhận hàng.</p>
-        <Button type="button" variant="secondary" onClick={onThem}>
-          <Plus size={16} aria-hidden="true" /> Thêm địa chỉ
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <div className={styles.diaChiNhan} data-testid="dia-chi-nhan-hang">
-      <span className={styles.diaChiNhanDau}>
-        <MapPin size={16} aria-hidden="true" /> Địa chỉ nhận hàng
-      </span>
-      <div className={styles.diaChiNhanThan}>
-        <span className={styles.diaChiNhanNguoi}>
-          <strong>{diaChi.recipientName}</strong> ({diaChi.recipientPhone})
-        </span>
-        <span className={styles.diaChiNhanDong}>{docDiaChi(diaChi)}</span>
-        {(diaChi.isDefault || diaChi.label) && (
-          <span className={styles.diaChiNhanNhan}>
-            {diaChi.isDefault && <span className={styles.nhanMacDinh}>Mặc định</span>}
-            {diaChi.label && <span className={styles.nhanLoai}>{TEN_NHAN[diaChi.label]}</span>}
-          </span>
-        )}
-        <button type="button" className={styles.doiDiaChi} onClick={onDoi}>
-          Thay đổi
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
  * Hỏi lại tình trạng thu tiền cho tới khi xong.
  *
  * Dừng hẳn khi đã thu đủ — để nguyên vòng lặp thì một tab bỏ quên
@@ -619,7 +518,7 @@ function useThanhToanXong(
   const dangCho =
     !xong &&
     phuongThuc !== "COD" &&
-    (status === "CONFIRMED" || status === "PROCESSING");
+    (status === "AWAITING_PAYMENT" || status === "CONFIRMED" || status === "PROCESSING");
 
   useEffect(() => {
     if (!dangCho) return;

@@ -141,7 +141,13 @@ export async function postLivestreamCommentWithReceipt(
 export async function getCommentConfirmation(
   commentId: string,
   receipt: string
-): Promise<{ status: "processing" | "needs_review" | "ready" | "unavailable"; orderCode?: string; confirmPath?: string }> {
+): Promise<{
+  status: "processing" | "needs_review" | "ready" | "unavailable";
+  orderCode?: string;
+  confirmPath?: string;
+  /** Lý do không ra đơn (OUT_OF_STOCK, SKU_NOT_FOUND, NO_PURCHASE_INTENT…). */
+  reason?: string | null;
+}> {
   const response = await fetch(
     `${COMMERCE_API_BASE_URL}/api/orders/by-comment/${encodeURIComponent(commentId)}/confirmation`,
     { headers: { "X-Comment-Receipt": receipt }, cache: "no-store" }

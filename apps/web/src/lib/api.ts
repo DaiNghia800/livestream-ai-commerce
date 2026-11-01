@@ -91,6 +91,8 @@ function safeParse(text: string): unknown {
 export type OrderStatus =
   | "DRAFT"
   | "PENDING_CONFIRMATION"
+  /** Chọn trả online, chưa giữ tồn; tiền về mới giữ và chuyển CONFIRMED. */
+  | "AWAITING_PAYMENT"
   | "CONFIRMED"
   | "PROCESSING"
   | "SHIPPING"
@@ -120,7 +122,12 @@ export interface OrderItemLine {
   id: string;
   skuId: string;
   skuCode: string;
+  /** Id sản phẩm cha để link sang trang sản phẩm. */
+  productId: string;
+  productCode: string;
   productName: string;
+  /** Ảnh biến thể, không có thì ảnh sản phẩm; null khi chưa có ảnh nào. */
+  imageUrl: string | null;
   variantName: string | null;
   quantity: number;
   requestedQty: number;
@@ -343,6 +350,8 @@ export interface CustomerOrder {
   addressNormalized: boolean;
   /** Tên phiên live đã chốt đơn này. */
   livestreamTitle: string | null;
+  /** Lý do huỷ, ví dụ OUT_OF_STOCK_AT_PAYMENT (tiền về nhưng hết hàng). */
+  cancelReason?: string | null;
   items: Array<{
     id: string;
     skuId: string;
@@ -479,6 +488,45 @@ export interface MyOrder {
   payment: { method: string; status: string } | null;
   shipment: { status: string; trackingCode: string | null; trackingToken: string | null } | null;
 }
+
+/**
+ * Giỏ hàng = đơn nháp đang mở của tài khoản trong một phiên live.
+ * `confirmToken` có vì người xem là chủ đơn.
+ */
+export type CartOrder = CustomerOrder & { confirmToken: string | null };
+
+export const cartApi = {
+  get: (livestreamId: string) =>
+    call<{ cart: CartOrder | null }>(
+      `/me/cart?livestreamId=${encodeURIComponent(livestreamId)}`,
+      { headers: headerXacThuc() },
+    ).then((r) => r.cart),
+
+  /**
+   * Nút "mua ngay" / "thêm vào giỏ" trên trang live: thêm một SKU của
+   * phiên vào giỏ (đơn nháp nguồn BUTTON, gộp vào giỏ đang mở).
+   * 404 SkuNotFound · 409 OutOfStock / LivestreamClosed.
+   */
+  addItem: (input: { livestreamId: string; skuId?: string; skuCode?: string; quantity: number }) =>
+    call<{ cart: CartOrder; rejected: Array<{ skuId: string; requested: number; sellable: number }> }>(
+      "/me/cart/items",
+      { method: "POST", headers: headerXacThuc(), body: input },
+    ).then((r) => r.cart),
+
+  setQuantity: (itemId: string, quantity: number) =>
+    call<{ cart: CartOrder }>(`/me/cart/items/${encodeURIComponent(itemId)}`, {
+      method: "PATCH",
+      headers: headerXacThuc(),
+      body: { quantity },
+    }).then((r) => r.cart),
+
+  /** Bỏ món; món cuối thì giỏ về null (đơn nháp bị huỷ). */
+  remove: (itemId: string) =>
+    call<{ cart: CartOrder | null }>(`/me/cart/items/${encodeURIComponent(itemId)}`, {
+      method: "DELETE",
+      headers: headerXacThuc(),
+    }).then((r) => r.cart),
+};
 
 /** Đơn mua của chính người đang đăng nhập; `group` là tab trạng thái. */
 export const myOrdersApi = {
