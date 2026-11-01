@@ -455,13 +455,15 @@ describe("LivestreamController Unit Tests", () => {
     });
 
     it("trả về 409 khi LivestreamScheduleConflictError", async () => {
+      const futureDate = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+      const conflictDate = new Date(Date.now() + 7 * 24 * 3600 * 1000 + 10 * 60 * 1000).toISOString();
       mockReq = {
         params: { id: LIVESTREAM_ID },
         merchantId: MERCHANT_ID,
-        body: { scheduledAt: "2026-10-25T19:00:00.000Z" },
+        body: { scheduledAt: futureDate },
       };
       const conflictErr = new LivestreamScheduleConflictError(
-        { id: "conf-id", title: "Khác", scheduledAt: "2026-10-25T19:10:00.000Z" } as any,
+        { id: "conf-id", title: "Khác", scheduledAt: conflictDate } as any,
         30
       );
       mockService.updateLivestream.mockRejectedValueOnce(conflictErr);

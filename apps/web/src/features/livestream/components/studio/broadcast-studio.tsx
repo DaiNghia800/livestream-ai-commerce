@@ -925,7 +925,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
   return (
     <div
       id="broadcast-studio-root"
-      className="relative flex flex-col h-full w-full flex-1 min-h-0 bg-[#0B1220] text-slate-100 overflow-hidden font-sans"
+      className="relative flex flex-col h-full w-full flex-1 min-h-0 bg-background text-on-surface overflow-hidden font-sans"
     >
       <style>{`
         body:has(#broadcast-studio-root) {
@@ -1017,7 +1017,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       )}
 
       {/* 2. Amazon IVS Stream Telemetry Header with OBS Config button */}
-      <div className="flex items-center justify-between bg-[#0B1220] border-b border-slate-800 pr-3">
+      <div className="flex items-center justify-between bg-surface-container-lowest border-b border-outline-variant/40 pr-3 shadow-2xs">
         <div className="flex-1 min-w-0">
           <StudioStreamStatus
             isLive={isLive}
@@ -1033,21 +1033,21 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         </div>
         <button
           onClick={handleOpenIvsModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md bg-[#151F31] text-slate-200 border border-slate-700/80 hover:bg-slate-800 hover:text-white transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-surface-container-low text-on-surface border border-outline-variant/60 hover:bg-surface-container hover:text-primary transition-all shrink-0 active:scale-95 shadow-2xs cursor-pointer"
         >
-          <Radio className="w-3.5 h-3.5 text-cyan-400" />
+          <Radio className="w-3.5 h-3.5 text-primary" />
           <span>Cấu hình OBS / IVS</span>
         </button>
       </div>
 
       {/* 2.1 Mẹo phát sóng Web Broadcast vs OBS */}
       {showWebBroadcastTip && isLive && broadcastState === "LIVE" && (
-        <div className="flex items-center justify-between gap-3 px-3.5 py-1.5 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border-b border-amber-500/20 text-xs text-amber-200/90 shrink-0 animate-in fade-in duration-200">
+        <div className="flex items-center justify-between gap-3 px-3.5 py-1.5 bg-amber-50 border-b border-amber-200 text-xs text-amber-950 shrink-0 animate-in fade-in duration-200">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wide shrink-0">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-900 border border-amber-300 uppercase tracking-wide shrink-0">
               💡 Mẹo phát sóng
             </span>
-            <span className="truncate text-[11px] text-slate-300">
+            <span className="truncate text-[11px] text-amber-900">
               Bạn đang phát qua webcam trình duyệt. Hãy <strong>kéo tab này ra một cửa sổ riêng</strong> (hoặc dùng <strong>OBS Studio</strong>) để tránh trình duyệt tạm dừng video khi mở tab khác.
             </span>
           </div>
@@ -1055,14 +1055,14 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             <button
               type="button"
               onClick={handleOpenIvsModal}
-              className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium cursor-pointer"
+              className="text-[11px] text-primary hover:text-primary-container underline font-bold cursor-pointer"
             >
               Cấu hình OBS
             </button>
             <button
               type="button"
               onClick={() => setShowWebBroadcastTip(false)}
-              className="text-slate-400 hover:text-slate-200 text-xs font-bold px-1 cursor-pointer"
+              className="text-amber-700 hover:text-amber-950 text-xs font-bold px-1 cursor-pointer"
               title="Đóng thông báo"
             >
               ✕
@@ -1072,13 +1072,13 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
       )}
 
       {/* Mobile Tab Switcher (Visible on < 1024px) */}
-      <div className="lg:hidden flex items-center bg-[#0B1220] border-b border-slate-800 text-xs shrink-0">
+      <div className="lg:hidden flex items-center bg-surface-container-lowest border-b border-outline-variant/40 text-xs shrink-0">
         <button
           type="button"
           onClick={() => setMobileTab("stage")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "stage"
-              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
-              : "text-slate-400 hover:text-slate-200"
+              ? "text-primary border-b-2 border-primary bg-primary/5"
+              : "text-outline hover:text-on-surface"
             }`}
         >
           <Radio className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1088,8 +1088,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           type="button"
           onClick={() => setMobileTab("chat")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "chat"
-              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
-              : "text-slate-400 hover:text-slate-200"
+              ? "text-primary border-b-2 border-primary bg-primary/5"
+              : "text-outline hover:text-on-surface"
             }`}
         >
           <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1099,8 +1099,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           type="button"
           onClick={() => setMobileTab("products")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "products"
-              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
-              : "text-slate-400 hover:text-slate-200"
+              ? "text-primary border-b-2 border-primary bg-primary/5"
+              : "text-outline hover:text-on-surface"
             }`}
         >
           <ShoppingBag className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1110,8 +1110,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           type="button"
           onClick={() => setMobileTab("tools")}
           className={`flex-1 py-2.5 text-center font-bold flex items-center justify-center gap-1.5 transition ${mobileTab === "tools"
-              ? "text-cyan-400 border-b-2 border-cyan-400 bg-slate-900/90"
-              : "text-slate-400 hover:text-slate-200"
+              ? "text-primary border-b-2 border-primary bg-primary/5"
+              : "text-outline hover:text-on-surface"
             }`}
         >
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1157,7 +1157,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
             Tự động mở rộng 100% khi đóng 1 hoặc cả 2 sidebar!
             ======================================================== */}
         <main
-          className={`flex-1 min-w-0 flex flex-col bg-[#080B10] overflow-hidden transition-all duration-300 ease-in-out ${mobileTab !== "stage" ? "hidden lg:flex" : "flex"
+          className={`flex-1 min-w-0 flex flex-col bg-surface-container-low/40 overflow-hidden transition-all duration-300 ease-in-out ${mobileTab !== "stage" ? "hidden lg:flex" : "flex"
             }`}
           aria-label="Khu vực màn hình Livestream chính"
         >
@@ -1239,7 +1239,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           </div>
 
           {/* Bottom Device Controls & Broadcast Action Bar */}
-          <div className="shrink-0 bg-[#0B1220] border-t border-slate-800 px-3 py-2 sm:px-4 flex items-center justify-between gap-3">
+          <div className="shrink-0 bg-surface-container-lowest border-t border-outline-variant/40 px-3 py-2 sm:px-4 flex items-center justify-between gap-3 shadow-2xs">
             <StudioBroadcastActions
               isLive={isLive}
               isStarting={isStarting}

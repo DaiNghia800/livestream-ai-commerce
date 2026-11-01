@@ -309,4 +309,146 @@ describe("IvsService Unit Tests", () => {
     expect(result).toBe(true);
     expect(deleteCount).toBe(2);
   });
+
+  it("createChannel re-throws error in production environment", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const mockSend = vi.fn().mockRejectedValue(new Error("AWS Quota Exceeded"));
+      const mockClient = { send: mockSend } as any;
+      const service = new IvsService({ region: "ap-southeast-1" }, mockClient);
+
+      await expect(service.createChannel("Live Channel")).rejects.toThrow(
+        "AWS Quota Exceeded"
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("getStreamConfig formats non-rtmps ingestEndpoint and re-throws in production on error", async () => {
+    const mockSend = vi.fn().mockImplementation((command) => {
+      if (command.constructor.name === "GetChannelCommand") {
+        return Promise.resolve({
+          channel: {
+            arn: "arn:aws:ivs:channel/test-1",
+            playbackUrl: "https://playback.test.net/stream.m3u8",
+            ingestEndpoint: "ingest.test.net",
+          },
+        });
+      }
+      if (command.constructor.name === "ListStreamKeysCommand") {
+        return Promise.resolve({ streamKeys: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    const mockClient = { send: mockSend } as any;
+    const service = new IvsService({ region: "ap-southeast-1" }, mockClient);
+
+    const config = await service.getStreamConfig("arn:aws:ivs:channel/test-1");
+    expect(config?.ingestEndpoint).toBe("rtmps://ingest.test.net:443/app/");
+
+    // Production error branch
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      mockSend.mockRejectedValueOnce(new Error("AWS Outage"));
+      await expect(
+        service.getStreamConfig("arn:aws:ivs:channel/test-1")
+      ).rejects.toThrow("AWS Outage");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("createChannel preserves rtmps:// ingestEndpoint and falls back to mock in dev", async () => {
+    const mockSend = vi.fn().mockResolvedValue({
+      channel: {
+        arn: "arn:aws:ivs:ap-southeast-1:123:channel/test-ch-rtmps",
+        playbackUrl: "https://playback.test.net/stream.m3u8",
+        ingestEndpoint: "rtmps://live-ingest.net/app/",
+      },
+      streamKey: { arn: "arn:sk", value: "sk_val" },
+    });
+    const service = new IvsService({ region: "ap-southeast-1" }, { send: mockSend } as any);
+    const res = await service.createChannel("Live Channel");
+    expect(res.ingestEndpoint).toBe("rtmps://live-ingest.net/app/");
+
+    // Dev error fallback
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      mockSend.mockRejectedValueOnce(new Error("Network Glitch"));
+      const fallbackRes = await service.createChannel("Fallback Channel");
+      expect(fallbackRes.channelArn).toContain("arn:aws:ivs:");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("getStreamConfig preserves rtmps:// ingestEndpoint when already present", async () => {
+    const mockSend = vi.fn().mockImplementation((command) => {
+      if (command.constructor.name === "GetChannelCommand") {
+        return Promise.resolve({
+          channel: {
+            arn: "arn:aws:ivs:channel/test-2",
+            playbackUrl: "https://playback.test.net/stream.m3u8",
+            ingestEndpoint: "rtmps://already-rtmps.net/app/",
+          },
+        });
+      }
+      return Promise.resolve({ streamKeys: [] });
+    });
+    const service = new IvsService({ region: "ap-southeast-1" }, { send: mockSend } as any);
+    const config = await service.getStreamConfig("arn:aws:ivs:channel/test-2");
+    expect(config?.ingestEndpoint).toBe("rtmps://already-rtmps.net/app/");
+  });
+
+  it("createChannel throws if channel ARN or playback URL is missing", async () => {
+    const mockSend = vi.fn().mockResolvedValue({
+      channel: {
+        arn: "",
+        playbackUrl: "",
+      },
+    });
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const service = new IvsService({ region: "ap-southeast-1" }, { send: mockSend } as any);
+      await expect(service.createChannel("Bad Channel")).rejects.toThrow(
+        "AWS IVS failed to return channel ARN or playback URL"
+      );
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+  });
+
+  it("handles empty ingestEndpoint in createChannel and getStreamConfig", async () => {
+    const mockSend = vi.fn().mockImplementation((command) => {
+      if (command.constructor.name === "CreateChannelCommand") {
+        return Promise.resolve({
+          channel: {
+            arn: "arn:aws:ivs:channel/no-ingest",
+            playbackUrl: "https://playback.test.net/stream.m3u8",
+          },
+        });
+      }
+      if (command.constructor.name === "GetChannelCommand") {
+        return Promise.resolve({
+          channel: {
+            arn: "arn:aws:ivs:channel/no-ingest",
+            playbackUrl: "https://playback.test.net/stream.m3u8",
+          },
+        });
+      }
+      return Promise.resolve({ streamKeys: [] });
+    });
+    const service = new IvsService({ region: "ap-southeast-1" }, { send: mockSend } as any);
+    const created = await service.createChannel("No Ingest Live");
+    expect(created.ingestEndpoint).toBe("");
+
+    const config = await service.getStreamConfig("arn:aws:ivs:channel/no-ingest");
+    expect(config?.ingestEndpoint).toBe("");
+  });
 });

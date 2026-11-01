@@ -16,10 +16,11 @@ Luật generic-api-key bắt theo "từ khoá gợi ý + chuỗi entropy cao", n
 một mã vận đơn giả như tok-abcdef0123456789abcdef trông y hệt khoá
 thật dưới mắt máy quét.
 
-Cố ý chỉ mở ĐÚNG MỘT FILE chứ không mở cả thư mục tests/. Test là chỗ
+Cố ý chỉ mở ĐÚNG CÁC FILE CẦN THIẾT chứ không mở cả thư mục tests/. Test là chỗ
 người ta hay dán khoá thật vào để thử cho nhanh rồi quên xoá — mở cả
 thư mục là đúng lúc cần chặn nhất thì không chặn nữa.
 """
 paths = [
   '''apps/web/tests/fixtures/api\.ts''',
+  '''services/commerce/tests/unit/orders/ai-results-consumer\.job\.test\.ts''',
 ]

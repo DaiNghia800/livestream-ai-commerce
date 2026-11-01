@@ -633,13 +633,14 @@ describe("LivestreamService - Unit Tests", () => {
     });
 
     it("UT-LS-031 - update scheduled livestream successfully with all fields", async () => {
+      const futureDate = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
       const existing = { ...createdLivestream, status: "scheduled" as const };
       const updated = {
         ...existing,
         title: "New Schedule Title",
         description: null,
         coverImageKey: "covers/new.jpg",
-        scheduledAt: "2026-10-25T10:00:00.000Z",
+        scheduledAt: futureDate,
       };
       vi.mocked(repository.findById).mockResolvedValue(existing);
       (repository as any).update = vi.fn().mockResolvedValue(updated);
@@ -650,7 +651,7 @@ describe("LivestreamService - Unit Tests", () => {
         title: "New Schedule Title",
         description: null,
         coverImageKey: "covers/new.jpg",
-        scheduledAt: "2026-10-25T10:00:00.000Z",
+        scheduledAt: futureDate,
       });
 
       expect(res).toEqual(updated);
@@ -658,7 +659,7 @@ describe("LivestreamService - Unit Tests", () => {
         title: "New Schedule Title",
         description: null,
         coverImageKey: "covers/new.jpg",
-        scheduledAt: "2026-10-25T10:00:00.000Z",
+        scheduledAt: futureDate,
       });
     });
 
@@ -1114,11 +1115,14 @@ describe("LivestreamService - Unit Tests", () => {
       const existing = { ...createdLivestream, status: "scheduled" as const };
       vi.mocked(repository.findById).mockResolvedValue(existing);
 
+      const futureConflict = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+      const futureTarget = new Date(Date.now() + 7 * 24 * 3600 * 1000 - 10 * 60 * 1000).toISOString();
+
       const conflictingLivestream = {
         ...createdLivestream,
         id: "33333333-3333-4333-8333-333333333333",
         title: "Phiên live thời trang",
-        scheduledAt: "2026-10-25T20:00:00.000Z",
+        scheduledAt: futureConflict,
         status: "scheduled" as const,
       };
 
@@ -1128,16 +1132,17 @@ describe("LivestreamService - Unit Tests", () => {
         service.updateLivestream({
           id: existing.id,
           merchantId: MERCHANT_ID,
-          scheduledAt: "2026-10-25T19:50:00.000Z",
+          scheduledAt: futureTarget,
         })
       ).rejects.toThrow(LivestreamScheduleConflictError);
     });
 
     it("UT-LS-048 - updateLivestream does not conflict with itself when keeping same schedule", async () => {
+      const futureDate = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
       const existing = {
         ...createdLivestream,
         status: "scheduled" as const,
-        scheduledAt: "2026-10-25T19:30:00.000Z",
+        scheduledAt: futureDate,
       };
       vi.mocked(repository.findById).mockResolvedValue(existing);
       vi.mocked(repository.findConflictingSchedule).mockResolvedValue(null);
@@ -1150,13 +1155,13 @@ describe("LivestreamService - Unit Tests", () => {
         id: existing.id,
         merchantId: MERCHANT_ID,
         title: "Tiêu đề mới",
-        scheduledAt: "2026-10-25T19:30:00.000Z",
+        scheduledAt: futureDate,
       });
 
       expect(updated.title).toBe("Tiêu đề mới");
       expect(repository.findConflictingSchedule).toHaveBeenCalledWith(
         MERCHANT_ID,
-        "2026-10-25T19:30:00.000Z",
+        futureDate,
         30,
         existing.id
       );

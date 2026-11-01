@@ -65,6 +65,8 @@ export default async function setup() {
     try {
       await pool.query(`TRUNCATE ${TABLES} RESTART IDENTITY CASCADE`);
       console.log("[test] Đã dọn dẹp sạch sẽ database test (commerce_test_db).");
+    } catch (err) {
+      console.warn("[test] Could not truncate tables in teardown (database might be offline):", (err as Error).message);
     } finally {
       await pool.end();
     }

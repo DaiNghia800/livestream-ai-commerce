@@ -590,6 +590,7 @@ test("product edit page shows existing SKU data read-only and saves product chan
   await expect(flashPrice).toHaveValue("309.000");
   await expect(skuConfigCard.locator('[aria-label="Giá Flash Live SKU 1"]')).toHaveText("309.000");
   const historyButton = page.getByRole("button", { name: "Xem chi tiết lịch sử" });
+  await historyButton.scrollIntoViewIfNeeded();
   await historyButton.click();
   await expect(page.getByText("Cập nhật thông tin sản phẩm")).toBeVisible();
   await expect(page.getByText("Nhãn cũ → Linen Heritage Vietnam")).toBeVisible();

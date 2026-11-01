@@ -11,6 +11,32 @@ import {
 } from "./create-livestream";
 import type { Livestream, LivestreamStatus } from "../types/livestream";
 
+export interface BackendLivestreamProductSku {
+  id: string;
+  skuCode: string;
+  variantName?: string | null;
+  price: number;
+  availableStock?: number;
+  imageUrl?: string | null;
+}
+
+export interface BackendLivestreamProductItem {
+  id: string;
+  livestreamId: string;
+  productId: string;
+  variantId: string | null;
+  displayOrder: number;
+  isFeatured: boolean;
+  createdAt: string;
+  productName?: string | null;
+  productCode?: string | null;
+  skuCode?: string | null;
+  variantName?: string | null;
+  price?: number | null;
+  imageUrl?: string | null;
+  variants?: BackendLivestreamProductSku[];
+}
+
 export interface BackendLivestreamItem {
   id: string;
   merchantId: string;
@@ -27,21 +53,7 @@ export interface BackendLivestreamItem {
   createdAt: string;
   updatedAt: string;
   productCount: number;
-  products?: Array<{
-    id: string;
-    livestreamId: string;
-    productId: string;
-    variantId: string | null;
-    displayOrder: number;
-    isFeatured: boolean;
-    createdAt: string;
-    productName?: string | null;
-    productCode?: string | null;
-    skuCode?: string | null;
-    variantName?: string | null;
-    price?: number | null;
-    imageUrl?: string | null;
-  }>;
+  products?: BackendLivestreamProductItem[];
 }
 
 export interface BackendLivestreamListResponse {
@@ -53,21 +65,7 @@ export interface BackendLivestreamListResponse {
 }
 
 export interface BackendLivestreamDetailResponse extends BackendLivestreamItem {
-  products: Array<{
-    id: string;
-    livestreamId: string;
-    productId: string;
-    variantId: string | null;
-    displayOrder: number;
-    isFeatured: boolean;
-    createdAt: string;
-    productName?: string | null;
-    productCode?: string | null;
-    skuCode?: string | null;
-    variantName?: string | null;
-    price?: number | null;
-    imageUrl?: string | null;
-  }>;
+  products: BackendLivestreamProductItem[];
 }
 
 export interface GetLivestreamsQueryParams {

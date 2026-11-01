@@ -27,7 +27,29 @@ export class PostgresLivestreamCommentRepository
     livestreamId: string,
     input: CreateCommentInput
   ): Promise<LivestreamComment> {
-    const query = `
+    const hasExplicitId = Boolean(input.id);
+    const query = hasExplicitId
+      ? `
+      INSERT INTO livestream_comments (
+        id,
+        livestream_id,
+        user_id,
+        username,
+        avatar_url,
+        content,
+        role
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING
+        id,
+        livestream_id AS "livestreamId",
+        user_id AS "userId",
+        username,
+        avatar_url AS "avatarUrl",
+        content,
+        role,
+        created_at AS "createdAt"
+    `
+      : `
       INSERT INTO livestream_comments (
         livestream_id,
         user_id,
@@ -47,14 +69,24 @@ export class PostgresLivestreamCommentRepository
         created_at AS "createdAt"
     `;
 
-    const values = [
-      livestreamId,
-      input.userId,
-      input.username,
-      input.avatarUrl || null,
-      input.content,
-      input.role || "buyer",
-    ];
+    const values = hasExplicitId
+      ? [
+          input.id,
+          livestreamId,
+          input.userId,
+          input.username,
+          input.avatarUrl || null,
+          input.content,
+          input.role || "buyer",
+        ]
+      : [
+          livestreamId,
+          input.userId,
+          input.username,
+          input.avatarUrl || null,
+          input.content,
+          input.role || "buyer",
+        ];
 
     const result = await pool.query<LivestreamComment>(query, values);
     return result.rows[0];

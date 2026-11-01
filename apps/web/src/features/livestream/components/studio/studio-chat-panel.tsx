@@ -6,7 +6,7 @@ import {
   Clock,
   HelpCircle,
   AlertTriangle,
-  Inbox,
+  MessageSquare,
   Maximize2,
   Minimize2,
   AlignJustify,
@@ -105,17 +105,17 @@ export function StudioChatPanel({
   }, [messages, currentFilter]);
 
   return (
-    <div className="flex flex-col h-full select-none min-h-0 text-slate-200">
+    <div className="flex flex-col h-full select-none min-h-0 text-on-surface">
       {/* 1. Filter Tabs & Stream Controls (Unified Single Bar - Không lặp tiêu đề) */}
-      <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 shrink-0 gap-1.5 text-[11px]">
+      <div className="flex items-center justify-between pb-1.5 border-b border-outline-variant/30 shrink-0 gap-1.5 text-[11px]">
         {/* Filter Pills */}
         <div className="flex items-center gap-1 flex-wrap min-w-0">
           <button
             type="button"
             onClick={() => handleFilterSelect("ALL")}
-            className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer ${currentFilter === "ALL"
-              ? "bg-cyan-600 text-white shadow-xs"
-              : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
+            className={`px-2.5 py-0.5 rounded-lg font-bold transition cursor-pointer shadow-2xs ${currentFilter === "ALL"
+              ? "bg-primary text-white"
+              : "bg-surface-container-low text-on-surface-variant hover:text-primary border border-outline-variant/40"
               }`}
           >
             Tất cả ({counts.all})
@@ -123,9 +123,9 @@ export function StudioChatPanel({
           <button
             type="button"
             onClick={() => handleFilterSelect("AI_ORDERS")}
-            className={`px-2 py-0.5 rounded-md font-semibold transition flex items-center gap-1 cursor-pointer ${currentFilter === "AI_ORDERS"
-              ? "bg-cyan-600 text-white shadow-xs"
-              : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
+            className={`px-2.5 py-0.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs ${currentFilter === "AI_ORDERS"
+              ? "bg-primary text-white"
+              : "bg-surface-container-low text-on-surface-variant hover:text-primary border border-outline-variant/40"
               }`}
           >
             <Clock className="h-2.5 w-2.5" aria-hidden="true" />
@@ -134,9 +134,9 @@ export function StudioChatPanel({
           <button
             type="button"
             onClick={() => handleFilterSelect("NEEDS_REVIEW")}
-            className={`px-2 py-0.5 rounded-md font-semibold transition flex items-center gap-1 cursor-pointer ${currentFilter === "NEEDS_REVIEW"
-              ? "bg-cyan-600 text-white shadow-xs"
-              : "bg-[#151F31] text-slate-400 hover:text-slate-200 border border-slate-800"
+            className={`px-2.5 py-0.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs ${currentFilter === "NEEDS_REVIEW"
+              ? "bg-primary text-white"
+              : "bg-surface-container-low text-on-surface-variant hover:text-primary border border-outline-variant/40"
               }`}
           >
             <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
@@ -148,20 +148,20 @@ export function StudioChatPanel({
         <div className="flex items-center gap-1 shrink-0">
           {/* IVS WebSocket Live Indicator - Compact */}
           <span
-            className={`text-[9px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 shrink-0 ${connectionState === "CONNECTED"
-              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+            className={`text-[9px] px-2 py-0.5 rounded-md font-bold inline-flex items-center gap-1 shrink-0 shadow-2xs ${connectionState === "CONNECTED"
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
               : connectionState === "CONNECTING"
-                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                : "bg-slate-800/80 text-slate-400 border border-slate-700/60"
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-surface-container text-outline border border-outline-variant/40"
               }`}
             title={`Trạng thái WebSocket IVS Chat: ${connectionState}`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${connectionState === "CONNECTED"
-                ? "bg-emerald-400"
+                ? "bg-emerald-600"
                 : connectionState === "CONNECTING"
-                  ? "bg-amber-400 animate-pulse"
-                  : "bg-slate-500"
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-outline"
                 }`}
             />
             <span>{connectionState === "CONNECTED" ? "LIVE" : connectionState}</span>
@@ -171,7 +171,7 @@ export function StudioChatPanel({
           <button
             type="button"
             onClick={() => setDensity((d) => (d === "compact" ? "normal" : "compact"))}
-            className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition active:scale-95 cursor-pointer"
+            className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition active:scale-95 cursor-pointer"
             title={density === "compact" ? "Chuyển sang chế độ xem chuẩn" : "Chuyển sang chế độ xem gọn"}
             aria-label="Thay đổi mật độ hiển thị tin nhắn"
           >
@@ -186,7 +186,7 @@ export function StudioChatPanel({
             <button
               type="button"
               onClick={onToggleExpandMode}
-              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer active:scale-95"
+              className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition cursor-pointer active:scale-95"
               title={isExpandedMode ? "Thu gọn về bố cục mặc định (Esc)" : "Mở rộng vùng điều hành tin nhắn"}
               aria-label="Mở rộng hoặc thu gọn khung tin nhắn"
             >
@@ -208,20 +208,26 @@ export function StudioChatPanel({
           }`}
       >
         {filteredMessages.length === 0 ? (
-          <div className="py-10 px-3 text-center text-slate-500 flex flex-col items-center justify-center">
-            <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-2 text-slate-500">
-              <Inbox className="h-4 w-4" aria-hidden="true" />
+          <div className="py-12 px-4 text-center flex flex-col items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-3 text-primary shadow-2xs">
+              <MessageSquare className="h-6 w-6 stroke-[2.2]" aria-hidden="true" />
             </div>
-            <p className="text-xs font-semibold text-slate-300">
+            <p className="text-xs font-extrabold text-on-surface">
               {messages.length === 0
-                ? "Chưa có bình luận nào"
+                ? "Phòng chat & Chốt đơn AI sẵn sàng"
                 : "Không có tin nhắn nào trong mục này"}
             </p>
-            <p className="text-[11px] text-slate-500 mt-1 max-w-[220px]">
+            <p className="text-[11px] text-outline mt-1.5 max-w-[240px] leading-relaxed">
               {messages.length === 0
-                ? "Bình luận từ người xem sẽ hiển thị tại đây"
-                : "Hãy chuyển sang tab bộ lọc khác để xem thêm."}
+                ? "Bình luận và cú pháp chốt đơn của khán giả sẽ xuất hiện tại đây theo thời gian thực khi bắt đầu phát sóng."
+                : "Hãy chuyển sang tab bộ lọc khác để xem thêm bình luận."}
             </p>
+            {messages.length === 0 && (
+              <div className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-low border border-outline-variant/50 text-[10px] text-on-surface-variant font-medium shadow-2xs">
+                <Sparkles className="h-3 w-3 text-primary shrink-0" />
+                <span>AI tự động nhận diện SKU &amp; cú pháp</span>
+              </div>
+            )}
           </div>
         ) : (
           filteredMessages.map((msg) => {
@@ -234,39 +240,39 @@ export function StudioChatPanel({
               return (
                 <div
                   key={msg.id}
-                  className={`px-2 py-1.5 rounded-lg border text-xs leading-snug flex items-start justify-between gap-1.5 transition ${isReview
-                    ? "bg-[#151F31] border-rose-500/30 hover:border-rose-500/50"
-                    : "bg-[#151F31]/80 border-slate-800 hover:border-slate-700"
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs leading-snug flex items-start justify-between gap-1.5 transition ${isReview
+                    ? "bg-rose-50/70 border-rose-300 hover:border-rose-400"
+                    : "bg-surface-container-low/40 border-outline-variant/40 hover:bg-surface-container-low"
                     }`}
                 >
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
                     {/* Compact Subdued Badge */}
                     {isOrder ? (
-                      <span className="px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold text-[9px] shrink-0">
+                      <span className="px-1.5 py-0.2 rounded bg-amber-100/80 text-amber-900 border border-amber-300 font-extrabold text-[9px] shrink-0">
                         ĐƠN AI
                       </span>
                     ) : isReview ? (
-                      <span className="px-1 py-0.2 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold text-[9px] shrink-0">
+                      <span className="px-1.5 py-0.2 rounded bg-rose-100/80 text-rose-800 border border-rose-300 font-extrabold text-[9px] shrink-0">
                         CẦN DUYỆT
                       </span>
                     ) : isAiParsed ? (
-                      <span className="px-1 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold text-[9px] shrink-0">
+                      <span className="px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/25 font-extrabold text-[9px] shrink-0">
                         SKU
                       </span>
                     ) : null}
 
                     {/* Tên khách in đậm */}
-                    <span className="font-semibold text-slate-100 text-[11px] shrink-0">
+                    <span className="font-bold text-on-surface text-[11px] shrink-0">
                       {msg.userName}:
                     </span>
 
                     {/* Nội dung tin nhắn inline */}
-                    <span className="text-slate-300 text-[11px] truncate" title={msg.content}>
+                    <span className="text-on-surface-variant text-[11px] truncate" title={msg.content}>
                       &quot;{msg.content}&quot;
                     </span>
                   </div>
 
-                  <span className="text-[9px] text-slate-500 font-mono shrink-0 pl-1">
+                  <span className="text-[9px] text-outline font-mono shrink-0 pl-1">
                     {msg.timestamp}
                   </span>
                 </div>
@@ -277,45 +283,45 @@ export function StudioChatPanel({
             return (
               <div
                 key={msg.id}
-                className={`p-2 sm:p-2.5 rounded-xl border space-y-1 transition ${isReview
-                  ? "bg-[#151F31] border-rose-500/30 hover:border-rose-500/50"
-                  : "bg-[#151F31] border-slate-800 hover:border-slate-700/80"
+                className={`p-2.5 sm:p-3 rounded-xl border space-y-1 transition shadow-2xs ${isReview
+                  ? "bg-rose-50/50 border-rose-200 hover:border-rose-300"
+                  : "bg-surface-container-lowest border-outline-variant/50 hover:border-primary/40"
                   }`}
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-semibold text-slate-100 text-xs sm:text-[13px] truncate">
+                    <span className="font-bold text-on-surface text-xs sm:text-[13px] truncate">
                       {msg.userName}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-[10px] text-outline font-mono">
                       {msg.timestamp}
                     </span>
                   </div>
 
                   {isOrder ? (
-                    <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] sm:text-[11px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <Clock className="h-3 w-3 text-amber-400" aria-hidden="true" />
+                    <span className="bg-amber-100/80 text-amber-900 border border-amber-300 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <Clock className="h-3 w-3 text-amber-700" aria-hidden="true" />
                       <span>Chờ xác nhận · {msg.orderId || "Pending"}</span>
                     </span>
                   ) : isReview ? (
-                    <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] sm:text-[11px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <AlertTriangle className="h-3 w-3 text-rose-400" aria-hidden="true" />
+                    <span className="bg-rose-100/80 text-rose-800 border border-rose-300 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <AlertTriangle className="h-3 w-3 text-rose-600" aria-hidden="true" />
                       <span>Cần xử lý{msg.reviewReason ? ` · ${msg.reviewReason}` : ""}</span>
                     </span>
                   ) : isAiParsed ? (
-                    <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] sm:text-[11px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <Sparkles className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+                    <span className="bg-primary/10 text-primary border border-primary/25 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
                       <span>Nhận diện: {msg.extractedSku} (x{msg.extractedQuantity || 1})</span>
                     </span>
                   ) : (
-                    <span className="bg-slate-800/80 text-slate-400 border border-slate-700/60 text-[10px] sm:text-[11px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <HelpCircle className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                    <span className="bg-surface-container text-outline border border-outline-variant/40 text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <HelpCircle className="h-3 w-3 text-outline" aria-hidden="true" />
                       <span>Tư vấn</span>
                     </span>
                   )}
                 </div>
 
-                <p className="text-slate-300 text-xs sm:text-[13px] leading-relaxed break-words pl-0.5">
+                <p className="text-on-surface text-xs sm:text-[13px] leading-relaxed break-words pl-0.5">
                   &quot;{msg.content}&quot;
                 </p>
               </div>
@@ -325,8 +331,8 @@ export function StudioChatPanel({
 
         {/* Loading Spinner khi cuộn xem thêm tin cũ */}
         {isLoadingEarlier && (
-          <div className="py-2 text-center text-xs text-slate-400 flex items-center justify-center gap-1.5 animate-pulse bg-[#0B1220]/60 rounded-lg border border-slate-800">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+          <div className="py-2 text-center text-xs text-outline flex items-center justify-center gap-1.5 animate-pulse bg-surface-container-low rounded-lg border border-outline-variant/40">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
             <span className="text-[11px]">Đang tải thêm bình luận cũ...</span>
           </div>
         )}
@@ -353,15 +359,15 @@ export function StudioChatPanel({
             setIsSubmitting(false);
           }
         }}
-        className="pt-2 border-t border-slate-800/80 shrink-0"
+        className="pt-2 border-t border-outline-variant/30 shrink-0"
       >
-        <div className="flex items-center gap-2 bg-[#0B1220] border border-slate-700/80 focus-within:border-cyan-500 rounded-xl px-2.5 py-1 transition shadow-xs">
+        <div className="flex items-center gap-2 bg-surface-container-low border border-outline-variant/60 focus-within:border-primary focus-within:bg-surface-container-lowest rounded-xl px-3 py-1.5 transition shadow-2xs">
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Nhập tin nhắn..."
-            className="studio-chat-input flex-1 min-w-0 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none"
+            className="studio-chat-input flex-1 min-w-0 text-xs sm:text-sm text-on-surface placeholder:text-outline outline-none"
             style={{
               background: "transparent",
               minHeight: "unset",
@@ -373,7 +379,7 @@ export function StudioChatPanel({
           <button
             type="submit"
             disabled={!inputText.trim() || isSubmitting}
-            className="w-8 h-8 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shrink-0 active:scale-95 shadow-xs"
+            className="w-8 h-8 rounded-lg bg-primary hover:bg-primary-container text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shrink-0 active:scale-95 shadow-2xs"
             title="Gửi tin nhắn (Enter)"
             aria-label="Gửi tin nhắn"
           >

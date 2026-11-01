@@ -73,7 +73,7 @@ export function StudioPreliveChecklist({
   return (
     <section
       aria-label="Tiến độ chuẩn bị lên sóng"
-      className="bg-[#151F31] border border-slate-800 rounded-xl px-3 py-2 mb-2 shadow-xs text-xs transition-all"
+      className="bg-surface-container-lowest border border-outline-variant/60 rounded-xl px-3.5 py-2 mb-1 shadow-2xs text-xs text-on-surface transition-all"
     >
       {/* 1. THANH TÓM TẮT COMPACT (Mặc định hiển thị, không che preview) */}
       <div className="flex items-center justify-between gap-2.5 flex-wrap sm:flex-nowrap">
@@ -81,28 +81,28 @@ export function StudioPreliveChecklist({
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {allReady ? (
             <CheckCircle2
-              className="h-4 w-4 text-emerald-400 shrink-0"
+              className="h-4 w-4 text-emerald-600 shrink-0 stroke-[2.2]"
               aria-hidden="true"
             />
           ) : (
             <AlertCircle
-              className="h-4 w-4 text-amber-400 shrink-0"
+              className="h-4 w-4 text-amber-600 shrink-0 stroke-[2.2]"
               aria-hidden="true"
             />
           )}
 
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-            <span className="font-bold text-slate-100 whitespace-nowrap">
+            <span className="font-bold text-on-surface whitespace-nowrap">
               Chuẩn bị livestream —{" "}
-              <span className={allReady ? "text-emerald-400" : "text-amber-400"}>
+              <span className={allReady ? "text-emerald-700 font-extrabold" : "text-amber-700 font-extrabold"}>
                 {readyCount}/4 hoàn tất
               </span>
             </span>
 
             {!allReady && (
-              <span className="text-[11px] text-slate-400 truncate hidden md:inline">
+              <span className="text-[11px] text-outline truncate hidden md:inline">
                 • Cần kiểm tra:{" "}
-                <strong className="text-amber-300 font-medium">
+                <strong className="text-on-surface font-semibold">
                   {unmetSummary}
                 </strong>
               </span>
@@ -111,7 +111,7 @@ export function StudioPreliveChecklist({
             <button
               type="button"
               onClick={() => setIsExpanded((prev) => !prev)}
-              className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors ml-1 cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-0.5 text-[11px] font-bold text-primary hover:text-primary-container transition-colors ml-1 cursor-pointer whitespace-nowrap shrink-0"
               aria-expanded={isExpanded}
             >
               <span>{isExpanded ? "[Thu gọn]" : "[Xem chi tiết]"}</span>
@@ -131,18 +131,18 @@ export function StudioPreliveChecklist({
               <button
                 type="button"
                 onClick={onOpenProductPicker}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 transition-colors cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold rounded-lg bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
                 title="Gán sản phẩm từ kho trực tiếp ngay tại Studio"
               >
-                <Pencil className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+                <Pencil className="h-3 w-3 text-primary" aria-hidden="true" />
                 <span>Gán sản phẩm</span>
               </button>
             ) : (
               <Link
                 href={`/shop/livestream/${livestreamId}/edit`}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#1E293B] border border-slate-700/80 text-slate-200 hover:bg-slate-700 hover:text-white transition-colors whitespace-nowrap"
+                className="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold rounded-lg bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap shadow-2xs"
               >
-                <Pencil className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                <Pencil className="h-3 w-3 text-primary" aria-hidden="true" />
                 <span>Gán sản phẩm</span>
               </Link>
             )
@@ -152,9 +152,9 @@ export function StudioPreliveChecklist({
             <button
               type="button"
               onClick={onRequestPermissions}
-              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#1E293B] border border-cyan-500/30 text-cyan-300 hover:bg-slate-700 transition-colors cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-1 text-[11px] font-bold rounded-lg bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-colors cursor-pointer shadow-2xs"
             >
-              <Camera className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+              <Camera className="h-3 w-3 text-primary" aria-hidden="true" />
               <span>Bật thiết bị</span>
             </button>
           )}
@@ -165,8 +165,8 @@ export function StudioPreliveChecklist({
             disabled={!allReady || isStarting}
             title={disabledReason || "Bắt đầu phát sóng livestream"}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs active:scale-95 ${allReady && !isStarting
-                ? "bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-rose-950/30"
-                : "bg-slate-800/70 text-slate-500 border border-slate-800 cursor-not-allowed"
+                ? "bg-rose-600 hover:bg-rose-500 text-white cursor-pointer shadow-rose-950/20"
+                : "bg-surface-container-high text-outline border border-outline-variant/40 cursor-not-allowed opacity-60"
               }`}
           >
             <Radio
@@ -182,99 +182,99 @@ export function StudioPreliveChecklist({
 
       {/* 2. KHU VỰC CHI TIẾT EXPANDABLE (Chỉ bung ra khi bấm [Xem chi tiết]) */}
       {isExpanded && (
-        <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-2 animate-in fade-in duration-150">
+        <div className="mt-2.5 pt-2 border-t border-outline-variant/30 space-y-2 animate-in fade-in duration-150">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
             {/* Condition 1: Session Info */}
-            <div className="flex items-start gap-2 p-2 rounded-lg bg-[#0B1220]/70 border border-slate-800/80">
+            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 shadow-2xs">
               {hasValidInfo ? (
                 <CheckCircle2
-                  className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               ) : (
                 <XCircle
-                  className="h-3.5 w-3.5 text-rose-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-rose-500 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               )}
               <div className="min-w-0">
-                <span className="font-semibold text-slate-200 flex items-center gap-1 text-[11px]">
-                  <FileCheck className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                <span className="font-bold text-on-surface flex items-center gap-1 text-[11px]">
+                  <FileCheck className="h-3 w-3 text-outline" aria-hidden="true" />
                   Thông tin phiên
                 </span>
-                <p className="text-[10px] text-slate-400 truncate">
+                <p className="text-[10px] text-outline truncate mt-0.5">
                   {hasValidInfo ? "Tiêu đề & lịch phát sẵn sàng" : "Chưa có tiêu đề"}
                 </p>
               </div>
             </div>
 
             {/* Condition 2: Products */}
-            <div className="flex items-start gap-2 p-2 rounded-lg bg-[#0B1220]/70 border border-slate-800/80">
+            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 shadow-2xs">
               {hasProducts ? (
                 <CheckCircle2
-                  className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               ) : (
                 <AlertCircle
-                  className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               )}
               <div className="min-w-0">
-                <span className="font-semibold text-slate-200 flex items-center gap-1 text-[11px]">
-                  <Package className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                <span className="font-bold text-on-surface flex items-center gap-1 text-[11px]">
+                  <Package className="h-3 w-3 text-outline" aria-hidden="true" />
                   Sản phẩm bán
                 </span>
-                <p className="text-[10px] text-slate-400 truncate">
+                <p className="text-[10px] text-outline truncate mt-0.5">
                   {hasProducts ? `${productsCount} SKU trong giỏ hàng` : "Chưa chọn sản phẩm"}
                 </p>
               </div>
             </div>
 
             {/* Condition 3: Camera */}
-            <div className="flex items-start gap-2 p-2 rounded-lg bg-[#0B1220]/70 border border-slate-800/80">
+            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 shadow-2xs">
               {cameraReady ? (
                 <CheckCircle2
-                  className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               ) : (
                 <AlertCircle
-                  className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               )}
               <div className="min-w-0">
-                <span className="font-semibold text-slate-200 flex items-center gap-1 text-[11px]">
-                  <Camera className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                <span className="font-bold text-on-surface flex items-center gap-1 text-[11px]">
+                  <Camera className="h-3 w-3 text-outline" aria-hidden="true" />
                   Tín hiệu Camera
                 </span>
-                <p className="text-[10px] text-slate-400 truncate">
+                <p className="text-[10px] text-outline truncate mt-0.5">
                   {cameraReady ? "Camera đang hoạt động" : "Chưa mở camera"}
                 </p>
               </div>
             </div>
 
             {/* Condition 4: Mic */}
-            <div className="flex items-start gap-2 p-2 rounded-lg bg-[#0B1220]/70 border border-slate-800/80">
+            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 shadow-2xs">
               {micReady ? (
                 <CheckCircle2
-                  className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               ) : (
                 <AlertCircle
-                  className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5"
+                  className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5 stroke-[2.2]"
                   aria-hidden="true"
                 />
               )}
               <div className="min-w-0">
-                <span className="font-semibold text-slate-200 flex items-center gap-1 text-[11px]">
-                  <Mic className="h-3 w-3 text-slate-400" aria-hidden="true" />
+                <span className="font-bold text-on-surface flex items-center gap-1 text-[11px]">
+                  <Mic className="h-3 w-3 text-outline" aria-hidden="true" />
                   Tín hiệu Micro
                 </span>
-                <p className="text-[10px] text-slate-400 truncate">
+                <p className="text-[10px] text-outline truncate mt-0.5">
                   {micReady ? "Micro đang thu âm" : "Chưa mở micro"}
                 </p>
               </div>
@@ -283,14 +283,14 @@ export function StudioPreliveChecklist({
 
           {/* Quick Troubleshooting Tip */}
           {(!cameraReady || !micReady) && (
-            <div className="pt-1.5 flex items-center justify-between text-[11px] text-slate-400">
+            <div className="pt-1.5 flex items-center justify-between text-[11px] text-outline">
               <span>
                 Cấp quyền trình duyệt để kiểm tra chất lượng hình ảnh &amp; âm thanh trước khi phát sóng.
               </span>
               <button
                 type="button"
                 onClick={onRequestPermissions}
-                className="text-cyan-400 hover:text-cyan-300 font-semibold hover:underline cursor-pointer ml-2 shrink-0"
+                className="text-primary hover:underline font-bold cursor-pointer ml-2 shrink-0"
               >
                 Cấp quyền Camera &amp; Micro
               </button>

@@ -278,13 +278,13 @@ test("studio page supports collapsible sidebars, aspect ratio switcher, and comp
     await expect(ratio916).toBeVisible();
 
     await ratio916.click();
-    await expect(ratio916).toHaveClass(/text-cyan-300/);
+    await expect(ratio916).toHaveClass(/(text-cyan-300|bg-primary)/);
 
     await ratio169.click();
-    await expect(ratio169).toHaveClass(/text-cyan-300/);
+    await expect(ratio169).toHaveClass(/(text-cyan-300|bg-primary)/);
 
-    // 4. Test Left sidebar collapse via button
-    await page.getByLabel("Đóng mở thanh công cụ trái").click();
+    // 4. Test Left sidebar collapse via button in sidebar header
+    await page.getByLabel("Thu gọn thanh công cụ trái").click();
     await expect(page.getByText("Nguồn & Cảnh Studio")).not.toBeVisible();
 
     // Re-open via button

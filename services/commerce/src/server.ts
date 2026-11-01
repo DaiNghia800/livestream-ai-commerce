@@ -6,8 +6,10 @@ import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-
 import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
 import { AiResultProcessor, ConsumeAiResultsJob } from "./modules/order/jobs/consume-ai-results.job.js";
 import { SyncShipmentsJob } from "./modules/shipping/jobs/sync-shipments.job.js";
+import { AiResultsConsumerJob } from "./modules/order/jobs/ai-results-consumer.job.js";
 import { createDraftOrderService } from "./modules/order/services/draft-order.factory.js";
 import { PurchaseRequestService } from "./modules/order/services/purchase-request.service.js";
+import { IvsChatService } from "./shared/ivs/ivs-chat.service.js";
 import { pool, runMigrations } from "./shared/database/database.js";
 
 async function bootstrap() {
@@ -29,6 +31,11 @@ async function bootstrap() {
   }
 
   const app = createApp();
+
+  const draftOrderService = createDraftOrderService(pool);
+  const ivsChatService = new IvsChatService({
+    region: config.awsIvsRegion || "ap-northeast-1",
+  });
 
   // Đẩy sự kiện outbox ra ngoài. Chưa cấu hình REALTIME_EVENTS_URL thì chỉ
   // ghi log — vẫn chạy để thấy được luồng sự kiện khi phát triển.
@@ -57,19 +64,38 @@ async function bootstrap() {
   const expireRequestsJob = new ExpirePurchaseRequestsJob(
     new PurchaseRequestService(
       pool,
-      createDraftOrderService(pool)
+      draftOrderService
     ),
     { intervalMs: config.expireJobIntervalMs }
   );
   expireRequestsJob.start();
 
-  // Lưới an toàn cho webhook vận chuyển. Webhook là đường chính,
-  // nhưng khai sai URL, đường hầm đổi địa chỉ, hay service nằm xuống
-  // vài phút là mất sự kiện — mà phần lớn hãng chỉ thử lại vài lần
-  // rồi thôi. Thiếu job này thì không ai biết cho tới lúc khách gọi
-  // điện hỏi hàng đâu.
+  // Lưới an toàn cho webhook vận chuyển.
   const syncShipmentsJob = new SyncShipmentsJob(pool);
   syncShipmentsJob.start();
+
+  // SQS Consumer: Kéo kết quả xử lý bình luận từ AI Worker (Gemini),
+  // tự động tạo đơn nháp giữ kho và broadcast sự kiện realtime tới phòng live.
+  const aiResultsConsumerJob = new AiResultsConsumerJob(
+    pool,
+    draftOrderService,
+    ivsChatService,
+    {
+      queueUrl: config.sqsAiResultsQueueUrl,
+      region: config.awsRegion || "ap-southeast-1",
+      intervalMs: 3000,
+    }
+  );
+  // Hai consumer cùng đọc một queue thì tranh message, mỗi bình luận chỉ
+  // được một bên xử lý. Consumer này chỉ chạy khi SQS_AI_RESULTS_QUEUE_URL
+  // trỏ queue KHÁC với AI_WORKER_RESULT_QUEUE_URL của ConsumeAiResultsJob.
+  if (config.sqsAiResultsQueueUrl && config.sqsAiResultsQueueUrl === config.aiWorkerResultQueueUrl) {
+    console.warn(
+      "[AiResultsConsumerJob] SQS_AI_RESULTS_QUEUE_URL trùng AI_WORKER_RESULT_QUEUE_URL; chỉ ConsumeAiResultsJob đọc queue này"
+    );
+  } else {
+    aiResultsConsumerJob.start();
+  }
 
   const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
@@ -78,6 +104,11 @@ async function bootstrap() {
       console.log(`[SqsService] Connected to AWS SQS Queue: ${config.sqsQueueUrl}`);
     } else {
       console.log(`[SqsService] SQS Queue mode: SIMULATION (SQS_QUEUE_URL is not set)`);
+    }
+    if (config.sqsAiResultsQueueUrl) {
+      console.log(
+        `[AiResultsConsumerJob] Connected to AWS SQS AI Results Queue: ${config.sqsAiResultsQueueUrl}`
+      );
     }
   });
 
@@ -89,6 +120,7 @@ async function bootstrap() {
     const aiResultStopped = aiResultJob?.stop();
     expireRequestsJob.stop();
     syncShipmentsJob.stop();
+    aiResultsConsumerJob.stop();
     server.close(() => {
       void Promise.resolve(aiResultStopped)
         .then(() => pool.end())

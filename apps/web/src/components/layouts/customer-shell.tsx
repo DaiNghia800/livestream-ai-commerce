@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ChevronDown, LogOut, MapPin, ReceiptText, UserRound } from "lucide-react";
 import { Brand } from "./brand";
@@ -50,6 +50,9 @@ type HopThoai = "hoSo" | "diaChi" | null;
 
 export function CustomerShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const isLivestreamPage = pathname === "/" || pathname?.startsWith("/live");
+
   const userSnapshot = useSyncExternalStore(
     subscribeToAuthUser,
     getAuthUserSnapshot,
@@ -97,6 +100,15 @@ export function CustomerShell({ children }: { children: ReactNode }) {
   function chon(muc: HopThoai) {
     setMoMenu(false);
     setHopThoai(muc);
+  }
+
+  // Trang live chiếm trọn màn hình, không có header khách.
+  if (isLivestreamPage) {
+    return (
+      <main id="main-content" className="w-full h-full min-h-screen overflow-hidden">
+        {children}
+      </main>
+    );
   }
 
   return (

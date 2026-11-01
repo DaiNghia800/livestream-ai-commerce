@@ -102,12 +102,12 @@ export function StudioProductsPanel({
   const hasAnyProducts = totalProductsCount > 0;
 
   return (
-    <div className={`flex flex-col h-full w-full bg-[#151F31] select-none overflow-hidden text-slate-100 border-l border-slate-800 ${className}`}>
+    <div className={`flex flex-col h-full w-full bg-surface-container-lowest select-none overflow-hidden text-on-surface border-l border-outline-variant/40 shadow-xs ${className}`}>
       {/* 1. Header with Close Button */}
-      <div className="h-10 px-3 bg-[#0B1220] border-b border-slate-800 flex items-center justify-between shrink-0">
+      <div className="h-10 px-3.5 bg-surface-container-lowest border-b border-outline-variant/40 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <ShoppingBag className="h-4 w-4 text-cyan-400 shrink-0" aria-hidden="true" />
-          <span className="text-xs font-bold text-white tracking-wide uppercase truncate">
+          <ShoppingBag className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+          <span className="text-xs font-extrabold text-on-surface tracking-wide uppercase truncate">
             Bán Hàng &amp; Chat Live
           </span>
         </div>
@@ -116,7 +116,7 @@ export function StudioProductsPanel({
           <button
             type="button"
             onClick={onCloseSidebar}
-            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95 cursor-pointer"
+            className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition active:scale-95 cursor-pointer"
             title="Thu gọn thanh Bán hàng (Phím ])"
             aria-label="Thu gọn thanh Bán hàng"
           >
@@ -127,7 +127,7 @@ export function StudioProductsPanel({
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* 2. Pinned Product Card - Luôn hiển thị thanh ghim gọn gàng */}
-        <div className="p-2 sm:p-2.5 shrink-0 border-b border-slate-800 bg-[#0B1220]/70">
+        <div className="p-2 sm:p-2.5 shrink-0 border-b border-outline-variant/30 bg-surface-container-low/40">
           <PinnedProductCard
             product={pinnedProduct}
             hasProducts={hasAnyProducts}
@@ -147,21 +147,21 @@ export function StudioProductsPanel({
         </div>
 
         {/* 3. Tab Navigation (Tin nhắn & Sản phẩm) */}
-        <div className="flex items-center justify-between border-b border-slate-800 bg-[#0B1220] px-2.5 pt-1 shrink-0">
+        <div className="flex items-center justify-between border-b border-outline-variant/40 bg-surface-container-low/50 px-2.5 pt-1.5 shrink-0">
           <div className="flex items-center">
             <button
               type="button"
               onClick={() => handleTabChange("chat")}
               className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${currentTab === "chat"
-                ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-primary text-primary bg-surface-container-lowest rounded-t-lg shadow-2xs"
+                : "border-transparent text-outline hover:text-on-surface"
                 }`}
             >
-              <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${currentTab === "chat" ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
+              <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${currentTab === "chat" ? "text-primary" : "text-outline"}`} aria-hidden="true" />
               <span>Tin nhắn ({totalChatCount})</span>
               {needsReviewCount > 0 && (
                 <span
-                  className="px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-bold"
+                  className="px-1.5 py-0.2 rounded-full bg-rose-50 text-rose-600 border border-rose-200 text-[10px] font-extrabold"
                   title={`${needsReviewCount} tin nhắn cần xử lý`}
                 >
                   <span className="hidden sm:inline">{needsReviewCount} cần xử lý</span>
@@ -174,11 +174,11 @@ export function StudioProductsPanel({
               type="button"
               onClick={() => handleTabChange("products")}
               className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold border-b-2 transition -mb-[1px] cursor-pointer ${currentTab === "products"
-                ? "border-cyan-500 text-white bg-[#151F31] rounded-t-lg"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-primary text-primary bg-surface-container-lowest rounded-t-lg shadow-2xs"
+                : "border-transparent text-outline hover:text-on-surface"
                 }`}
             >
-              <ShoppingBag className={`h-3.5 w-3.5 shrink-0 ${currentTab === "products" ? "text-cyan-400" : "text-slate-400"}`} aria-hidden="true" />
+              <ShoppingBag className={`h-3.5 w-3.5 shrink-0 ${currentTab === "products" ? "text-primary" : "text-outline"}`} aria-hidden="true" />
               <span>Sản phẩm ({totalProductsCount})</span>
             </button>
           </div>
@@ -188,7 +188,7 @@ export function StudioProductsPanel({
             <button
               type="button"
               onClick={onOpenAddProduct}
-              className="inline-flex items-center gap-1 px-2 py-0.5 mb-1 text-[11px] font-semibold text-cyan-400 hover:text-white bg-cyan-500/10 hover:bg-cyan-600 rounded border border-cyan-500/30 transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 mb-1 text-[11px] font-bold text-primary hover:text-primary-container bg-primary/10 hover:bg-primary/20 rounded-lg border border-primary/30 transition cursor-pointer shadow-2xs"
               title="Gán sản phẩm từ kho trực tiếp vào phiên live"
             >
               <Plus className="h-3 w-3" />
@@ -228,21 +228,21 @@ export function StudioProductsPanel({
               />
             ) : (
               /* Empty State thân thiện bên trong tab Sản phẩm */
-              <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center py-10 px-3 text-center text-slate-400">
-                <div className="h-10 w-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-2 text-slate-400">
+              <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center py-10 px-3 text-center text-outline">
+                <div className="h-11 w-11 rounded-full bg-surface-container border border-outline-variant/60 flex items-center justify-center mb-2.5 text-primary shadow-2xs">
                   <Package className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h4 className="text-xs font-bold text-slate-200">
+                <h4 className="text-xs font-bold text-on-surface">
                   Chưa có sản phẩm nào trong phiên
                 </h4>
-                <p className="text-[11px] text-slate-400 max-w-xs mt-1 leading-relaxed">
+                <p className="text-[11px] text-outline max-w-xs mt-1 leading-relaxed">
                   Gán sản phẩm từ kho hàng để AI tự động nhận diện và chốt đơn trực tiếp.
                 </p>
                 {onOpenAddProduct ? (
                   <button
                     type="button"
                     onClick={onOpenAddProduct}
-                    className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 cursor-pointer"
+                    className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-primary hover:bg-primary-container text-white text-xs font-bold rounded-lg shadow-sm transition active:scale-95 cursor-pointer"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>Thêm sản phẩm</span>
@@ -250,7 +250,7 @@ export function StudioProductsPanel({
                 ) : (
                   <Link
                     href={`/shop/livestream/${livestreamId}/edit`}
-                    className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg shadow-xs transition"
+                    className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-primary hover:bg-primary-container text-white text-xs font-bold rounded-lg shadow-sm transition"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>Thêm sản phẩm</span>

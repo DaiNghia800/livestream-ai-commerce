@@ -5,6 +5,7 @@ import {
   InvalidLivestreamStatusError,
   ProhibitedCommentError,
   UnauthorizedRoleClaimError,
+  normalizeCommentForAi,
 } from "../../../src/modules/livestream/services/livestream-comment.service.js";
 import { InMemoryLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { InMemoryLivestreamCommentRepository } from "../../../src/modules/livestream/repositories/livestream-comment.repository.js";
@@ -676,6 +677,28 @@ describe("LivestreamCommentService Unit Tests", () => {
       expect(result).not.toBeNull();
       expect(result?.content).toContain("https://myshop.com/info");
       expect(result?.role).toBe("host");
+    });
+  });
+
+  describe("normalizeCommentForAi", () => {
+    it("chuẩn hóa ký tự nhân Unicode × sang x và thêm Chốt cho mã thứ tự", () => {
+      const normalized = normalizeCommentForAi("Mã 1 × 1");
+      expect(normalized).toBe("Chốt SP01 1 cái");
+    });
+
+    it("tự động thêm tiền tố Chốt cho mã sản phẩm SKU nếu chưa có từ khóa hành động mua", () => {
+      const normalized = normalizeCommentForAi("TUI-XACH-DA 1 cái");
+      expect(normalized).toBe("Chốt TUI-XACH-DA 1 cái");
+    });
+
+    it("giữ nguyên từ khóa mua khi người dùng đã có chốt / mua", () => {
+      const normalized = normalizeCommentForAi("chốt mã 2 2 cái");
+      expect(normalized).toBe("chốt SP02 2 cái");
+    });
+
+    it("chuẩn hóa đúng mã sản phẩm có gạch nối và số lượng", () => {
+      const normalized = normalizeCommentForAi("BLAZER-HANQUOC x1");
+      expect(normalized).toBe("Chốt BLAZER-HANQUOC 1 cái");
     });
   });
 });
