@@ -577,6 +577,46 @@ describe("Hàng đợi cho nhân viên", () => {
     expect(res.status).toBe(400);
   });
 
+  it("theo livestreamId thì thấy MỌI kết quả AI của phiên, mới nhất lên trước", async () => {
+    // Soát lỗi pipeline: phải thấy cả đề nghị đã tự duyệt lẫn từ chối,
+    // kèm lý do và trạng thái đơn, chứ không chỉ hàng đợi đang chờ.
+    const merchantId = crypto.randomUUID();
+    const livestreamId = await createLivestream(pool);
+    const otherLivestream = await createLivestream(pool);
+    const sku = await createSkuWithStock(pool, 20);
+
+    const auto = await submit({ skuId: sku, quantity: 1, confidence: 0.9, merchantId, livestreamId });
+    const queued = await submit({ skuId: sku, quantity: 1, confidence: 0.6, merchantId, livestreamId });
+    await request(app).post(`/api/purchase-requests/${queued.body.purchaseRequest.id}/reject`).send({ reason: "NOT_AN_ORDER" });
+    // Phiên khác, không được lẫn vào
+    await submit({ skuId: sku, quantity: 1, confidence: 0.9, merchantId, livestreamId: otherLivestream });
+
+    const all = await request(app).get(`/api/purchase-requests?livestreamId=${livestreamId}`);
+    expect(all.status).toBe(200);
+    expect(all.body.items.map((x: { id: string }) => x.id)).toEqual([
+      queued.body.purchaseRequest.id,
+      auto.body.purchaseRequest.id,
+    ]);
+    expect(all.body.items[0]).toMatchObject({ status: "REJECTED", rejectReason: "NOT_AN_ORDER", orderId: null, orderStatus: null });
+    expect(all.body.items[1]).toMatchObject({ status: "APPROVED", orderStatus: "DRAFT" });
+    expect(all.body.items[1].orderId).toBeTruthy();
+
+    const approved = await request(app).get(`/api/purchase-requests?livestreamId=${livestreamId}&status=approved`);
+    expect(approved.body.items.map((x: { id: string }) => x.id)).toEqual([auto.body.purchaseRequest.id]);
+
+    const bad = await request(app).get(`/api/purchase-requests?livestreamId=${livestreamId}&status=DONE`);
+    expect(bad.status).toBe(400);
+
+    // Dán từ clipboard hay dính xuống dòng: vẫn phải hiểu đúng id.
+    const dinhXuongDong = await request(app).get(`/api/purchase-requests?livestreamId=${livestreamId}%0A`);
+    expect(dinhXuongDong.status).toBe(200);
+    expect(dinhXuongDong.body.items).toHaveLength(2);
+
+    // Không phải UUID thì 400, không để Postgres ném 500.
+    const khongPhaiUuid = await request(app).get("/api/purchase-requests?livestreamId=abc");
+    expect(khongPhaiUuid.status).toBe(400);
+  });
+
   it("xem chi tiết một đề nghị kèm câu bình luận gốc", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const queued = await submit({ skuId: sku, quantity: 2, confidence: 0.6 });

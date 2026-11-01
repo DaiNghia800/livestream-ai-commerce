@@ -297,6 +297,56 @@ export async function listPendingRequests(
   return result.rows as PurchaseRequest[];
 }
 
+/**
+ * Mọi kết quả AI của một phiên live, mới nhất lên trước.
+ *
+ * Khác hàng đợi duyệt: trả cả đề nghị đã tự duyệt / từ chối / hết hạn,
+ * kèm lý do từ chối và trạng thái đơn (nếu có) để nhìn một lượt là biết
+ * từng bình luận đi tới đâu. Dùng cho soát lỗi và màn "Kết quả AI".
+ */
+export async function listRequestsByLivestream(
+  client: PoolClient,
+  params: { livestreamId: string; status: string | null; limit: number }
+): Promise<PurchaseRequest[]> {
+  const result = await client.query(
+    `SELECT pr.id,
+            pr.merchant_id   AS "merchantId",
+            pr.customer_id   AS "customerId",
+            pr.livestream_id AS "livestreamId",
+            pr.comment_id    AS "commentId",
+            pr.source,
+            pr.status,
+            pr.confidence,
+            pr.ai_result     AS "aiResult",
+            pr.held_until    AS "heldUntil",
+            pr.order_id      AS "orderId",
+            o.status         AS "orderStatus",
+            pr.reviewed_at   AS "reviewedAt",
+            pr.reject_reason AS "rejectReason",
+            pr.guard_reasons AS "guardReasons",
+            pr.created_at    AS "createdAt",
+            COALESCE(
+                (SELECT json_agg(json_build_object(
+                            'skuId', r.sku_id::text,
+                            'quantity', r.quantity,
+                            'requestedQty', COALESCE(r.requested_quantity, r.quantity),
+                            'status', r.status
+                        ) ORDER BY r.sku_id)
+                   FROM reservations r
+                  WHERE r.purchase_request_id = pr.id),
+                '[]'::json
+            ) AS lines
+       FROM purchase_requests pr
+       LEFT JOIN orders o ON o.id = pr.order_id
+      WHERE pr.livestream_id = $1
+        AND ($2::varchar IS NULL OR pr.status = $2)
+      ORDER BY pr.created_at DESC
+      LIMIT $3`,
+    [params.livestreamId, params.status, params.limit]
+  );
+  return result.rows as PurchaseRequest[];
+}
+
 /** Đề nghị quá hạn chờ duyệt — job quét gọi hàm này. */
 export async function findOverdueRequestIds(
   client: PoolClient,
