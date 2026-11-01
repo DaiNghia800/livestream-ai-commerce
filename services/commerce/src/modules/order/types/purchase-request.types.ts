@@ -39,6 +39,8 @@ export interface PurchaseRequest {
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   rejectReason?: string | null;
+  /** Trạng thái đơn đi kèm (chỉ có ở danh sách theo phiên). */
+  orderStatus?: string | null;
   /** Vì sao đề nghị này rơi vào hàng đợi — xem order-guards.ts. */
   guardReasons?: string[];
   createdAt: string;
