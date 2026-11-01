@@ -9,7 +9,12 @@
   "intent": {
     "decision": "purchase_candidate",
     "confidence": "high",
-    "source": "regex",
+    "source": "openai",
+    "kind": "purchase",
+    "items": [
+      { "product_code": "A12", "quantity": 2, "color": null, "size": null },
+      { "product_code": "SHIPDEMO-mve51bb3-M", "quantity": 1, "color": null, "size": "M" }
+    ],
     "product_code": "A12",
     "quantity": 2,
     "color": null,

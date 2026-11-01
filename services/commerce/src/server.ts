@@ -2,7 +2,9 @@ import { createApp } from "./app.js";
 import { SQSClient } from "@aws-sdk/client-sqs";
 import { config } from "./config.js";
 import { createEventTransport } from "./modules/order/events/event-transport.js";
+import { ExpireAwaitingPaymentJob } from "./modules/order/jobs/expire-awaiting-payment.job.js";
 import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
+import { OrderLifecycleService } from "./modules/order/services/order-lifecycle.service.js";
 import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
 import { AiResultProcessor, ConsumeAiResultsJob } from "./modules/order/jobs/consume-ai-results.job.js";
 import { SyncShipmentsJob } from "./modules/shipping/jobs/sync-shipments.job.js";
@@ -48,7 +50,14 @@ async function bootstrap() {
 
   const aiResultJob = config.aiWorkerResultQueueUrl
     ? new ConsumeAiResultsJob(
-        new SQSClient({ region: config.awsRegion || "ap-southeast-1" }),
+        new SQSClient({
+          region: config.awsRegion || "ap-southeast-1",
+          // Có khoá riêng cho queue kết quả thì dùng; không thì để SDK
+          // tự tìm (AWS_PROFILE / AWS_ACCESS_KEY_ID / IAM role khi deploy).
+          ...(config.aiWorkerResultCredentials
+            ? { credentials: config.aiWorkerResultCredentials }
+            : {}),
+        }),
         config.aiWorkerResultQueueUrl,
         new AiResultProcessor(
           pool,
@@ -69,6 +78,15 @@ async function bootstrap() {
     { intervalMs: config.expireJobIntervalMs }
   );
   expireRequestsJob.start();
+
+  // Đơn chọn trả online mà khách bỏ, không trả: không giữ tồn nên không
+  // gấp, chỉ dọn cho danh sách đơn của shop sạch (AWAITING_PAYMENT_TTL_HOURS).
+  const expireAwaitingPaymentJob = new ExpireAwaitingPaymentJob(
+    pool,
+    new OrderLifecycleService(pool),
+    { ttlHours: config.awaitingPaymentTtlHours, intervalMs: Math.max(config.expireJobIntervalMs, 60_000) }
+  );
+  expireAwaitingPaymentJob.start();
 
   // Lưới an toàn cho webhook vận chuyển.
   const syncShipmentsJob = new SyncShipmentsJob(pool);
@@ -119,6 +137,7 @@ async function bootstrap() {
     publishOutboxJob.stop();
     const aiResultStopped = aiResultJob?.stop();
     expireRequestsJob.stop();
+    expireAwaitingPaymentJob.stop();
     syncShipmentsJob.stop();
     aiResultsConsumerJob.stop();
     server.close(() => {

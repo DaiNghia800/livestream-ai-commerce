@@ -4,6 +4,8 @@ import json
 import logging
 import os
 
+import dotenv
+
 from process_comment import process_comment_event
 
 
@@ -51,6 +53,9 @@ def run_once(sqs, input_queue_url: str, result_queue_url: str) -> int:
 
 
 def main() -> None:
+    # Nạp .env gốc của repo (URL hai queue, AWS key, key AI) để chạy local
+    # không phải export tay; biến đã export sẵn vẫn được ưu tiên.
+    dotenv.load_dotenv()
     input_queue_url = os.environ.get("SQS_QUEUE_URL")
     result_queue_url = os.environ.get("AI_WORKER_RESULT_QUEUE_URL")
     if not input_queue_url or not result_queue_url:

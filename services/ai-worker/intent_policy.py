@@ -8,14 +8,21 @@ import re
 import unicodedata
 
 
-_BUY = r"\b(?:chốt|mua|lấy|đặt|order)\b"
-_NEGATION = r"\b(?:không|chẳng|chả|chưa|đừng)\b"
+# Khách gõ điện thoại hay bỏ dấu ("chot", "khong mua"), nên mỗi từ khoá có
+# thêm dạng không dấu. Chỉ thêm dạng ít đụng từ khác: "đừng"→"dung" trùng
+# "dùng", "chả"→"cha" trùng "cha", nên hai từ đó không có bản không dấu.
+_BUY = r"\b(?:chốt|chot|mua|lấy|lay|đặt|dat|order)\b"
+_NEGATION = r"\b(?:không|khong|chẳng|chang|chả|chưa|chua|đừng)\b"
 _NEGATED_BUY = re.compile(
-    _NEGATION + r"(?:\s+(?:muốn|cần|định|có|nên|vội|hãy))*\s+" + _BUY
+    _NEGATION
+    + r"(?:\s+(?:muốn|muon|cần|can|định|dinh|có|co|nên|nen|vội|voi|hãy|hay))*\s+"
+    + _BUY
 )
 _QUESTION = re.compile(
-    r"[?？]|\b(?:hỏi|bao nhiêu|bao giờ|khi nào|thế nào|được không)\b"
-    r"|\b(?:không|chưa|à|hả|chứ)(?:\s+(?:ạ|vậy|nhỉ|anh|chị|shop))*[.!]*$"
+    # "hoi" không có bản không dấu: trùng "hơi" ("mua hơi nhiều").
+    r"[?？]|\b(?:hỏi|bao nhiêu|bao nhieu|bao giờ|bao gio|khi nào|khi nao"
+    r"|thế nào|the nao|được không|duoc khong)\b"
+    r"|\b(?:không|khong|chưa|chua|à|hả|chứ)(?:\s+(?:ạ|vậy|nhỉ|anh|chị|shop))*[.!]*$"
 )
 
 
@@ -118,6 +125,61 @@ def apply_decision(intent: dict, quantity_issue: str | None = None) -> dict:
         if result.get("confidence") != "high" and quantity_issue is None:
             reasons.append("uncertain_intent")
         decision = "needs_clarification" if reasons else "purchase_candidate"
+    result["decision"] = decision
+    result["reason_codes"] = reasons
+    return result
+
+
+_EMPTY_ITEM = {"product_code": None, "quantity": None, "color": None, "size": None}
+
+
+def apply_ai_decision(intent: dict) -> dict:
+    """Turn an AI reading (kind + items) into the worker's decision.
+
+    The AI decides what the viewer meant; this gate only checks that every
+    item is complete enough to become an order line. Nothing is inferred:
+    a missing quantity or code is a clarification request, never a guess.
+    Legacy single-product fields mirror the first item for older callers
+    and the comment.analyzed contract.
+    """
+    result = dict(intent)
+    items = result.get("items")
+    if items is None:
+        # Kết quả kiểu cũ (một sản phẩm, không có items/kind) vẫn đi qua đây.
+        items = [] if not result.get("has_intent") else [{
+            "product_code": result.get("product_code"), "quantity": result.get("quantity"),
+            "color": result.get("color"), "size": result.get("size"),
+        }]
+    items = [dict(_EMPTY_ITEM, **i) for i in items if isinstance(i, dict)]
+    kind = result.get("kind") or ("purchase" if result.get("has_intent") else "other")
+
+    reasons: list[str] = []
+    if kind == "question":
+        # Hỏi kèm sản phẩm → cần khách khẳng định; hỏi suông → không phải đơn.
+        decision = "needs_clarification" if items else "no_purchase"
+        reasons.append("ambiguous_question" if items else "question")
+    elif kind == "other" or not result.get("has_intent"):
+        decision = "no_purchase"
+        reasons.append("no_purchase_intent")
+    else:
+        if not items:
+            reasons.append("missing_product_code")
+        for item in items:
+            code = item["product_code"]
+            if not isinstance(code, str) or not code.strip():
+                reasons.append("missing_product_code")
+            quantity = item["quantity"]
+            if quantity is None:
+                reasons.append("missing_quantity")
+            elif type(quantity) is not int or quantity <= 0:
+                reasons.append("invalid_quantity")
+        reasons = list(dict.fromkeys(reasons))
+        decision = "needs_clarification" if reasons else "purchase_candidate"
+
+    first = items[0] if items else _EMPTY_ITEM
+    result.update(items=items, kind=kind, product_code=first["product_code"],
+                  quantity=first["quantity"], color=first["color"], size=first["size"])
+    result["has_intent"] = decision != "no_purchase"
     result["decision"] = decision
     result["reason_codes"] = reasons
     return result

@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AiResultProcessor,
   ConsumeAiResultsJob,
+  LY_DO_TU_CHOI,
   UnresolvedAiProductError,
   resolveAnalyzedSku,
 } from "../../../src/modules/order/jobs/consume-ai-results.job.js";
 import type { PurchaseRequestService } from "../../../src/modules/order/services/purchase-request.service.js";
+import { AllLinesOutOfStockError } from "../../../src/shared/errors/domain.errors.js";
 
 const event = {
   schema_version: 1,
@@ -56,6 +58,93 @@ describe("AI result processing", () => {
     }));
   });
 
+  it("a comment naming two products becomes one request with two lines", async () => {
+    // Worker gửi items; mỗi mã được dò SKU trong phiên (1 query merchant + 1 query SKU).
+    const submit = vi.fn().mockResolvedValue({ decision: "AUTO_ORDER" });
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })                                            // chưa có đề nghị
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] })                      // merchant (mã 1)
+      .mockResolvedValueOnce({ rows: [{ id: "7", variant_name: "M" }] })             // SKU mã 1
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] })                      // merchant (mã 2)
+      .mockResolvedValueOnce({ rows: [{ id: "9", variant_name: "Đen / M" }] });      // SKU mã 2
+    const processor = new AiResultProcessor({ query } as unknown as Pool, { submit } as unknown as PurchaseRequestService);
+
+    await processor.process(JSON.stringify({
+      ...event,
+      intent: {
+        ...event.intent, source: "openai", product_code: "SHIPDEMO-mve51bb3-M", quantity: 100, color: null, size: null,
+        items: [
+          { product_code: "SHIPDEMO-mve51bb3-M", quantity: 100 },
+          { product_code: "A12-DEN-M", quantity: 100, color: null, size: null },
+        ],
+      },
+    }));
+
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      merchantId: "m-1",
+      source: "COMMENT_AI",
+      lines: [{ skuId: "7", quantity: 100 }, { skuId: "9", quantity: 100 }],
+    }));
+  });
+
+  it("drops the codes it cannot resolve but keeps the rest, and records them", async () => {
+    const submit = vi.fn().mockResolvedValue({ decision: "AUTO_ORDER" });
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] })
+      .mockResolvedValueOnce({ rows: [] })                                            // mã 1 không có trong phiên
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] })
+      .mockResolvedValueOnce({ rows: [{ id: "9", variant_name: "Đen / M" }] });
+    const processor = new AiResultProcessor({ query } as unknown as Pool, { submit } as unknown as PurchaseRequestService);
+
+    await processor.process(JSON.stringify({
+      ...event,
+      intent: { ...event.intent, items: [{ product_code: "XYZ", quantity: 1 }, { product_code: "A12", quantity: 2 }] },
+    }));
+
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      lines: [{ skuId: "9", quantity: 2 }],
+      aiResult: expect.objectContaining({ unresolvedCodes: ["XYZ"] }),
+    }));
+  });
+
+  it("one item without a quantity makes the whole comment a clarification", async () => {
+    const submit = vi.fn();
+    const recordRejected = vi.fn().mockResolvedValue({});
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] }) } as unknown as Pool;
+    const processor = new AiResultProcessor(pool, { submit, recordRejected } as unknown as PurchaseRequestService);
+
+    await processor.process(JSON.stringify({
+      ...event,
+      intent: { ...event.intent, items: [{ product_code: "A12", quantity: 2 }, { product_code: "B05", quantity: null }] },
+    }));
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(recordRejected).toHaveBeenCalledWith(expect.anything(), LY_DO_TU_CHOI.NEEDS_CLARIFICATION);
+  });
+
+  it("accepts a result read by OpenAI and records it as an AI-sourced request", async () => {
+    // Worker chọn OpenAI khi có OPENAI_API_KEY; Commerce phải nhận nguồn này
+    // như gemini, không ném lỗi schema rồi để message quay vòng trong queue.
+    const submit = vi.fn().mockResolvedValue({ decision: "AUTO_ORDER" });
+    const processor = new AiResultProcessor(
+      database(), { submit } as unknown as PurchaseRequestService
+    );
+
+    await processor.process(JSON.stringify({
+      ...event,
+      intent: { ...event.intent, source: "openai" },
+    }));
+
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      commentId: event.comment_id,
+      source: "COMMENT_AI",
+      lines: [{ skuId: "7", quantity: 2 }],
+    }));
+  });
+
   it("accepts the AI worker intent-result envelope and preserves its intent", async () => {
     const submit = vi.fn().mockResolvedValue({ decision: "AUTO_ORDER" });
     const processor = new AiResultProcessor(
@@ -97,18 +186,59 @@ describe("AI result processing", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("does not create an order for non-purchase decisions", async () => {
+  it("non-purchase decisions are recorded as rejected with a reason, never as an order", async () => {
     const submit = vi.fn();
-    const pool = { query: vi.fn() } as unknown as Pool;
+    const recordRejected = vi.fn().mockResolvedValue({});
+    // 1: chưa có đề nghị nào; 2: merchant của phiên
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "55555555-5555-4555-8555-555555555555" }] }) } as unknown as Pool;
     const processor = new AiResultProcessor(
-      pool, { submit } as unknown as PurchaseRequestService
+      pool, { submit, recordRejected } as unknown as PurchaseRequestService
     );
     await processor.process(JSON.stringify({
       ...event,
       intent: { ...event.intent, decision: "needs_clarification", product_code: null, quantity: null },
     }));
     expect(submit).not.toHaveBeenCalled();
-    expect(pool.query).not.toHaveBeenCalled();
+    // Khách hỏi bằng biên nhận phải thấy "unavailable" + lý do ngay,
+    // không phải "đang xử lý" tới hết giờ.
+    expect(recordRejected).toHaveBeenCalledWith(
+      expect.objectContaining({ commentId: event.comment_id, merchantId: "55555555-5555-4555-8555-555555555555" }),
+      LY_DO_TU_CHOI.NEEDS_CLARIFICATION
+    );
+  });
+
+  it("out of stock at comment time is recorded as OUT_OF_STOCK and the message is acknowledged", async () => {
+    const submit = vi.fn().mockRejectedValue(new AllLinesOutOfStockError([{ skuId: "7", requested: 2, sellable: 0 }]));
+    const recordRejected = vi.fn().mockResolvedValue({});
+    const processor = new AiResultProcessor(
+      database(), { submit, recordRejected } as unknown as PurchaseRequestService
+    );
+
+    await expect(processor.process(JSON.stringify(event))).resolves.toBeUndefined();
+
+    expect(recordRejected).toHaveBeenCalledWith(
+      expect.objectContaining({ commentId: event.comment_id, livestreamId: event.session_id }),
+      LY_DO_TU_CHOI.OUT_OF_STOCK
+    );
+  });
+
+  it("an unknown or ambiguous SKU is recorded as SKU_NOT_FOUND instead of retrying forever", async () => {
+    const submit = vi.fn();
+    const recordRejected = vi.fn().mockResolvedValue({});
+    // 1: chưa có đề nghị; 2: merchant; 3: không SKU nào khớp; 4: merchant cho bước từ chối
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ merchant_id: "m-1" }] }) } as unknown as Pool;
+    const processor = new AiResultProcessor(pool, { submit, recordRejected } as unknown as PurchaseRequestService);
+
+    await processor.process(JSON.stringify(event));
+
+    expect(submit).not.toHaveBeenCalled();
+    expect(recordRejected).toHaveBeenCalledWith(expect.anything(), LY_DO_TU_CHOI.SKU_NOT_FOUND);
   });
 
   it("rejects ambiguous variants rather than choosing one", async () => {

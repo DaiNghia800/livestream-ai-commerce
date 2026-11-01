@@ -31,6 +31,41 @@ aws sqs get-queue-attributes --queue-url $env:AI_WORKER_RESULT_QUEUE_URL --attri
 
 **Chú ý:** `.env.example` hiện có `AWS_ACCESS_KEY_ID=test` và `AWS_SECRET_ACCESS_KEY=test` cho LocalStack. Nếu bản `.env` của bạn cũng có hai biến đó, `dotenv` sẽ nạp chúng vào tiến trình Node và AWS SDK có thể ưu tiên chúng hơn `AWS_PROFILE`. Khi dùng SQS AWS thật, bỏ hai dòng credential LocalStack khỏi `.env` riêng của Commerce/root hoặc chạy với một môi trường không nạp chúng. Không in giá trị credential ra terminal để kiểm tra.
 
+## Cách khác cho máy dev: khoá riêng trong `.env`
+
+Thay cho `AWS_PROFILE`, Commerce nhận hai biến dành riêng cho queue kết
+quả (`.env` đã nằm trong `.gitignore`):
+
+```
+AI_WORKER_RESULT_QUEUE_URL=<result-queue-url>
+AI_WORKER_RESULT_AWS_ACCESS_KEY_ID=<khoá của user commerce-result-consumer>
+AI_WORKER_RESULT_AWS_SECRET_ACCESS_KEY=<secret tương ứng>
+```
+
+Khoá này chỉ có quyền trên queue kết quả (user bị cấm `ListQueues`), tách
+khỏi `AWS_ACCESS_KEY_ID` dùng cho IVS/S3/queue đầu vào — thu hồi khoá
+nào cũng không kéo theo khoá kia. Trên môi trường deploy vẫn chuyển sang
+IAM role rồi bỏ hai biến này.
+
+## Kết quả AI không ra đơn thì khách thấy gì
+
+Mọi kết quả AI đều kết thúc bằng một dòng `purchase_requests`. Không ra
+đơn thì dòng đó là `REJECTED` kèm `reject_reason`, và
+`GET /api/orders/by-comment/:commentId/confirmation` trả
+`{ status: "unavailable", reason }` để trang khách nói đúng chuyện ngay
+thay vì "đang xử lý" tới hết giờ:
+
+| `reason` | Khi nào | Trang khách |
+|---|---|---|
+| `OUT_OF_STOCK` | Mã còn bán nhưng tồn khả dụng = 0 lúc chốt | "Sản phẩm bạn chốt đã hết hàng" |
+| `SKU_NOT_FOUND` | Mã không có / không duy nhất trong phiên, hoặc màu-size không khớp | "Không nhận ra mã sản phẩm trong phiên này" |
+| `NO_PURCHASE_INTENT` | AI kết luận không phải chốt đơn | "AI thấy đây không phải bình luận chốt đơn" |
+| `NEEDS_CLARIFICATION` | Thiếu mã / số lượng, hoặc AI chưa chắc | "Gõ lại rõ hơn, ví dụ: Chốt A12 size M 2 cái" |
+| `LIVESTREAM_CLOSED` | Phiên đã kết thúc | "Phiên live đã kết thúc" |
+
+Chỉ lỗi hạ tầng (database, mạng) mới để message SQS quay lại; lỗi
+nghiệp vụ được ghi nhận rồi xoá message, nên DLQ chỉ còn chứa lỗi thật.
+
 ## Chạy hai service
 
 Từ thư mục gốc repo trên máy Commerce, đặt `SQS_QUEUE_URL` là queue gửi `comment.created`, `AI_WORKER_RESULT_QUEUE_URL` là queue nhận `comment.analyzed`, `AWS_PROFILE=commerce-result`, `AWS_REGION=ap-southeast-1`, rồi chạy `npm run dev` trong `services/commerce`. Không đặt cùng một URL cho hai queue. Với trang khách hỏi trạng thái bằng biên nhận, có thể để trống `REALTIME_EVENTS_URL`.
@@ -54,6 +89,37 @@ $env:AWS_REGION = "ap-southeast-1"
 cd .\services\ai-worker
 python sqs_worker.py
 ```
+
+### Mỗi người một cặp queue dev
+
+SQS giao mỗi message cho đúng một worker đang đọc. Hai người cùng chạy worker trên cùng queue thì bình luận của người này có thể bị worker (và code) của người kia xử lý. Khi dev cục bộ, mỗi người nên có cặp queue riêng và trỏ `SQS_QUEUE_URL` + `AI_WORKER_RESULT_QUEUE_URL` sang đó.
+
+Key `liveorder-realtime-dev` chỉ được tạo/đọc/ghi queue trong khu tên `liveorder-dev-realtime-*`, nên đặt tên theo mẫu `liveorder-dev-realtime-comments-<tên>` và `liveorder-dev-realtime-ai-results-<tên>`. Key `commerce-result-consumer-dev` chỉ được cấp queue kết quả chung, nên với queue riêng hãy để trống `AI_WORKER_RESULT_AWS_ACCESS_KEY_ID/SECRET` để Commerce đọc bằng key chính. Đổi `.env` xong phải khởi động lại cả Commerce lẫn worker.
+
+### AI quyết, regex chỉ là đường nhanh
+
+Khi có key AI, worker để **AI quyết định**: chỉ câu chuẩn (`Chốt A12 2 cái`: từ mua + mã ngắn + số lượng, không mập mờ) đi đường regex miễn phí. Mọi câu khác có dấu hiệu mua (từ mua, con số, hoặc mã) được gửi cho AI **kèm danh sách sản phẩm của phiên** (worker gọi `GET /api/livestreams/:id/products` của Commerce, cache 60 s, cấu hình `COMMERCE_API_URL`, mặc định `http://localhost:8000`). Nhờ đó AI đối chiếu được tên ("áo thun demo") ra mã, đọc được câu dài, không dấu, nhiều mã, và tự phân biệt mua / hỏi / tán gẫu. Tán gẫu thuần (không số, không từ mua) bị bỏ qua không tốn lượt AI. Các lưới chặn regex (câu hỏi, phủ định, nhiều mã…) chỉ còn áp dụng khi **không** có key AI.
+
+AI trả `kind` (`purchase` / `question` / `other`) và `items[]` (mỗi món: `product_code`, `quantity`, `color`, `size`). Worker chỉ kiểm tra đủ dữ liệu: món nào thiếu số lượng hoặc không khớp danh mục → `needs_clarification`; không bao giờ tự đoán số lượng. Sự kiện `comment.analyzed` mang `intent.items`; các trường phẳng `product_code`/`quantity` là món đầu để hợp đồng cũ không gãy. Commerce dò từng mã ra SKU trong phiên: mã không khớp bị bỏ và ghi vào `aiResult.unresolvedCodes`, không mã nào khớp mới từ chối `SKU_NOT_FOUND`; nhiều mã → một đơn nhiều dòng.
+
+Worker chọn nhà cung cấp theo `.env` gốc, không cần export:
+
+| `.env` | Nhà cung cấp | Ghi chú |
+|---|---|---|
+| `OPENAI_API_KEY` có giá trị | OpenAI | Model theo `OPENAI_MODEL`, mặc định `gpt-4.1-mini`. Tài khoản trả trước. |
+| `OPENAI_API_KEY` trống, `GEMINI_API_KEY` có | Gemini | Miễn phí, giới hạn lượt/phút. |
+| Cả hai trống | Gemini | Lỗi `GEMINI_API_KEY not set`; bình luận chưa chắc nằm lại queue đầu vào. |
+
+Kiểm tra key mà không đụng queue (trong `services/ai-worker`):
+
+```powershell
+$env:PYTHONIOENCODING = "utf-8"
+python -c "from parse_intent import ai_provider, parse_purchase_intent; print(ai_provider()); print(parse_purchase_intent('cho anh 2 cái áo a12 xem nào'))"
+```
+
+Kỳ vọng dòng đầu in nhà cung cấp đang chọn, dòng hai có `decision: purchase_candidate`, `product_code: A12`, `quantity: 2`.
+
+Trong sự kiện `comment.analyzed`, `intent.source` là `regex`, `gemini` hoặc `openai`; Commerce ghi `regex` thành nguồn `COMMENT_SYNTAX`, hai giá trị còn lại thành `COMMENT_AI`. Thêm nhà cung cấp mới thì phải thêm vào enum `intentSchema` trong `consume-ai-results.job.ts`, nếu không Commerce từ chối message và nó quay vòng trong result queue tới khi vào DLQ.
 
 Contract result có ví dụ tại `contracts/examples/comment-analyzed.v1.json`. Commerce cũng nhận envelope `schema_name: "ai-worker.intent-result"`, `schema_version: 1`, `source_schema_version: 1` của AI Worker. `event_id` và `comment_id` phải giữ nguyên từ input; `event_id`, `session_id` và `customer_id` phải là UUID thật. Commerce tra `merchant_id` theo `session_id`; mã AI phải khớp đúng một SKU active trong danh sách sản phẩm của phiên. Nếu AI nêu màu/size, tên biến thể phải chứa đúng những từ đó. Không khớp hoặc khớp nhiều thì không tạo đơn. `purchase_candidate` với `confidence=high` được chuyển thành điểm `0.85`, là ngưỡng tự chốt hiện tại; `needs_clarification` và `no_purchase` không tạo đơn. Payload smoke có `synthetic-session-*` hoặc `synthetic-customer-*` chỉ để kiểm tra định dạng, không tạo được đơn thật.
 

@@ -80,10 +80,11 @@ export function createOrderRouter(
     try {
       const result = await pool.query<{
         status: string;
+        reject_reason: string | null;
         order_code: string | null;
         confirm_token: string | null;
       }>(
-        `SELECT pr.status, o.order_code, o.confirm_token
+        `SELECT pr.status, pr.reject_reason, o.order_code, o.confirm_token
            FROM purchase_requests pr
            LEFT JOIN orders o ON o.id = pr.order_id
           WHERE pr.comment_id = $1 AND pr.customer_id = $2 AND pr.livestream_id = $3
@@ -114,7 +115,12 @@ export function createOrderRouter(
           confirmPath: `/confirm/${encodeURIComponent(request.confirm_token)}`,
         });
       } else {
-        res.json({ status: request.status === "PENDING" ? "needs_review" : "unavailable" });
+        // `reason` để trang khách nói đúng chuyện: hết hàng khác với
+        // không nhận ra mã, khác với "không phải ý định mua".
+        res.json({
+          status: request.status === "PENDING" ? "needs_review" : "unavailable",
+          reason: request.reject_reason ?? null,
+        });
       }
     } catch (error) {
       console.error("[CommentConfirmation] Failed to load order:", error);
