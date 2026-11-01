@@ -39,6 +39,7 @@ import {
   insertPurchaseRequest,
   insertRequestReservation,
   listPendingRequests,
+  listRequestsByLivestream,
   loadPurchaseRequest,
   markRequestExpired,
   markRequestReviewed,
@@ -47,6 +48,7 @@ import { evaluateGuards, type GuardVerdict } from "./order-guards.js";
 import type { OrderSource, RejectedLine } from "../types/order.types.js";
 import type {
   PurchaseRequest,
+  PurchaseRequestStatus,
   SubmitRequestResult,
 } from "../types/purchase-request.types.js";
 import type { DraftOrderService } from "./draft-order.service.js";
@@ -284,10 +286,61 @@ export class PurchaseRequestService {
     }
   }
 
+  /** Mọi kết quả AI của một phiên, lọc theo trạng thái nếu cần. */
+  async listByLivestream(
+    livestreamId: string,
+    status: PurchaseRequestStatus | null,
+    limit = 50
+  ): Promise<PurchaseRequest[]> {
+    const client = await this.pool.connect();
+    try {
+      return await listRequestsByLivestream(client, { livestreamId, status, limit });
+    } finally {
+      client.release();
+    }
+  }
+
   async load(requestId: string): Promise<PurchaseRequest> {
     const client = await this.pool.connect();
     try {
       return await loadPurchaseRequest(client, requestId);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Ghi lại một bình luận KHÔNG ra đơn, kèm lý do — để khách hỏi trạng
+   * thái bằng biên nhận nhận được câu trả lời ngay ("hết hàng", "không
+   * nhận ra mã") thay vì chờ tới hết thời gian rồi đoán.
+   *
+   * Idempotent theo commentId: cùng bình luận gửi lại thì trả dòng cũ.
+   */
+  async recordRejected(
+    params: Omit<SubmitRequestParams, "confidence" | "lines">,
+    reason: string
+  ): Promise<PurchaseRequest> {
+    if (params.commentId) {
+      const seen = await this.findExistingByComment(params.commentId);
+      if (seen?.purchaseRequest) return seen.purchaseRequest;
+    }
+    const client = await this.pool.connect();
+    try {
+      const requestId = await insertPurchaseRequest(
+        client,
+        this.toDto({ ...params, confidence: 0, lines: [] }, null),
+        "REJECTED",
+        reason
+      );
+      return await loadPurchaseRequest(client, requestId);
+    } catch (err) {
+      // Hai bản giao song song của cùng một kết quả: comment_id là duy
+      // nhất, kẻ thua đọc lại dòng của kẻ thắng.
+      if ((err as { code?: string }).code === "23505" && params.commentId) {
+        const seen = await this.findExistingByComment(params.commentId);
+        if (seen?.purchaseRequest) return seen.purchaseRequest;
+      }
+      throw err;
     } finally {
       client.release();
     }

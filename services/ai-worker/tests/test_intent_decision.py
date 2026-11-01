@@ -46,7 +46,8 @@ def test_guarded_language_never_calls_ai(content, decision, reason):
 
 @pytest.mark.parametrize("content,decision,reason", [
     ("Chốt A12 đen", "needs_clarification", "missing_quantity"),
-    ("Chốt đen size M 2 cái", "needs_clarification", "missing_product_code"),
+    # Không có mã thì regex không được "chắc": tắt AI nên thêm uncertain_intent.
+    ("Chốt đen size M 2 cái", "needs_clarification", ["missing_product_code", "uncertain_intent"]),
     ("Chốt A12 0 cái", "needs_clarification", "invalid_quantity"),
     ("Chốt A12 2 cái", "purchase_candidate", None),
     ("Chốt A12 đen size M 2 cái", "purchase_candidate", None),
@@ -55,7 +56,8 @@ def test_guarded_language_never_calls_ai(content, decision, reason):
 def test_regex_result_receives_business_decision(content, decision, reason):
     result = parse_purchase_intent(content, use_ai=False)
     assert result["decision"] == decision
-    assert result["reason_codes"] == ([] if reason is None else [reason])
+    expected = [] if reason is None else (reason if isinstance(reason, list) else [reason])
+    assert result["reason_codes"] == expected
 
 
 @pytest.mark.parametrize("fields,decision,reason", [

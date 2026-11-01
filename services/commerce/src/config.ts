@@ -20,11 +20,15 @@ export interface AppConfig {
   sqsQueueUrl?: string;
   aiWorkerResultQueueUrl?: string;
   sqsAiResultsQueueUrl?: string;
+  /** Khoá riêng chỉ để đọc queue kết quả AI; thiếu thì dùng chuỗi credential mặc định. */
+  aiWorkerResultCredentials?: { accessKeyId: string; secretAccessKey: string };
   redisUrl: string;
   /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
   holdSoftSeconds: number;
   /** Khoảng cách giữa hai lượt quét đơn hết hạn. */
   expireJobIntervalMs: number;
+  /** Đơn chọn trả online chưa trả sau chừng này giờ thì tự huỷ; 0 = không huỷ. */
+  awaitingPaymentTtlHours: number;
   /**
    * Đầu vào HTTP của Realtime service để nhận sự kiện outbox.
    * Khác NEXT_PUBLIC_REALTIME_URL (WebSocket cho trình duyệt).
@@ -192,6 +196,16 @@ export const config: AppConfig = {
   sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
   aiWorkerResultQueueUrl: process.env.AI_WORKER_RESULT_QUEUE_URL || undefined,
   sqsAiResultsQueueUrl: process.env.SQS_AI_RESULTS_QUEUE_URL || undefined,
+  // Teammate cấp một IAM user riêng (commerce-result-consumer) chỉ có
+  // quyền trên queue kết quả. Để riêng khỏi AWS_ACCESS_KEY_ID (khoá
+  // IVS/S3/queue đầu vào) để thu hồi khoá nào cũng không kéo theo khoá kia.
+  aiWorkerResultCredentials:
+    process.env.AI_WORKER_RESULT_AWS_ACCESS_KEY_ID && process.env.AI_WORKER_RESULT_AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AI_WORKER_RESULT_AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AI_WORKER_RESULT_AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined,
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   // Đề nghị nằm trong hàng đợi duyệt giữ tồn tối đa chừng này rồi tự
   // hết hạn. ĐƠN NHÁP thì không giữ tồn và không có hạn: tồn chỉ được
@@ -199,6 +213,7 @@ export const config: AppConfig = {
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),
   // Khoảng cách giữa hai lượt quét đề nghị quá hạn.
   expireJobIntervalMs: parseInt(process.env.EXPIRE_JOB_INTERVAL_MS || "30000", 10),
+  awaitingPaymentTtlHours: parseInt(process.env.AWAITING_PAYMENT_TTL_HOURS || "24", 10),
   // services/realtime còn rỗng nên mặc định không có URL: publisher
   // chạy ở chế độ ghi log, không sinh ra sự kiện FAILED giả.
   realtimeEventsUrl: process.env.REALTIME_EVENTS_URL || undefined,

@@ -98,6 +98,72 @@ describe("AI result to draft order", () => {
     expect(opened.body.status).toBe("PENDING_CONFIRMATION");
   });
 
+  it("a comment for a sold-out SKU answers the receipt poll with OUT_OF_STOCK right away", async () => {
+    // Tồn 0 ngay lúc chốt: khách phải được báo "hết hàng" chứ không
+    // phải "đang xử lý" tới hết giờ.
+    const skuId = await createSkuWithStock(pool, 0);
+    const sessionId = await createLivestream(pool);
+    const customerId = crypto.randomUUID();
+    const product = await pool.query<{ live_id: string; code: string }>(
+      `SELECT p.livestream_product_id::text AS live_id, p.code
+         FROM products p JOIN product_skus ps ON ps.product_id = p.id
+        WHERE ps.id = $1`,
+      [skuId]
+    );
+    await pool.query(
+      `INSERT INTO livestream_products (livestream_id, product_id) VALUES ($1, $2)`,
+      [sessionId, product.rows[0].live_id]
+    );
+
+    const sent: CommentCreatedEvent[] = [];
+    const sqs: ISqsService = {
+      isConfigured: () => true,
+      sendCommentCreatedEvent: async (event) => { sent.push(event); return true; },
+    };
+    const redis: IRedisService = {
+      isAvailable: () => false,
+      pushComment: async () => undefined,
+      getRecentComments: async () => null,
+      disconnect: async () => undefined,
+    };
+    const app = express();
+    app.use(express.json());
+    app.use("/api/livestreams", createLivestreamRouter(
+      undefined, undefined, undefined, undefined, undefined, sqs, redis
+    ));
+    app.use("/api/orders", createOrderRouter(pool));
+
+    const posted = await request(app).post(`/api/livestreams/${sessionId}/comments`).send({
+      userId: customerId, username: "Khách test", content: `Chốt ${product.rows[0].code} 1 cái`, role: "buyer",
+    });
+    expect(posted.status).toBe(201);
+
+    await processor.process(JSON.stringify({
+      schema_version: 1,
+      event_type: "comment.analyzed",
+      event_id: sent[0].event_id,
+      comment_id: sent[0].comment_id,
+      session_id: sent[0].session_id,
+      customer_id: sent[0].customer_id,
+      status: "ok",
+      intent: { decision: "purchase_candidate", confidence: "high", source: "regex", product_code: product.rows[0].code, quantity: 1 },
+    }));
+
+    const lookup = await request(app)
+      .get(`/api/orders/by-comment/${posted.body.data.id}/confirmation`)
+      .set("X-Comment-Receipt", posted.body.confirmationReceipt);
+    expect(lookup.body).toEqual({ status: "unavailable", reason: "OUT_OF_STOCK" });
+
+    // Gửi lại cùng kết quả (SQS giao hai lần) không đẻ thêm dòng.
+    await processor.process(JSON.stringify({
+      schema_version: 1, event_type: "comment.analyzed", event_id: sent[0].event_id, comment_id: sent[0].comment_id,
+      session_id: sent[0].session_id, customer_id: sent[0].customer_id, status: "ok",
+      intent: { decision: "purchase_candidate", confidence: "high", source: "regex", product_code: product.rows[0].code, quantity: 1 },
+    }));
+    const rows = await pool.query(`SELECT count(*)::int AS n FROM purchase_requests WHERE comment_id = $1`, [posted.body.data.id]);
+    expect(rows.rows[0].n).toBe(1);
+  });
+
   it("resolves a livestream SKU, creates one draft without holding stock, then holds on confirmation", async () => {
     const skuId = await createSkuWithStock(pool, 10);
     const sessionId = await createLivestream(pool);
