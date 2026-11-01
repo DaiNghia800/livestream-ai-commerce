@@ -13,21 +13,7 @@
 .form button { justify-self: start; }
 .addressChoice { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--color-outline); border-radius: 8px; background: var(--color-surface); color: var(--color-on-surface); text-align: left; cursor: pointer; }
 .addressChoice:disabled { opacity: .55; cursor: not-allowed; }
-/* ── Địa chỉ nhận hàng của khách đã đăng nhập ──────────────────────
-   Một dòng như các sàn: tên (SĐT) · địa chỉ · nhãn · "Thay đổi". Popup
-   chọn và form nằm ở address-book-dialog. */
-.diaChiNhan { display: grid; gap: 8px; }
-.diaChiNhanDau { display: inline-flex; align-items: center; gap: 6px; color: var(--color-primary); font-weight: 600; font-size: .9rem; }
-.diaChiNhanThan { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-.diaChiNhanNguoi { white-space: nowrap; }
-.diaChiNhanDong { color: var(--color-on-surface); overflow-wrap: anywhere; }
-.diaChiNhanNhan { display: inline-flex; gap: 6px; }
-.nhanMacDinh, .nhanLoai { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 3px; font-size: .75rem; border: 1px solid var(--color-outline-variant); color: var(--color-on-surface-variant); }
-.nhanMacDinh { border-color: var(--color-primary); color: var(--color-primary); }
-/* Chữ, không phải nút: `.form button` ở trên không được kéo nó về trái. */
-.doiDiaChi { margin-left: auto; appearance: none; border: 0; background: none; padding: 0; font: inherit; font-size: .9rem; color: var(--color-primary); cursor: pointer; }
-.doiDiaChi:hover { text-decoration: underline; }
-.diaChiTrong { display: grid; gap: 10px; justify-items: start; }
+/* Dòng địa chỉ + thẻ chọn COD/online nằm ở checkout-parts.module.css (dùng chung với giỏ hàng). */
 .transfer { display: grid; gap: 14px; }
 .transferQr { width: min(260px, 100%); height: auto; border-radius: 10px; background: #fff; justify-self: center; }
 .transferValue { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }

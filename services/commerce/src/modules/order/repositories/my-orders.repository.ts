@@ -38,6 +38,7 @@ export interface DonMua {
 /** Nhóm trạng thái cho tab trên màn Đơn mua. */
 export const NHOM_TRANG_THAI: Record<string, OrderStatus[]> = {
   CHO_XAC_NHAN: ["DRAFT", "PENDING_CONFIRMATION"],
+  CHO_THANH_TOAN: ["AWAITING_PAYMENT"],
   DANG_XU_LY: ["CONFIRMED", "PROCESSING"],
   DANG_GIAO: ["SHIPPING"],
   HOAN_THANH: ["COMPLETED"],

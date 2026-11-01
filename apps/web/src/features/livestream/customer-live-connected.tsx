@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ApiError, customerIdentityApi, layTokenKhach } from "@/lib/api";
+import { ApiError, cartApi, customerIdentityApi, layTokenKhach, type CartOrder } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { MessageCircle, Radio, Send } from "lucide-react";
+import { MessageCircle, Radio, Send, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Toast, type ToastMessage } from "@/components/feedback/toast";
 import { formatMoney } from "@/lib/format";
+import { useDaGan } from "@/lib/use-da-gan";
+import { CartDrawer, monVuaThem, useGioHang } from "@/features/orders/cart-drawer";
+import gioStyles from "@/features/orders/cart-drawer.module.css";
 import { COMMERCE_API_BASE_URL } from "./api/create-livestream";
 import { getLivestreamDetail, isValidUuid, type BackendLivestreamDetailResponse } from "./api/get-livestreams";
 import { getCommentConfirmation, postLivestreamCommentWithReceipt } from "./api/livestream-comments";
@@ -15,6 +19,16 @@ import type { StudioChatMessage } from "./types/studio";
 import styles from "./customer-live.module.css";
 
 type LiveSession = { id: string; title: string };
+
+/** Câu trả lời cho khách khi AI đã đọc xong mà không ra đơn. */
+const LY_DO_KHONG_RA_DON: Record<string, string> = {
+  OUT_OF_STOCK: "Sản phẩm bạn chốt đã hết hàng. Hãy chọn mã khác trong phiên.",
+  SKU_NOT_FOUND: "Không nhận ra mã sản phẩm trong phiên này. Gõ đúng mã như shop đọc (ví dụ A12).",
+  NO_PURCHASE_INTENT: "AI thấy đây không phải bình luận chốt đơn. Muốn mua thì gõ mã + số lượng.",
+  NEEDS_CLARIFICATION: "AI chưa rõ bạn muốn mua mã nào, bao nhiêu. Gõ lại rõ hơn, ví dụ: Chốt A12 size M 2 cái.",
+  LIVESTREAM_CLOSED: "Phiên live đã kết thúc, không nhận đơn nữa.",
+  LOW_CONFIDENCE: "AI chưa chắc đây là ý định mua. Gõ lại rõ mã và số lượng.",
+};
 type PendingComment = { id: string; receipt: string; createdAt: number };
 
 function pendingStorageKey(livestreamId: string, customerId: string): string {
@@ -72,6 +86,18 @@ export function CustomerLiveConnected() {
     livestreamId: session?.id ?? "", userId: customerId, username,
     role: "VIEWER", autoConnect: Boolean(session && customerId),
   });
+
+  // Giỏ hàng = đơn nháp đang mở trong phiên; chỉ có khi đã đăng nhập.
+  const daDangNhap = useDaGan() && Boolean(layTokenKhach());
+  const gio = useGioHang(session?.id ?? null, daDangNhap);
+  const [moGio, setMoGio] = useState(false);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  // Ảnh giỏ và hàm tải lại để checkConfirmation đọc mà không phải đưa
+  // `gio` vào deps — đưa vào là interval poll bị dựng lại mỗi render.
+  const gioRef = useRef<{ gio: CartOrder | null; taiLai: () => void }>({ gio: null, taiLai: () => undefined });
+  useEffect(() => {
+    gioRef.current = { gio: gio.gio, taiLai: gio.taiLai };
+  }, [gio.gio, gio.taiLai]);
 
   useEffect(() => {
     let user: { id?: number; full_name?: string } | null = null;
@@ -145,22 +171,37 @@ export function CustomerLiveConnected() {
     try {
       const result = await getCommentConfirmation(pending.id, pending.receipt);
       if (result.status === "ready" && result.confirmPath) {
-        setConfirmPath(result.confirmPath);
         setPending(null);
         if (session) localStorage.removeItem(pendingStorageKey(session.id, customerId));
-        setNotice(`AI đã tạo đơn ${result.orderCode ?? ""}. Mở form để xác nhận địa chỉ.`);
+        if (daDangNhap && session) {
+          // Đã đăng nhập: món vào giỏ. So giỏ trước/sau để toast nói
+          // đúng tên món thay vì một câu chung chung.
+          const truoc = gioRef.current.gio;
+          const sau = await cartApi.get(session.id).catch(() => null);
+          gioRef.current.taiLai();
+          const them = monVuaThem(truoc, sau);
+          setToast({
+            id: Date.now(),
+            text: them.length > 0 ? `Đã thêm ${them.join(", ")} vào giỏ hàng` : "Đã thêm vào giỏ hàng",
+            action: { label: "Xem giỏ", onClick: () => setMoGio(true) },
+          });
+          setNotice("Đã bỏ vào giỏ hàng. Mở giỏ để xác nhận mua.");
+        } else {
+          setConfirmPath(result.confirmPath);
+          setNotice(`AI đã tạo đơn ${result.orderCode ?? ""}. Mở form để xác nhận địa chỉ.`);
+        }
       } else if (result.status === "needs_review") {
         setNotice("Ý định mua đã được nhận diện; đơn đang chờ shop duyệt.");
       } else if (result.status === "unavailable") {
         setPending(null);
         if (session) localStorage.removeItem(pendingStorageKey(session.id, customerId));
-        setNotice("Bình luận này không tạo được đơn. Kiểm tra lại mã hàng và tồn kho.");
+        setNotice(LY_DO_KHONG_RA_DON[result.reason ?? ""] ?? "Bình luận này không tạo được đơn. Kiểm tra lại mã hàng và tồn kho.");
       } else if (Date.now() - pending.createdAt > 60_000) {
         setAutoCheck(false);
         setNotice("Chưa có đơn từ bình luận này. AI có thể chưa xử lý hoặc chưa xác định ý định mua; bạn có thể kiểm tra lại.");
       }
     } catch { setNotice("Chưa kiểm tra được kết quả AI. Vui lòng thử lại."); }
-  }, [pending, session, customerId]);
+  }, [pending, session, customerId, daDangNhap]);
 
   useEffect(() => {
     if (!pending || !autoCheck) return;
@@ -215,7 +256,18 @@ export function CustomerLiveConnected() {
             <strong>{formatMoney(item.price ?? 0)}</strong></div></article>)}</div>
       </section>
       <aside className={styles.chatPanel} aria-label="Bình luận trong phiên livestream">
-        <div className={styles.chatHeader}><MessageCircle size={19} /><div><h2>Trò chuyện</h2><p>IVS Chat</p></div></div>
+        <div className={styles.chatHeader}><MessageCircle size={19} /><div><h2>Trò chuyện</h2><p>IVS Chat</p></div>
+          {daDangNhap ? (
+            <button type="button" className={gioStyles.nutGio} onClick={() => setMoGio(true)} aria-label={`Giỏ hàng, ${gio.soMon} sản phẩm`}>
+              <ShoppingCart size={16} aria-hidden="true" /> Giỏ hàng
+              {gio.soMon > 0 && <span className={gioStyles.huyHieu} data-testid="so-mon-gio">{gio.soMon}</span>}
+            </button>
+          ) : (
+            <Link href="/login" className={gioStyles.nutGio} title="Đăng nhập để dùng giỏ hàng">
+              <ShoppingCart size={16} aria-hidden="true" /> Giỏ hàng
+            </Link>
+          )}
+        </div>
         <div className={styles.chatTip}>Ví dụ: <strong>Chốt A12 màu đen size M 2 cái</strong></div>
         <div className={styles.commentList}>{[
           ...chatMessages,
@@ -228,9 +280,11 @@ export function CustomerLiveConnected() {
           <Button type="submit" disabled={!session || !customerId || !message.trim() || sending}><Send size={16} /> {sending ? "Đang gửi..." : "Gửi bình luận"}</Button>
           <p className={styles.notice} role="status">{notice}</p>
           {pending && <button type="button" onClick={() => void checkConfirmation()}>Kiểm tra kết quả AI</button>}
-          {confirmPath && <Link href={confirmPath} className={styles.confirmLink}>Mở form xác nhận đơn hàng →</Link>}
+          {confirmPath && !daDangNhap && <Link href={confirmPath} className={styles.confirmLink}>Mở form xác nhận đơn hàng →</Link>}
         </form>
       </aside>
     </div>
+    <CartDrawer open={moGio} onClose={() => setMoGio(false)} gio={gio.gio} dangTai={gio.dangTai} taiLai={gio.taiLai} />
+    <Toast message={toast} onClose={() => setToast(null)} />
   </div>;
 }

@@ -10,19 +10,21 @@
  */
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { layTokenKhach, myOrdersApi, type MyOrder } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
+import { useDaGan } from "@/lib/use-da-gan";
 import { orderStatuses, paymentStatuses, type OrderStatusKey } from "./labels";
 import styles from "./customer-my-orders.module.css";
 
 const TABS: Array<{ key: string; label: string }> = [
   { key: "", label: "Tất cả" },
   { key: "CHO_XAC_NHAN", label: "Chờ xác nhận" },
+  { key: "CHO_THANH_TOAN", label: "Chờ thanh toán" },
   { key: "DANG_XU_LY", label: "Đang xử lý" },
   { key: "DANG_GIAO", label: "Đang giao" },
   { key: "HOAN_THANH", label: "Hoàn thành" },
@@ -30,18 +32,6 @@ const TABS: Array<{ key: string; label: string }> = [
 ];
 
 const CHO_XAC_NHAN = new Set(["DRAFT", "PENDING_CONFIRMATION"]);
-
-/**
- * true sau khi đã gắn vào trình duyệt, false lúc server render.
- *
- * Token nằm trong localStorage, server không đọc được. Rẽ nhánh theo
- * token ngay trong lần render đầu thì HTML server ("mời đăng nhập")
- * khác HTML client (danh sách) → React báo hydration mismatch và vẽ
- * lại cả cây. Chờ gắn xong rồi mới rẽ.
- */
-function useDaGan(): boolean {
-  return useSyncExternalStore(() => () => undefined, () => true, () => false);
-}
 
 export function CustomerMyOrders() {
   const [tab, setTab] = useState("");

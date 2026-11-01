@@ -1,0 +1,149 @@
+/* Ngăn kéo giỏ hàng — nổi bên phải, trang live vẫn chạy phía sau. */
+
+.lop { position: fixed; inset: 0; z-index: 50; }
+.phu {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(17, 20, 33, 0.45);
+  cursor: pointer;
+}
+.ngan {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface, #fff);
+  box-shadow: -16px 0 40px rgba(17, 20, 33, 0.25);
+  animation: truot .22s ease-out;
+}
+@keyframes truot {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.dau {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+.dau h2 { margin: 0; font-size: 1.1rem; flex: 1; }
+.iconDau { color: var(--color-primary); }
+.nutDong, .nutLui {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.nutDong:hover, .nutLui:hover { background: var(--color-subtle); color: var(--color-text); }
+
+.than { padding: 16px 18px; overflow-y: auto; flex: 1; display: grid; gap: 14px; align-content: start; }
+.trong {
+  flex: 1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--color-muted);
+}
+.trong p { margin: 0; }
+
+/* ── Bước 1 ── */
+.danhSach { list-style: none; margin: 0; padding: 0 18px; overflow-y: auto; flex: 1; }
+.mon {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.anh, .anhTrong { width: 64px; height: 64px; flex: 0 0 64px; border-radius: 8px; object-fit: cover; background: var(--color-surface-container, #eaedff); }
+.monThan { display: grid; gap: 3px; min-width: 0; flex: 1; font-size: .9rem; }
+.gia { color: var(--color-muted); }
+.thanhTien { white-space: nowrap; align-self: flex-start; }
+
+.soLuong { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.soLuong > span { min-width: 28px; text-align: center; font-weight: 600; }
+.soLuong button {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.soLuong button:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+.soLuong button:disabled { opacity: .45; cursor: not-allowed; }
+.nutXoa { width: auto !important; padding: 0 8px !important; margin-left: 8px; gap: 4px; display: inline-flex !important; font-size: .8rem; }
+.nutXoa:hover:not(:disabled) { border-color: var(--color-error) !important; color: var(--color-error) !important; }
+
+.chan {
+  display: grid;
+  gap: 10px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface, #fff);
+}
+.chan p { margin: 0; font-size: .8rem; }
+.tong { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.tong strong { font-size: 1.15rem; color: var(--color-primary); }
+.nutChinh { width: 100%; justify-content: center; }
+
+/* ── Bước 2 ── */
+.formXacNhan { padding: 16px 18px; overflow-y: auto; flex: 1; display: grid; gap: 18px; align-content: start; }
+.khoi { display: grid; gap: 8px; }
+.khoi h3 { margin: 0; font-size: .95rem; }
+.khoi label { font-weight: 600; font-size: .95rem; }
+.khoi textarea { width: 100%; min-height: 72px; resize: vertical; border: 1px solid var(--color-outline, #c5c5d0); border-radius: 8px; padding: 10px 12px; background: #fff; font: inherit; }
+.cachTraDanhSach { display: grid; gap: 8px; }
+.tomTat { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .9rem; }
+.tomTat li { display: flex; justify-content: space-between; gap: 12px; }
+
+/* ── Nút giỏ trên trang live (dùng từ customer-live-connected) ── */
+.nutGio {
+  position: relative;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border, #e3e4ee);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-text, #1d2437);
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.nutGio:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.huyHieu {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-primary, #3525cd);
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+}
