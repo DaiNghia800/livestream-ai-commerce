@@ -1,0 +1,124 @@
+import { z } from "zod";
+import { isValidUuid } from "../../../shared/utils/uuid.util.js";
+
+export const CreateLivestreamRequestSchema = z
+  .object({
+    title: z
+      .string({ required_error: "title is required" })
+      .trim()
+      .min(1, { message: "title cannot be empty or only whitespace" })
+      .max(255, { message: "title cannot exceed 255 characters" }),
+    description: z.string().nullable().optional(),
+    scheduledAt: z
+      .string()
+      .datetime({ message: "scheduledAt must be a valid ISO-8601 timestamp" })
+      .nullable()
+      .optional(),
+    coverImageKey: z
+      .string()
+      .trim()
+      .max(1024, { message: "coverImageKey cannot exceed 1024 characters" })
+      .nullable()
+      .optional(),
+    status: z.enum(["draft", "scheduled"]).optional(),
+  })
+  .strict({
+    message:
+      "Forbidden fields provided. Only title, description, scheduledAt, coverImageKey, and status are allowed.",
+  });
+
+export type CreateLivestreamInput = z.infer<typeof CreateLivestreamRequestSchema>;
+
+export const UpdateLivestreamRequestSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1, { message: "title cannot be empty or only whitespace" })
+      .max(255, { message: "title cannot exceed 255 characters" })
+      .optional(),
+    description: z.string().nullable().optional(),
+    scheduledAt: z
+      .string()
+      .datetime({ message: "scheduledAt must be a valid ISO-8601 timestamp" })
+      .refine(
+        (val) => {
+          const scheduledTime = new Date(val).getTime();
+          // Dung sai 5 phút cho độ lệch đồng hồ máy chủ / mạng
+          const nowWithBuffer = Date.now() - 5 * 60 * 1000;
+          return scheduledTime >= nowWithBuffer;
+        },
+        { message: "scheduledAt cannot be in the past" }
+      )
+      .nullable()
+      .optional(),
+    coverImageKey: z
+      .string()
+      .trim()
+      .max(1024, { message: "coverImageKey cannot exceed 1024 characters" })
+      .nullable()
+      .optional(),
+  })
+  .strict({
+    message:
+      "Forbidden fields provided. Only title, description, scheduledAt, and coverImageKey can be updated.",
+  });
+
+export type UpdateLivestreamInput = z.infer<typeof UpdateLivestreamRequestSchema>;
+
+export const ListLivestreamsQuerySchema = z.object({
+  status: z
+    .enum(["all", "draft", "scheduled", "live", "ended", "cancelled"])
+    .optional()
+    .default("all"),
+  search: z.string().trim().optional(),
+  fromDate: z.string().trim().optional(),
+  toDate: z.string().trim().optional(),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1, { message: "page must be greater than or equal to 1" })
+    .default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, { message: "limit must be at least 1" })
+    .max(100, { message: "limit cannot exceed 100" })
+    .default(10),
+});
+
+export type ListLivestreamsQueryInput = z.infer<typeof ListLivestreamsQuerySchema>;
+
+export const GetLivestreamParamSchema = z.object({
+  id: z.string().refine(isValidUuid, {
+    message: "Invalid livestream ID: must be a valid UUID v4",
+  }),
+});
+
+export const UpdateLivestreamStatusSchema = z
+  .object({
+    status: z.enum(["draft", "scheduled", "live", "ended", "cancelled"], {
+      required_error: "status is required",
+    }),
+  })
+  .strict();
+
+export type UpdateLivestreamStatusInput = z.infer<
+  typeof UpdateLivestreamStatusSchema
+>;
+
+export type GetLivestreamParamInput = z.infer<typeof GetLivestreamParamSchema>;
+
+export const CreateChatTokenRequestSchema = z
+  .object({
+    userId: z.string().trim().min(1, { message: "userId is required" }),
+    role: z.enum(["HOST", "MODERATOR", "VIEWER"]).optional().default("VIEWER"),
+    username: z.string().trim().max(100).optional(),
+    avatarUrl: z.string().url().optional(),
+  })
+  .strict();
+
+export type CreateChatTokenInput = z.infer<typeof CreateChatTokenRequestSchema>;
+
+export { isValidUuid };
+

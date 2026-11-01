@@ -1,0 +1,387 @@
+import dotenv from "dotenv";
+import path from "path";
+
+// 1. Load local services/commerce/.env (if present)
+dotenv.config();
+// 2. Also load repo root .env (for monorepo shared config)
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+
+export interface AppConfig {
+  port: number;
+  databaseUrl: string;
+  apiPrefix: string;
+  secretKey: string;
+  accessTokenMinutes: number;
+  refreshTokenDays: number;
+  awsRegion?: string;
+  awsIvsRegion?: string;
+  s3BucketName?: string;
+  s3MediaBucketName?: string;
+  sqsQueueUrl?: string;
+  aiWorkerResultQueueUrl?: string;
+  sqsAiResultsQueueUrl?: string;
+  /** Khoá riêng chỉ để đọc queue kết quả AI; thiếu thì dùng chuỗi credential mặc định. */
+  aiWorkerResultCredentials?: { accessKeyId: string; secretAccessKey: string };
+  redisUrl: string;
+  /** TTL giữ hàng 2 tầng — xem QĐ-1 trong docs/design/draft-order-reservation */
+  holdSoftSeconds: number;
+  /** Khoảng cách giữa hai lượt quét đơn hết hạn. */
+  expireJobIntervalMs: number;
+  /** Đơn chọn trả online chưa trả sau chừng này giờ thì tự huỷ; 0 = không huỷ. */
+  awaitingPaymentTtlHours: number;
+  /**
+   * Đầu vào HTTP của Realtime service để nhận sự kiện outbox.
+   * Khác NEXT_PUBLIC_REALTIME_URL (WebSocket cho trình duyệt).
+   * Bỏ trống thì publisher chỉ ghi log.
+   */
+  realtimeEventsUrl?: string;
+  /** Khoảng cách giữa hai lượt đẩy outbox. */
+  outboxJobIntervalMs: number;
+
+  // ── Guard nghiệp vụ (T11) ───────────────────────────────────────
+  /** BẪY-05: một dòng xin nhiều hơn mức này thì đẩy review, vẫn giữ tồn. */
+  reviewQtyThreshold: number;
+  /** BẪY-01: khách đã giữ tới mức này trong phiên thì đẩy review, KHÔNG giữ thêm. */
+  maxHeldPerCustomerPerSession: number;
+  /** BẪY-08: từ điểm này trở lên là khách rủi ro cao. */
+  riskScoreThreshold: number;
+  /** BẪY-08: TTL rút ngắn cho khách rủi ro cao. */
+
+  // ── Cổng thanh toán điện tử, TOÀN BỘ là sandbox ─────────────────
+  /** Gốc đường dẫn của chính service này, để cổng gọi ngược về. */
+  publicBaseUrl: string;
+  /** Cổng dùng khi client không nêu rõ. */
+  defaultGateway: string;
+  vnpay: {
+    tmnCode: string;
+    hashSecret: string;
+    payUrl: string;
+    returnUrl: string;
+  };
+  momo: {
+    partnerCode: string;
+    accessKey: string;
+    secretKey: string;
+    createUrl: string;
+    returnUrl: string;
+    ipnUrl: string;
+  };
+  zalopay: {
+    appId: string;
+    key1: string;
+    key2: string;
+    createUrl: string;
+    callbackUrl: string;
+  };
+  mockGatewaySecret: string;
+  allowMockPayment: boolean;
+  /** Bí mật chung cho webhook chuyển khoản đã xác minh từ ngân hàng. */
+  bankWebhookSecret: string;
+  /** One merchant's isolated SePay Test mode bank account. */
+  customerBankTransfer: {
+    merchantId: string;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+    sepayWebhookSecret: string;
+  };
+
+  // ── Vận chuyển — TOÀN BỘ là môi trường thử ──────────────────────
+  /** Hãng dùng khi màn hình không nêu rõ. */
+  defaultCarrier: string;
+  mockCarrierSecret: string;
+  /** Kho gửi hàng. Mọi hãng đều bắt khai điểm lấy. */
+  shipFrom: {
+    name: string;
+    phone: string;
+    address: string;
+    provinceName: string;
+    districtName: string;
+    wardName: string;
+  };
+  ghn: {
+    token: string;
+    shopId: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromWardName: string;
+    fromDistrictName: string;
+    fromProvinceName: string;
+  };
+  ghtk: {
+    token: string;
+    partnerCode: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromName: string;
+    fromPhone: string;
+    fromAddress: string;
+    fromProvince: string;
+    fromDistrict: string;
+    fromWard: string;
+  };
+  vtp: {
+    username: string;
+    password: string;
+    baseUrl: string;
+    webhookSecret: string;
+    senderWarehouseId: string;
+    fromName: string;
+    fromPhone: string;
+    fromAddress: string;
+  };
+  goship: {
+    username: string;
+    password: string;
+    clientId: string;
+    clientSecret: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromName: string;
+    fromPhone: string;
+    fromStreet: string;
+    fromProvince: string;
+    fromDistrict: string;
+    fromWard: string;
+  };
+  ahamove: {
+    apiKey: string;
+    mobile: string;
+    baseUrl: string;
+    webhookSecret: string;
+    fromAddress: string;
+    fromName: string;
+    fromPhone: string;
+  };
+  s3PublicBaseUrl?: string;
+  commercePublicUrl: string;
+  productImageUploadDir: string;
+}
+
+const port = parseInt(process.env.PORT || "8000", 10);
+const secretKey =
+  process.env.SECRET_KEY ||
+  "change-me-use-a-long-random-string-in-production";
+
+if (
+  process.env.NODE_ENV === "production" &&
+  (!process.env.SECRET_KEY || process.env.SECRET_KEY.length < 32)
+) {
+  throw new Error("Production requires SECRET_KEY with at least 32 characters.");
+}
+
+export const config: AppConfig = {
+  port,
+  // Hierarchy: COMMERCE_DATABASE_URL -> DATABASE_URL -> local fallback
+  databaseUrl:
+    process.env.COMMERCE_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    "postgresql://postgres:postgres@localhost:5432/commerce_db",
+  apiPrefix: process.env.API_PREFIX || "/api",
+  secretKey,
+  accessTokenMinutes: parseInt(process.env.ACCESS_TOKEN_MINUTES || "30", 10),
+  refreshTokenDays: parseInt(process.env.REFRESH_TOKEN_DAYS || "30", 10),
+  awsRegion: process.env.AWS_REGION || undefined,
+  // AWS IVS is not supported in ap-southeast-1 (Singapore); default to ap-northeast-1 (Tokyo)
+  awsIvsRegion:
+    process.env.AWS_IVS_REGION ||
+    (process.env.AWS_REGION && process.env.AWS_REGION !== "ap-southeast-1"
+      ? process.env.AWS_REGION
+      : "ap-northeast-1"),
+  s3BucketName: process.env.S3_BUCKET_NAME || undefined,
+  s3MediaBucketName:
+    process.env.S3_MEDIA_BUCKET_NAME ||
+    process.env.S3_BUCKET_NAME ||
+    undefined,
+  sqsQueueUrl: process.env.SQS_QUEUE_URL || undefined,
+  aiWorkerResultQueueUrl: process.env.AI_WORKER_RESULT_QUEUE_URL || undefined,
+  sqsAiResultsQueueUrl: process.env.SQS_AI_RESULTS_QUEUE_URL || undefined,
+  // Teammate cấp một IAM user riêng (commerce-result-consumer) chỉ có
+  // quyền trên queue kết quả. Để riêng khỏi AWS_ACCESS_KEY_ID (khoá
+  // IVS/S3/queue đầu vào) để thu hồi khoá nào cũng không kéo theo khoá kia.
+  aiWorkerResultCredentials:
+    process.env.AI_WORKER_RESULT_AWS_ACCESS_KEY_ID && process.env.AI_WORKER_RESULT_AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AI_WORKER_RESULT_AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AI_WORKER_RESULT_AWS_SECRET_ACCESS_KEY,
+        }
+      : undefined,
+  redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
+  // Đề nghị nằm trong hàng đợi duyệt giữ tồn tối đa chừng này rồi tự
+  // hết hạn. ĐƠN NHÁP thì không giữ tồn và không có hạn: tồn chỉ được
+  // giữ đúng lúc khách bấm xác nhận.
+  holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),
+  // Khoảng cách giữa hai lượt quét đề nghị quá hạn.
+  expireJobIntervalMs: parseInt(process.env.EXPIRE_JOB_INTERVAL_MS || "30000", 10),
+  awaitingPaymentTtlHours: parseInt(process.env.AWAITING_PAYMENT_TTL_HOURS || "24", 10),
+  // services/realtime còn rỗng nên mặc định không có URL: publisher
+  // chạy ở chế độ ghi log, không sinh ra sự kiện FAILED giả.
+  realtimeEventsUrl: process.env.REALTIME_EVENTS_URL || undefined,
+  outboxJobIntervalMs: parseInt(process.env.OUTBOX_JOB_INTERVAL_MS || "2000", 10),
+
+  // "cho e 100 cái" — gõ nhầm hay khách sỉ thật? Trên 10 thì để người
+  // thật quyết, nhưng vẫn giữ tồn để không mất khách sỉ thật.
+  reviewQtyThreshold: parseInt(process.env.REVIEW_QTY_THRESHOLD || "10", 10),
+  // Troll bình luận 50 lần có thể khoá sạch mã hot. Chạm trần thì
+  // KHÔNG giữ thêm — khác BẪY-05, vì ở đây rủi ro là phá phiên.
+  //
+  // PHẢI lớn hơn hẳn reviewQtyThreshold. Đặt bằng nhau (cả hai = 10)
+  // thì mọi dòng vượt ngưỡng BẪY-05 cũng vượt luôn trần này, và
+  // BẪY-01 thắng ở chỗ "không giữ tồn" — nhánh giữ chân khách sỉ của
+  // BẪY-05 trở thành code chết trong phiên live. 30 để khoảng 11–30
+  // thuộc về BẪY-05, còn gom quá 30 mới là dấu hiệu phá phiên.
+  maxHeldPerCustomerPerSession: parseInt(
+    process.env.MAX_HELD_PER_CUSTOMER_PER_SESSION || "30",
+    10
+  ),
+  // 0.45 = một lần shop huỷ vì nghi gian lận (hoặc ba lần bỏ đơn ở
+  // dữ liệu cũ, khi đơn nháp còn hết hạn). Chạm ngưỡng thì chặn COD.
+  riskScoreThreshold: parseFloat(process.env.RISK_SCORE_THRESHOLD || "0.45"),
+
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:8000",
+
+  // Mặc định là cổng giả chạy trong máy: người mới kéo repo về chạy
+  // được ngay cả luồng thanh toán mà không cần đăng ký tài khoản thử
+  // ở bất kỳ nhà cung cấp nào.
+  defaultGateway: process.env.PAYMENT_GATEWAY || "mock",
+
+  vnpay: {
+    tmnCode: process.env.VNPAY_TMN_CODE || "",
+    hashSecret: process.env.VNPAY_HASH_SECRET || "",
+    // Chỉ sandbox. assertSandbox() từ chối mọi host khác.
+    payUrl:
+      process.env.VNPAY_PAY_URL ||
+      "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
+    returnUrl:
+      process.env.VNPAY_RETURN_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/vnpay/return`,
+  },
+
+  momo: {
+    partnerCode: process.env.MOMO_PARTNER_CODE || "",
+    accessKey: process.env.MOMO_ACCESS_KEY || "",
+    secretKey: process.env.MOMO_SECRET_KEY || "",
+    createUrl:
+      process.env.MOMO_CREATE_URL ||
+      "https://test-payment.momo.vn/v2/gateway/api/create",
+    returnUrl:
+      process.env.MOMO_RETURN_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/momo/return`,
+    ipnUrl:
+      process.env.MOMO_IPN_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/momo/ipn`,
+  },
+
+  zalopay: {
+    appId: process.env.ZALOPAY_APP_ID || "",
+    key1: process.env.ZALOPAY_KEY1 || "",
+    key2: process.env.ZALOPAY_KEY2 || "",
+    createUrl:
+      process.env.ZALOPAY_CREATE_URL || "https://sb-openapi.zalopay.vn/v2/create",
+    callbackUrl:
+      process.env.ZALOPAY_CALLBACK_URL ||
+      `${process.env.PUBLIC_BASE_URL || "http://localhost:8000"}/api/payments/zalopay/callback`,
+  },
+
+  mockGatewaySecret: process.env.MOCK_GATEWAY_SECRET || "sandbox-only-secret",
+  allowMockPayment:
+    process.env.NODE_ENV !== "production" || process.env.ENABLE_MOCK_PAYMENT === "true",
+  bankWebhookSecret: process.env.BANK_WEBHOOK_SECRET || "",
+  customerBankTransfer: {
+    merchantId: process.env.CUSTOMER_BANK_TRANSFER_MERCHANT_ID || "",
+    bankCode: process.env.CUSTOMER_BANK_TRANSFER_BANK_CODE || "",
+    accountNumber: process.env.CUSTOMER_BANK_TRANSFER_ACCOUNT_NUMBER || "",
+    accountName: process.env.CUSTOMER_BANK_TRANSFER_ACCOUNT_NAME || "",
+    sepayWebhookSecret: process.env.SEPAY_TEST_WEBHOOK_SECRET || "",
+  },
+
+  // Mặc định là hãng giả chạy ngay trong máy: kéo repo về là chạy
+  // được trọn luồng vận chuyển mà không cần đăng ký tài khoản thử ở
+  // bất kỳ hãng nào. Bốn hãng thật đều đòi tài khoản, có hãng còn
+  // phải chờ nhân viên kinh doanh gọi lại.
+  defaultCarrier: process.env.SHIPPING_CARRIER || "mock",
+  mockCarrierSecret:
+    process.env.MOCK_CARRIER_SECRET || "sandbox-only-carrier-secret",
+
+  shipFrom: {
+    name: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    phone: process.env.SHIP_FROM_PHONE || "0900000000",
+    address: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    provinceName: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+    districtName: process.env.SHIP_FROM_DISTRICT || "",
+    wardName: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+  },
+
+  ghn: {
+    token: process.env.GHN_TOKEN || "",
+    shopId: process.env.GHN_SHOP_ID || "",
+    // Chỉ staging. assertSandbox() từ chối mọi host khác.
+    baseUrl: process.env.GHN_BASE_URL || "https://dev-online-gateway.ghn.vn",
+    webhookSecret: process.env.GHN_WEBHOOK_SECRET || "",
+    fromWardName: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+    fromDistrictName: process.env.SHIP_FROM_DISTRICT || "",
+    fromProvinceName: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+  },
+
+  ghtk: {
+    token: process.env.GHTK_TOKEN || "",
+    partnerCode: process.env.GHTK_PARTNER_CODE || "",
+    // Môi trường thử của GHTK dùng tên miền ghtklab.com.
+    baseUrl: process.env.GHTK_BASE_URL || "https://services-staging.ghtklab.com",
+    webhookSecret: process.env.GHTK_WEBHOOK_SECRET || "",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+    fromAddress: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    fromProvince: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+    fromDistrict: process.env.SHIP_FROM_DISTRICT || "",
+    fromWard: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+  },
+
+  vtp: {
+    username: process.env.VTP_USERNAME || "",
+    password: process.env.VTP_PASSWORD || "",
+    baseUrl: process.env.VTP_BASE_URL || "https://partnerdev.viettelpost.vn",
+    webhookSecret: process.env.VTP_WEBHOOK_SECRET || "",
+    senderWarehouseId: process.env.VTP_WAREHOUSE_ID || "",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+    fromAddress: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+  },
+
+  // Nhà tổng hợp: một tích hợp phủ nhiều hãng, và là cách duy nhất
+  // có nhiều hãng mà vẫn chỉ chạy sandbox.
+  goship: {
+    username: process.env.GOSHIP_USERNAME || "",
+    password: process.env.GOSHIP_PASSWORD || "",
+    clientId: process.env.GOSHIP_CLIENT_ID || "",
+    clientSecret: process.env.GOSHIP_CLIENT_SECRET || "",
+    baseUrl: process.env.GOSHIP_BASE_URL || "https://sandbox.goship.io/api/v2",
+    // Goship KHÔNG có ô khoá webhook riêng trên cổng quản trị: họ
+    // ký gói tin bằng chính Client Secret. Để tự suy ra thay vì bắt
+    // khai hai lần — khai lệch nhau là mọi gói tin bị từ chối với
+    // lỗi 401 mà không ai nghĩ tới nguyên nhân này.
+    webhookSecret:
+      process.env.GOSHIP_WEBHOOK_SECRET || process.env.GOSHIP_CLIENT_SECRET || "",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+    fromStreet: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    fromProvince: process.env.SHIP_FROM_PROVINCE || "TP. Hồ Chí Minh",
+    fromDistrict: process.env.SHIP_FROM_DISTRICT || "",
+    fromWard: process.env.SHIP_FROM_WARD || "Phường Tân Thuận",
+  },
+
+  ahamove: {
+    apiKey: process.env.AHAMOVE_API_KEY || "",
+    mobile: process.env.AHAMOVE_MOBILE || "",
+    baseUrl:
+      process.env.AHAMOVE_BASE_URL || "https://partner-apistg.ahamove.com",
+    webhookSecret: process.env.AHAMOVE_WEBHOOK_SECRET || "",
+    fromAddress: process.env.SHIP_FROM_ADDRESS || "123 Nguyen Van Linh",
+    fromName: process.env.SHIP_FROM_NAME || "Kho LiveOrder",
+    fromPhone: process.env.SHIP_FROM_PHONE || "0900000000",
+  },
+  s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL || undefined,
+  commercePublicUrl: process.env.COMMERCE_PUBLIC_URL || `http://localhost:${port}`,
+  productImageUploadDir:
+    process.env.PRODUCT_IMAGE_UPLOAD_DIR || path.resolve(__dirname, "../uploads/products"),
+};
