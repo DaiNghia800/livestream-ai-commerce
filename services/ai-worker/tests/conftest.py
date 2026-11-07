@@ -35,3 +35,4 @@ def offline_only(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_MAX_RETRIES", raising=False)
+    monkeypatch.delenv("AI_WORKER_USE_AI", raising=False)

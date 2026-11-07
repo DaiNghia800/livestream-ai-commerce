@@ -167,3 +167,42 @@ def test_identifiers_without_purchase_evidence_remain_no_purchase(content):
     ai.assert_not_called()
     assert result["decision"] == "no_purchase"
     assert result["raw"] == content
+
+
+@pytest.mark.parametrize("content,expected_code,expected_qty,expected_size,expected_color", [
+    ("chốt cho em mã 1 2 cái size L", "MÃ 1", 2, "L", None),
+    ("Chốt mã 2 1 cái", "MÃ 2", 1, None, None),
+    ("Chốt mã 4 màu đen size M 2 cái", "MÃ 4", 2, "M", "đen"),
+    ("Chốt ma 2 1 cái", "MÃ 2", 1, None, None),
+    ("Chốt ma 4 màu đen 2 cái", "MÃ 4", 2, None, "đen"),
+    ("Chốt mã số 2 1 cái", "MÃ 2", 1, None, None),
+    ("Chốt ma so 4 2 cái", "MÃ 4", 2, None, None),
+    ("Chốt mã2 1 cái", "MÃ 2", 1, None, None),
+    ("Chốt ma4 1 cái", "MÃ 4", 1, None, None),
+    ("Chốt mã: 2 1 cái", "MÃ 2", 1, None, None),
+    ("Chốt mã-4 1 cái", "MÃ 4", 1, None, None),
+    ("Chốt mã 2 2", "MÃ 2", 2, None, None),
+    ("Chốt cho em mã 1 2", "MÃ 1", 2, None, None),
+    ("Chốt ma 2 5", "MÃ 2", 5, None, None),
+])
+def test_vietnamese_numeric_product_codes_are_recognized(
+    content, expected_code, expected_qty, expected_size, expected_color
+):
+    with patch("parse_intent._try_gemini", side_effect=AssertionError("AI forbidden")) as ai:
+        result = parse_purchase_intent(content)
+    ai.assert_not_called()
+    assert result["decision"] == "purchase_candidate"
+    assert result["product_code"] == expected_code
+    assert result["quantity"] == expected_qty
+    assert result["size"] == expected_size
+    assert result["color"] == expected_color
+    assert result["reason_codes"] == []
+
+
+def test_multiple_vietnamese_numeric_codes_fail_safely():
+    with patch("parse_intent._try_gemini", side_effect=AssertionError("AI forbidden")) as ai:
+        result = parse_purchase_intent("Chốt mã 1 và mã 2 1 cái")
+    ai.assert_not_called()
+    assert result["decision"] == "needs_clarification"
+    assert "multiple_products" in result["reason_codes"]
+

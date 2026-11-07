@@ -15,6 +15,7 @@ COPY services/ai-worker/read_example.py \
      services/ai-worker/quantity_parser.py \
      services/ai-worker/product_codes.py \
      services/ai-worker/ai_errors.py \
+     services/ai-worker/catalog.py \
      /app/services/ai-worker/
 
 COPY contracts/examples/comment-created.v1.json /app/contracts/examples/

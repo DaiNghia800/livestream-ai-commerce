@@ -22,6 +22,27 @@ _TECHNICAL_ERRORS = {"ai_authentication", "ai_configuration", "ai_invalid_respon
 _ERROR_TYPES = _INPUT_ERRORS | _TRANSIENT_ERRORS | _TECHNICAL_ERRORS
 _LOG_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 _RESULT_QUEUE_ENV = "COMMERCE_RESULT_QUEUE_URL"
+_AI_ENV = "AI_WORKER_USE_AI"
+
+
+def _use_ai_enabled() -> bool:
+    """Return whether AI fallback is enabled from environment configuration.
+
+    Defaults to False if unset or blank.
+    Accepts case-insensitive 'true' or 'false' (whitespace stripped).
+    Raises ValueError on unrecognized values to fail safely without silently enabling AI.
+    """
+    raw = os.environ.get(_AI_ENV)
+    if raw is None:
+        return False
+    val = raw.strip().lower()
+    if not val:
+        return False
+    if val == "true":
+        return True
+    if val == "false":
+        return False
+    raise ValueError(f"Invalid {_AI_ENV} value: {raw!r}. Expected 'true' or 'false'.")
 
 
 def _safe_id(value):
@@ -90,6 +111,8 @@ def handler(event, context):
                 or not record["messageId"].strip()):
             raise ValueError("Every SQS record must have a non-empty messageId")
 
+    use_ai = _use_ai_enabled()
+
     failures = []
     for record in records:
         started = time.monotonic()
@@ -106,7 +129,7 @@ def handler(event, context):
                 except (ValueError, RecursionError):
                     error_type = "invalid_format"
                 else:
-                    result = process_comment_event(comment, use_ai=False)
+                    result = process_comment_event(comment, use_ai=use_ai)
                     if result["status"] == "error":
                         candidate = result.get("error_type")
                         error_type = (candidate if isinstance(candidate, str)

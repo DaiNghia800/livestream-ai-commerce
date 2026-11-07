@@ -20,7 +20,10 @@ _OTHER_LABEL = re.compile(
     r"\b(?:giá|tiền|tổng|ship|phí|size|cỡ|lúc|sđt)\s*[:=]?\s*$"
 )
 _CURRENCY = re.compile(r"\s*(?:k|nghìn|ngàn|triệu|đồng|đ|vnd|vnđ|usd)\b|\s*[₫$%]")
-_PRODUCT_TOKEN = re.compile(r"\b[a-z]+(?:-[a-z]+)*-?\d+(?:-[a-z0-9]+)*\b")
+_PRODUCT_TOKEN = re.compile(
+    r"\b[a-z]+(?:-[a-z]+)*-?\d+(?:-[a-z0-9]+)*\b"
+    r"|(?<![\w/+−-])(?:mã|ma)(?:\s*(?:số|so))?\s*[:#-]?\s*\d+(?:\.|\b)(?![\w/+−-])"
+)
 
 
 def _validate_number(raw: str) -> QuantityResult:
@@ -77,8 +80,13 @@ def extract_quantity(content: str, product_code: str | None) -> QuantityResult:
         return quantity
 
     if product_code:
+        pattern = re.escape(product_code.casefold())
+        ma_match = re.fullmatch(r"mã\s+(\d+)", product_code.casefold())
+        if ma_match:
+            num = ma_match.group(1)
+            pattern = rf"(?:mã|ma)(?:\s*(?:số|so))?\s*[:#-]?\s*{num}"
         compact = re.fullmatch(
-            r"\s*(?:chốt|mua|order|đặt|lấy)\s+" + re.escape(product_code.casefold())
+            r"\s*(?:chốt|mua|order|đặt|lấy)\s+(?:cho\s+(?:em|mình|tôi|anh|chị)\s+)?" + pattern
             + r"\s+(?P<quantity>" + _NUMBER + r")\s*[.!]?\s*", text
         )
         if compact:

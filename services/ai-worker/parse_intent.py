@@ -14,20 +14,14 @@ import re
 import logging
 import unicodedata
 
+from catalog import CatalogProvider, DEFAULT_CATALOG
 from intent_policy import apply_decision, guard_comment
 from quantity_parser import extract_quantity
 from product_codes import find_product_identifiers, is_supported_product_code, mask_product_codes
 
-# --- Known values (will move to database/config later) ---
-# Sorted longest-first so "xanh dương" matches before "xanh"
-KNOWN_COLORS = [
-    "xanh dương", "xanh lá",
-    "đen", "trắng", "đỏ", "xanh", "hồng",
-    "vàng", "nâu", "xám", "tím", "cam",
-    "be", "kem",
-]
-
-KNOWN_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"]
+# --- Backward-compatible catalog aliases ---
+KNOWN_COLORS = DEFAULT_CATALOG.known_colors
+KNOWN_SIZES = DEFAULT_CATALOG.known_sizes
 
 # Strong keywords = clearly want to buy
 # Weak keywords = might be buying, need more signals
@@ -37,7 +31,12 @@ WEAK_KEYWORDS = ["lấy", "cho"]
 logger = logging.getLogger(__name__)
 
 
-def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
+def parse_purchase_intent(
+    content: str,
+    use_ai: bool = True,
+    *,
+    catalog: CatalogProvider | None = None,
+) -> dict:
     """
     Extract purchase intent from a comment string.
 
@@ -45,6 +44,7 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
         content: The validated, stripped comment text.
         use_ai: If True, call Gemini AI when regex confidence is low.
                 Set to False in tests to avoid real API calls.
+        catalog: Optional CatalogProvider for product attributes (colors, sizes).
 
     Returns:
         A dict with:
@@ -61,12 +61,18 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
 
         A purchase_candidate still requires Commerce SKU validation.
     """
-    guarded = guard_comment(content, known_colors=KNOWN_COLORS)
+    active_catalog = catalog if catalog is not None else DEFAULT_CATALOG
+    known_colors = active_catalog.known_colors
+    known_sizes = active_catalog.known_sizes
+
+    guarded = guard_comment(content, known_colors=known_colors)
     if guarded is not None:
         return guarded
 
     # --- Step 1: Regex tries first (fast, free) ---
-    regex_result, quantity_issue = _regex_parse(content)
+    regex_result, quantity_issue = _regex_parse(
+        content, known_colors=known_colors, known_sizes=known_sizes
+    )
 
     # No purchase evidence found by the current regex rules.
     if not regex_result["has_intent"]:
@@ -97,7 +103,12 @@ def parse_purchase_intent(content: str, use_ai: bool = True) -> dict:
 # ── Regex parser ─────────────────────────────────────────────
 
 
-def _regex_parse(content: str) -> tuple[dict, str | None]:
+def _regex_parse(
+    content: str,
+    *,
+    known_colors: list[str],
+    known_sizes: list[str],
+) -> tuple[dict, str | None]:
     """Pure regex-based parsing. No network, no side effects."""
     lower = content.lower()
 
@@ -117,8 +128,8 @@ def _regex_parse(content: str) -> tuple[dict, str | None]:
 
     product_code = _extract_product_code(content)
     attribute_text = mask_product_codes(content)
-    color = _extract_color(attribute_text.lower())
-    size = _extract_size(attribute_text)
+    color = _extract_color(attribute_text.lower(), known_colors=known_colors)
+    size = _extract_size(attribute_text, known_sizes=known_sizes)
     quantity_result = extract_quantity(content, product_code)
     quantity = quantity_result.value
 
@@ -233,24 +244,30 @@ def _extract_product_code(content: str) -> str | None:
     return None
 
 
-def _extract_color(lower: str) -> str | None:
+def _extract_color(lower: str, known_colors: list[str]) -> str | None:
     """Find a standalone known color, preferring complete multiword names."""
     text = " ".join(unicodedata.normalize("NFC", lower).casefold().split())
-    for c in KNOWN_COLORS:
+    for c in known_colors:
         if re.search(rf"(?<!\w){re.escape(c)}(?!\w)", text):
             return c
     return None
 
 
-def _extract_size(content: str) -> str | None:
-    """Find clothing size (S, M, L, XL, etc.)."""
+def _extract_size(content: str, known_sizes: list[str]) -> str | None:
+    """Find clothing size (S, M, L, XL, etc.) dynamically based on catalog sizes."""
+    if not known_sizes:
+        return None
+    # Sort longest-first so e.g. 'XXXL' matches before 'XXL', '4XL' before 'XL'
+    sorted_sizes = sorted(known_sizes, key=len, reverse=True)
+    sizes_pattern = "|".join(re.escape(s) for s in sorted_sizes)
     match = re.search(
-        r"\bsize\s*(\w+)|\b(XXS|XS|XXL|XXXL|XL|S|M|L)\b",
+        rf"(?:\bsize\s*|(?<!\w))({sizes_pattern})(?!\w)",
         content,
         re.IGNORECASE,
     )
     if match:
-        raw_size = (match.group(1) or match.group(2)).upper()
-        if raw_size in KNOWN_SIZES:
-            return raw_size
+        raw_size = match.group(1).upper()
+        size_map = {s.upper(): s for s in known_sizes}
+        if raw_size in size_map:
+            return size_map[raw_size]
     return None

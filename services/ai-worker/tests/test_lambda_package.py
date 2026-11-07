@@ -17,7 +17,7 @@ WORKER = Path(__file__).resolve().parents[1]
 SCRIPT = WORKER / "scripts/build_lambda_zip.py"
 EXPECTED_MODULES = {
     "lambda_handler.py", "process_comment.py", "parse_intent.py", "intent_policy.py",
-    "quantity_parser.py", "product_codes.py", "ai_errors.py",
+    "quantity_parser.py", "product_codes.py", "ai_errors.py", "catalog.py",
 }
 
 

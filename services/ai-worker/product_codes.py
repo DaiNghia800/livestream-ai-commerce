@@ -13,12 +13,23 @@ _TOKEN = re.compile(r"[\w./+−-]+")
 _LETTER = re.compile(r"[^\W\d_]")
 _DIGIT = re.compile(r"\d")
 _SUPPORTED_CODE = re.compile(r"[A-Za-z]+(?:-[A-Za-z]+)*-?\d+(?:-[A-Za-z0-9]+)*")
+_SUPPORTED_MA_CODE = re.compile(r"(?:MÃ|MA)[\s-]+\d+", re.IGNORECASE)
 MAX_CODE_LENGTH = 50
+
+_MA_EXTRACTOR = re.compile(
+    r"(?<![\w/+−-])(?:mã|ma)(?:\s*(?:số|so))?\s*[:#-]?\s*(\d+)(?:\.|\b)(?![\w/+−-])",
+    re.IGNORECASE,
+)
 
 
 def is_supported_product_code(code: str) -> bool:
     """Apply the MVP grammar and length bound to an entire identifier."""
-    return len(code) <= MAX_CODE_LENGTH and _SUPPORTED_CODE.fullmatch(code) is not None
+    if len(code) > MAX_CODE_LENGTH:
+        return False
+    return (
+        _SUPPORTED_CODE.fullmatch(code) is not None
+        or _SUPPORTED_MA_CODE.fullmatch(code) is not None
+    )
 
 
 def find_product_identifiers(content: str) -> list[str]:
@@ -29,8 +40,16 @@ def find_product_identifiers(content: str) -> list[str]:
     Only supported codes are uppercased; Unicode folding must not repair an
     unsupported identifier. Surrounding sentence periods are punctuation.
     """
+    normalized = unicodedata.normalize("NFC", content)
     identifiers = []
-    for match in _TOKEN.finditer(unicodedata.normalize("NFC", content)):
+
+    # First extract Vietnamese 'mã <số>' / 'ma <số>' patterns
+    for match in _MA_EXTRACTOR.finditer(normalized):
+        identifiers.append(f"MÃ {match.group(1)}")
+
+    # Mask Vietnamese mã patterns to prevent false tokens, then extract standard tokens
+    token_text = _MA_EXTRACTOR.sub(lambda m: " " * len(m.group()), normalized)
+    for match in _TOKEN.finditer(token_text):
         token = match.group().rstrip(".")
         letter, digit = _LETTER.search(token), _DIGIT.search(token)
         if letter and digit and letter.start() < digit.start():
@@ -50,4 +69,6 @@ def mask_product_codes(content: str) -> str:
             return "#" * len(token) + match.group()[len(token):]
         return match.group()
 
-    return _TOKEN.sub(mask, unicodedata.normalize("NFC", content))
+    normalized = unicodedata.normalize("NFC", content)
+    text = _MA_EXTRACTOR.sub(lambda m: "#" * len(m.group()), normalized)
+    return _TOKEN.sub(mask, text)

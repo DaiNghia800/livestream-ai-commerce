@@ -309,3 +309,54 @@ def test_lambda_without_result_queue_fails_valid_records(adapter, monkeypatch, c
     assert entry["error_type"] is None
     assert entry["failure_kind"] == "technical"
     client_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("env_val,expected", [
+    (None, False),
+    ("", False),
+    ("   ", False),
+    ("false", False),
+    ("False", False),
+    ("FALSE", False),
+    ("  false  ", False),
+    ("true", True),
+    ("True", True),
+    ("TRUE", True),
+    ("  true  ", True),
+])
+def test_use_ai_enabled_configuration(adapter, monkeypatch, env_val, expected):
+    if env_val is None:
+        monkeypatch.delenv("AI_WORKER_USE_AI", raising=False)
+    else:
+        monkeypatch.setenv("AI_WORKER_USE_AI", env_val)
+    assert adapter._use_ai_enabled() is expected
+
+
+@pytest.mark.parametrize("invalid_val", [
+    "yes", "no", "1", "0", "enabled", "disabled", "t", "f", "truthy",
+])
+def test_use_ai_enabled_invalid_fails_safely(adapter, monkeypatch, invalid_val):
+    monkeypatch.setenv("AI_WORKER_USE_AI", invalid_val)
+    with pytest.raises(ValueError, match="Invalid AI_WORKER_USE_AI value"):
+        adapter._use_ai_enabled()
+
+
+def test_handler_passes_use_ai_true_when_configured(adapter, monkeypatch):
+    monkeypatch.setenv("AI_WORKER_USE_AI", "true")
+    processor = Mock(return_value={"status": "ok", "intent": {"decision": "no_purchase"}})
+    monkeypatch.setattr(adapter, "process_comment_event", processor)
+
+    assert adapter.handler({"Records": [record(comment("Shop đẹp quá"))]}, None) == {
+        "batchItemFailures": []
+    }
+    processor.assert_called_once_with(comment("Shop đẹp quá"), use_ai=True)
+
+
+def test_handler_fails_entire_batch_on_invalid_ai_env(adapter, monkeypatch):
+    monkeypatch.setenv("AI_WORKER_USE_AI", "invalid-value")
+    processor = Mock()
+    monkeypatch.setattr(adapter, "process_comment_event", processor)
+
+    with pytest.raises(ValueError, match="Invalid AI_WORKER_USE_AI value"):
+        adapter.handler({"Records": [record(comment())]}, None)
+    processor.assert_not_called()
