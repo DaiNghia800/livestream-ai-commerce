@@ -13,6 +13,7 @@ import {
   List,
   Send,
   Loader2,
+  X,
 } from "lucide-react";
 import type { StudioChatMessage } from "../../types/studio";
 import { mockStudioChatMessages } from "../../mocks/studio.mock";
@@ -52,6 +53,23 @@ export function StudioChatPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleReplyCustomer = (targetUser: string, cannedText?: string) => {
+    let cleanName = targetUser.replace(/^[🤖\s]+/, "").trim();
+    if (!cleanName || cleanName === "Trợ lý AI" || cleanName === "Hệ thống") {
+      cleanName = "bạn";
+    }
+    const prefix = cleanName.startsWith("@") ? `${cleanName} ` : `@${cleanName} `;
+    if (cannedText) {
+      setInputText(`${prefix}${cannedText}`);
+    } else {
+      setInputText(prefix);
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
 
   const handleFilterSelect = (newFilter: ChatFilter) => {
     if (activeFilter === undefined) {
@@ -83,25 +101,68 @@ export function StudioChatPanel({
   }, [messages, currentFilter]);
 
   const counts = useMemo(() => {
+    const customerReviewCount = messages.filter(
+      (m) => m.status === "NEEDS_REVIEW" && m.userId !== "ai-system",
+    ).length;
+    const allReviewCount = messages.filter(
+      (m) => m.status === "NEEDS_REVIEW",
+    ).length;
+
+    const customerAiOrdersCount = messages.filter(
+      (m) =>
+        (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+        m.status !== "NEEDS_REVIEW" &&
+        m.userId !== "ai-system",
+    ).length;
+    const allAiOrdersCount = messages.filter(
+      (m) =>
+        (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+        m.status !== "NEEDS_REVIEW",
+    ).length;
+
     return {
-      all: messages.length,
-      aiOrders: messages.filter(
-        (m) => m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated),
-      ).length,
-      needsReview: messages.filter((m) => m.status === "NEEDS_REVIEW").length,
+      all: messages.filter((m) => m.userId !== "ai-system").length,
+      aiOrders: customerAiOrdersCount || allAiOrdersCount,
+      needsReview: customerReviewCount || allReviewCount,
     };
   }, [messages]);
 
   const filteredMessages = useMemo(() => {
     if (currentFilter === "AI_ORDERS") {
+      const hasCustomerOrders = messages.some(
+        (m) =>
+          (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+          m.status !== "NEEDS_REVIEW" &&
+          m.userId !== "ai-system",
+      );
+      if (hasCustomerOrders) {
+        return messages.filter(
+          (m) =>
+            (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+            m.status !== "NEEDS_REVIEW" &&
+            m.userId !== "ai-system",
+        );
+      }
       return messages.filter(
-        (m) => m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated),
+        (m) =>
+          (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+          m.status !== "NEEDS_REVIEW",
       );
     }
     if (currentFilter === "NEEDS_REVIEW") {
+      // Ưu tiên hiển thị chính bình luận của khách hàng cần can thiệp
+      const hasCustomerReviews = messages.some(
+        (m) => m.status === "NEEDS_REVIEW" && m.userId !== "ai-system",
+      );
+      if (hasCustomerReviews) {
+        return messages.filter(
+          (m) => m.status === "NEEDS_REVIEW" && m.userId !== "ai-system",
+        );
+      }
       return messages.filter((m) => m.status === "NEEDS_REVIEW");
     }
-    return messages;
+    // Tab "Tất cả": Ẩn toàn bộ bình luận bot tự động để giữ luồng chat của chủ shop sạch sẽ, dễ tương tác với khách
+    return messages.filter((m) => m.userId !== "ai-system");
   }, [messages, currentFilter]);
 
   return (
@@ -231,16 +292,25 @@ export function StudioChatPanel({
           </div>
         ) : (
           filteredMessages.map((msg) => {
-            const isOrder = msg.status === "PENDING_CONFIRMATION" || msg.orderCreated;
+            const isOrder =
+              (msg.status === "PENDING_CONFIRMATION" || Boolean(msg.orderCreated)) &&
+              msg.status !== "NEEDS_REVIEW";
             const isReview = msg.status === "NEEDS_REVIEW";
             const isAiParsed = msg.isAiParsed;
+
+            const targetCustomerName =
+              msg.userId !== "ai-system"
+                ? msg.userName
+                : msg.targetUserName ||
+                  (msg.content.match(/@([^,\s]+)/)?.[1]?.replace(/[.,;!?]+$/, "")) ||
+                  "bạn";
 
             // CHẾ ĐỘ GỌN: Nền trung tính cho mọi tin nhắn, dùng nhãn trạng thái nhỏ gọn
             if (density === "compact") {
               return (
                 <div
                   key={msg.id}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs leading-snug flex items-start justify-between gap-1.5 transition ${isReview
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs leading-snug flex items-center justify-between gap-1.5 transition ${isReview
                     ? "bg-rose-50/70 border-rose-300 hover:border-rose-400"
                     : "bg-surface-container-low/40 border-outline-variant/40 hover:bg-surface-container-low"
                     }`}
@@ -272,9 +342,24 @@ export function StudioChatPanel({
                     </span>
                   </div>
 
-                  <span className="text-[9px] text-outline font-mono shrink-0 pl-1">
-                    {msg.timestamp}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[9px] text-outline font-mono pl-1">
+                      {msg.timestamp}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleReplyCustomer(targetCustomerName)}
+                      className={`p-1 rounded transition cursor-pointer active:scale-95 ${
+                        isReview
+                          ? "bg-rose-100 text-rose-800 hover:bg-rose-200"
+                          : "text-outline hover:text-primary hover:bg-surface-container"
+                      }`}
+                      title={`Nhắn cho @${targetCustomerName}`}
+                      aria-label={`Trả lời @${targetCustomerName}`}
+                    >
+                      <MessageSquare className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               );
             }
@@ -283,7 +368,7 @@ export function StudioChatPanel({
             return (
               <div
                 key={msg.id}
-                className={`p-2.5 sm:p-3 rounded-xl border space-y-1 transition shadow-2xs ${isReview
+                className={`p-2.5 sm:p-3 rounded-xl border space-y-1.5 transition shadow-2xs ${isReview
                   ? "bg-rose-50/50 border-rose-200 hover:border-rose-300"
                   : "bg-surface-container-lowest border-outline-variant/50 hover:border-primary/40"
                   }`}
@@ -324,6 +409,125 @@ export function StudioChatPanel({
                 <p className="text-on-surface text-xs sm:text-[13px] leading-relaxed break-words pl-0.5">
                   &quot;{msg.content}&quot;
                 </p>
+
+                {/* Action Buttons: Dành cho tin Cần Xử Lý hoặc tương tác nhanh */}
+                {isReview ? (
+                  <div className="pt-2 mt-1.5 border-t border-rose-200/60 flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleReplyCustomer(targetCustomerName)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                      title={`Soạn tin nhắn gửi cho @${targetCustomerName}`}
+                    >
+                      <MessageSquare className="h-3 w-3" />
+                      <span>Nhắn @{targetCustomerName}</span>
+                    </button>
+
+                    {/* Nút phản hồi nhanh: Nhắc chọn lại mã */}
+                    {(msg.reviewReason?.includes("không có trong giỏ") ||
+                      msg.reviewReason?.includes("mã") ||
+                      msg.content.toLowerCase().includes("mã")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Sản phẩm bạn chọn hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã trên màn hình giúp shop nha!",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200/80 text-rose-900 border border-rose-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu nhắc chọn lại mã sản phẩm vào ô chat"
+                      >
+                        <span>⚡ Nhắc chọn lại mã</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Nhắc chọn lại size/màu */}
+                    {(msg.reviewReason?.includes("hết hàng") ||
+                      msg.reviewReason?.includes("phân loại") ||
+                      msg.reviewReason?.includes("size") ||
+                      msg.reviewReason?.includes("màu")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Phân loại bạn chọn hiện không có hoặc đã hết hàng rồi ạ! Bạn chọn phân loại khác giúp shop nha!",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200/80 text-amber-900 border border-amber-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu nhắc chọn lại size/màu vào ô chat"
+                      >
+                        <span>⚡ Nhắc chọn lại size/màu</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Hỏi số lượng */}
+                    {(msg.reviewReason?.includes("số lượng") ||
+                      !msg.extractedQuantity ||
+                      msg.content.toLowerCase().includes("chốt mã")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Bạn ơi, bạn muốn chốt số lượng mấy cái ạ?",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200/80 text-rose-900 border border-rose-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu hỏi số lượng vào ô chat"
+                      >
+                        <span>⚡ Hỏi số lượng</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Nhắc thêm từ Chốt/Lấy */}
+                    {(msg.reviewReason?.includes("từ khóa") ||
+                      msg.reviewReason?.includes("Chốt") ||
+                      msg.reviewReason?.includes("chốt đơn")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Bạn ơi, bạn bình luận thêm từ 'Chốt' hoặc 'Lấy' (VD: 'Chốt Mã 1 1 cái') để hệ thống giữ hàng nhé!",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200/80 text-amber-900 border border-amber-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu nhắc thêm từ Chốt vào ô chat"
+                      >
+                        <span>⚡ Nhắc thêm từ Chốt</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Hướng dẫn cú pháp */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleReplyCustomer(
+                          targetCustomerName,
+                          "Bạn bình luận cú pháp: Chốt [Mã] [Số lượng] (VD: Chốt Mã 1 1 cái hoặc Lấy Mã 1 x1) để hệ thống giữ hàng nhé!",
+                        )
+                      }
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface-variant border border-outline-variant/60 text-[10px] font-medium transition cursor-pointer active:scale-95"
+                      title="Điền hướng dẫn cú pháp chuẩn vào ô chat"
+                    >
+                      <span>⚡ Hướng dẫn cú pháp</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pt-1 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleReplyCustomer(targetCustomerName)}
+                      className="inline-flex items-center gap-1 text-[10px] font-medium text-outline hover:text-primary transition cursor-pointer"
+                      title={`Trả lời ${targetCustomerName}`}
+                    >
+                      <MessageSquare className="h-2.5 w-2.5" />
+                      <span>Trả lời</span>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
@@ -359,10 +563,28 @@ export function StudioChatPanel({
             setIsSubmitting(false);
           }
         }}
-        className="pt-2 border-t border-outline-variant/30 shrink-0"
+        className="pt-2 border-t border-outline-variant/30 shrink-0 space-y-1.5"
       >
+        {/* Banner chỉ báo đang soạn tin nhắn phản hồi người xem */}
+        {inputText.startsWith("@") && (
+          <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/25 text-[11px] text-primary font-bold">
+            <span className="truncate">
+              Đang soạn tin gửi tới {inputText.split(" ")[0] || "khách hàng"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setInputText("")}
+              className="text-primary/70 hover:text-rose-600 transition p-0.5 cursor-pointer ml-1"
+              title="Hủy câu đang soạn"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 bg-surface-container-low border border-outline-variant/60 focus-within:border-primary focus-within:bg-surface-container-lowest rounded-xl px-3 py-1.5 transition shadow-2xs">
           <input
+            ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
@@ -374,6 +596,7 @@ export function StudioChatPanel({
               height: "auto",
               boxShadow: "none",
               border: "none",
+              color: "var(--color-on-surface, #131b2e)",
             }}
           />
           <button

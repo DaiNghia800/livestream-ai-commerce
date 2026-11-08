@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { RedisService } from "../../../src/shared/redis/redis.service.js";
+import { RedisService, InMemoryRedisService } from "../../../src/shared/redis/redis.service.js";
 import { LivestreamComment } from "../../../src/modules/livestream/types/livestream-comment.types.js";
 
 // Mock ioredis
@@ -32,6 +32,7 @@ vi.mock("ioredis", () => {
         connect: vi.fn().mockResolvedValue(undefined),
         pipeline: vi.fn(() => mockPipeline),
         lrange: vi.fn().mockResolvedValue([]),
+        get: vi.fn().mockResolvedValue(null),
         quit: vi.fn().mockResolvedValue("OK"),
         disconnect: vi.fn(),
       };
@@ -246,6 +247,89 @@ describe("RedisService Unit Tests", () => {
       shouldConstructorThrow = true;
       const service = new RedisService();
       await expect(service.disconnect()).resolves.not.toThrow();
+    });
+  });
+
+  describe("get & getPeakViewersAndLikes", () => {
+    it("returns null on get when not connected", async () => {
+      const service = new RedisService();
+      expect(await service.get("test-key")).toBeNull();
+    });
+
+    it("gets value when connected", async () => {
+      const service = new RedisService();
+      triggerEvent("connect");
+      mockRedisInstance.get.mockResolvedValueOnce("hello");
+      expect(await service.get("test-key")).toBe("hello");
+    });
+
+    it("handles error during get gracefully", async () => {
+      const service = new RedisService();
+      triggerEvent("connect");
+      mockRedisInstance.get.mockRejectedValueOnce(new Error("Timeout"));
+      expect(await service.get("test-key")).toBeNull();
+    });
+
+    it("returns {0, 0} when getPeakViewersAndLikes is called while offline", async () => {
+      const service = new RedisService();
+      const stats = await service.getPeakViewersAndLikes("live-1");
+      expect(stats).toEqual({ peakViewers: 0, likesCount: 0 });
+    });
+
+    it("retrieves peak viewers and likes count when connected", async () => {
+      const service = new RedisService();
+      triggerEvent("connect");
+      mockRedisInstance.get
+        .mockResolvedValueOnce("100") // live:peak
+        .mockResolvedValueOnce("250") // live:presence:peak
+        .mockResolvedValueOnce("500"); // live:likes
+
+      const stats = await service.getPeakViewersAndLikes("live-1");
+      expect(stats.peakViewers).toBe(250); // Math.max(100, 250)
+      expect(stats.likesCount).toBe(500);
+    });
+
+    it("handles Redis error during getPeakViewersAndLikes gracefully", async () => {
+      const service = new RedisService();
+      triggerEvent("connect");
+      mockRedisInstance.get.mockRejectedValue(new Error("Redis error"));
+
+      const stats = await service.getPeakViewersAndLikes("live-1");
+      expect(stats).toEqual({ peakViewers: 0, likesCount: 0 });
+    });
+  });
+
+  describe("InMemoryRedisService", () => {
+    it("stores and retrieves key-value, comments, and stats", async () => {
+      const mem = new InMemoryRedisService();
+      expect(mem.isAvailable()).toBe(true);
+
+      // get / set
+      expect(await mem.get("key1")).toBeNull();
+      mem.set("key1", "val1");
+      expect(await mem.get("key1")).toBe("val1");
+
+      // pushComment & getRecentComments
+      expect(await mem.getRecentComments("live-mem")).toBeNull();
+      await mem.pushComment("live-mem", sampleComment, 2);
+      await mem.pushComment("live-mem", { ...sampleComment, id: "cmt-2" }, 2);
+      await mem.pushComment("live-mem", { ...sampleComment, id: "cmt-3" }, 2);
+
+      const comments = await mem.getRecentComments("live-mem", 10);
+      expect(comments).toHaveLength(2); // trimmed to maxKeep 2
+
+      // peak viewers and likes
+      mem.set("live:peak:live-mem", "100");
+      mem.set("live:presence:peak:live-mem", "180");
+      mem.set("live:likes:live-mem", "300");
+
+      const stats = await mem.getPeakViewersAndLikes("live-mem");
+      expect(stats.peakViewers).toBe(180);
+      expect(stats.likesCount).toBe(300);
+
+      // disconnect clears store
+      await mem.disconnect();
+      expect(await mem.get("key1")).toBeNull();
     });
   });
 });

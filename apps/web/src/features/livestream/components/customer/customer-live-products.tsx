@@ -247,6 +247,8 @@ export function parseProductOptions(product: CustomerLiveProductItem): ParsedPro
 export interface CustomerLiveProductItem {
   id: string;
   code: string;
+  displayCode?: string;
+  displayIndex?: number;
   name: string;
   price: number;
   originalPrice?: number;
@@ -366,7 +368,7 @@ export function CustomerLiveProducts({
   };
 
   const handleCopy = (code: string, variantLabel?: string | null) => {
-    const syntax = variantLabel ? `${code} ${variantLabel} x1` : `${code} x1`;
+    const syntax = variantLabel ? `Chốt ${code} ${variantLabel} x1` : `Chốt ${code} x1`;
     onSelectSyntax(syntax);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 1500);
@@ -398,8 +400,7 @@ export function CustomerLiveProducts({
           {/* Header row inside card */}
           <div className="flex items-center justify-between mb-2">
             <span className="bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
-              <span>#{heroIndex}</span>
-              <span>Mã: {heroProduct.code}</span>
+              <span>{heroIndex}</span>
             </span>
             <span className="bg-primary text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -569,14 +570,14 @@ export function CustomerLiveProducts({
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-on-surface-variant font-medium">Cú pháp:</span>
                   <button
-                    onClick={() => handleCopy(heroProduct.code, activeVariantText)}
+                    onClick={() => handleCopy(heroProduct.displayCode || heroProduct.code, activeVariantText)}
                     className="bg-primary-container text-white font-mono font-bold text-xs px-2.5 py-1 rounded shadow-xs hover:bg-primary transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                    title={`Click để tự điền cú pháp Chốt ${heroProduct.code}${activeVariantText ? ` ${activeVariantText}` : ""} x1 vào khung chat`}
+                    title={`Click để tự điền cú pháp Chốt ${heroProduct.displayCode || heroProduct.code}${activeVariantText ? ` ${activeVariantText}` : ""} x1 vào khung chat`}
                     type="button"
-                    aria-label={heroProduct.code}
+                    aria-label={heroProduct.displayCode || heroProduct.code}
                   >
-                    <span>{heroProduct.code}{activeVariantText ? ` • ${activeVariantText}` : ""}</span>
-                    {copiedCode === heroProduct.code ? (
+                    <span>+ Chốt {heroProduct.displayCode || heroProduct.code}{activeVariantText ? ` • ${activeVariantText}` : ""}</span>
+                    {copiedCode === (heroProduct.displayCode || heroProduct.code) ? (
                       <Check className="w-3.5 h-3.5 text-emerald-300" />
                     ) : (
                       <Copy className="w-3 h-3 text-white/80" />
@@ -722,9 +723,8 @@ export function CustomerLiveProducts({
                           <Package className="w-7 h-7" />
                         </div>
                       )}
-                      <span className="absolute top-1.5 left-1.5 bg-black/65 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-1">
-                        <span>#{itemIndex}</span>
-                        <span className="font-mono">{product.code}</span>
+                      <span className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-xs text-white text-[11px] font-bold px-2 py-0.5 rounded shadow-xs min-w-[20px] text-center">
+                        {itemIndex}
                       </span>
                       {product.discountPercent && (
                         <span className="absolute top-1.5 right-1.5 bg-rose-600 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow-xs">
@@ -771,13 +771,13 @@ export function CustomerLiveProducts({
                       </span>
 
                       <button
-                        onClick={() => handleCopy(product.code)}
+                        onClick={() => handleCopy(product.displayCode || product.code)}
                         className="bg-surface-container hover:bg-primary hover:text-white text-primary font-mono text-[11px] font-bold px-2 py-0.5 rounded transition-colors active:scale-95 shadow-2xs cursor-pointer whitespace-nowrap flex-none"
-                        title={`Click để tự động điền cú pháp ${product.code} x1 vào khung chat`}
-                        aria-label={`Điền cú pháp ${product.code}`}
+                        title={`Click để tự động điền cú pháp Chốt ${product.displayCode || product.code} x1 vào khung chat`}
+                        aria-label={`Điền cú pháp Chốt ${product.displayCode || product.code}`}
                         type="button"
                       >
-                        + {product.code}
+                        + Chốt {product.displayCode || product.code}
                       </button>
                     </div>
 

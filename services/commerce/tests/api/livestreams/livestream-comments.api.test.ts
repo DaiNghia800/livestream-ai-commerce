@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { InMemoryLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { InMemoryLivestreamCommentRepository } from "../../../src/modules/livestream/repositories/livestream-comment.repository.js";
+import { InMemoryIvsService } from "../../../src/shared/ivs/ivs.service.js";
+import { InMemoryIvsChatService } from "../../../src/shared/ivs/ivs-chat.service.js";
 import {
   ISqsService,
   CommentCreatedEvent,
@@ -39,8 +41,8 @@ describe("Livestream Comments Endpoints - API Tests", () => {
       undefined,
       undefined,
       undefined,
-      undefined,
-      undefined,
+      new InMemoryIvsService(),
+      new InMemoryIvsChatService(),
       mockCommentRepo,
       mockSqsService
     );

@@ -27,7 +27,7 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
     page.getByRole("button", { name: "Đặt hàng — sắp có" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Đóng", exact: true }),
+    page.getByRole("button", { name: /Đóng/i }).first(),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();

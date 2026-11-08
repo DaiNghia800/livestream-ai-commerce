@@ -20,10 +20,15 @@ import { LivestreamService } from "../services/livestream.service.js";
 import { LivestreamProductService } from "../services/livestream-product.service.js";
 import { LivestreamCommentService } from "../services/livestream-comment.service.js";
 
-import { IIvsService, IvsService } from "../../../shared/ivs/ivs.service.js";
+import {
+  IIvsService,
+  IvsService,
+  InMemoryIvsService,
+} from "../../../shared/ivs/ivs.service.js";
 import {
   IIvsChatService,
   IvsChatService,
+  InMemoryIvsChatService,
 } from "../../../shared/ivs/ivs-chat.service.js";
 import {
   ISqsService,
@@ -50,15 +55,20 @@ export function createLivestreamRouter(
     customProductRepository || new PostgresLivestreamProductRepository();
   const commentRepo =
     customCommentRepository || new PostgresLivestreamCommentRepository();
+  const isTestEnv = process.env.NODE_ENV === "test";
   const ivs =
     customIvsService ||
-    new IvsService({
-      region: config.awsIvsRegion || "ap-northeast-1",
-      s3BucketName: config.s3MediaBucketName || config.s3BucketName,
-    });
+    (isTestEnv
+      ? new InMemoryIvsService()
+      : new IvsService({
+          region: config.awsIvsRegion || "ap-northeast-1",
+          s3BucketName: config.s3MediaBucketName || config.s3BucketName,
+        }));
   const ivsChat =
     customIvsChatService ||
-    new IvsChatService({ region: config.awsIvsRegion || "ap-northeast-1" });
+    (isTestEnv
+      ? new InMemoryIvsChatService()
+      : new IvsChatService({ region: config.awsIvsRegion || "ap-northeast-1" }));
   const sqs =
     customSqsService ||
     new SqsService({
@@ -67,7 +77,7 @@ export function createLivestreamRouter(
     });
   const redis = customRedisService || new RedisService(config.redisUrl);
 
-  const service = new LivestreamService(repo, productRepo, ivs, ivsChat);
+  const service = new LivestreamService(repo, productRepo, ivs, ivsChat, redis);
   const controller = new LivestreamController(service);
 
   const productService = new LivestreamProductService(repo, productRepo);
@@ -94,6 +104,7 @@ export function createLivestreamRouter(
   router.post("/", requireMerchantHeader, controller.create);
   router.get("/", requireMerchantHeader, controller.list);
   router.get("/:id", controller.getById);
+  router.get("/:id/report", controller.getReport);
   router.patch("/:id", requireMerchantHeader, controller.update);
   router.delete("/:id", requireMerchantHeader, controller.delete);
   router.patch("/:id/status", requireMerchantHeader, controller.updateStatus);

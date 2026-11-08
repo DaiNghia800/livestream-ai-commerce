@@ -112,11 +112,12 @@ export function MonitoringChatMessage({ message }: MonitoringChatMessageProps) {
                 <strong className="text-slate-900 font-bold">
                   {aiExtraction.productName}
                 </strong>
-                {aiExtraction.productCode && (
-                  <span className="text-indigo-600 font-mono ml-1 font-semibold">
-                    ({aiExtraction.productCode})
-                  </span>
-                )}
+                {aiExtraction.productCode &&
+                  aiExtraction.productCode !== aiExtraction.productName && (
+                    <span className="text-indigo-600 font-mono ml-1 font-semibold">
+                      ({aiExtraction.productCode})
+                    </span>
+                  )}
               </span>
             )}
             {aiExtraction.quantity !== undefined && (
@@ -149,6 +150,11 @@ export function MonitoringChatMessage({ message }: MonitoringChatMessageProps) {
                 <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full shadow-2xs">
                   Đã tạo đơn Pending #{pendingOrderId}
                 </span>
+                {message.pendingOrderTotal ? (
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-metric-num">
+                    {message.pendingOrderTotal.toLocaleString("vi-VN")} ₫
+                  </span>
+                ) : null}
                 <span className="text-[10px] text-amber-800 font-medium">
                   (Chờ khách xác nhận)
                 </span>

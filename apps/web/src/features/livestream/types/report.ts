@@ -114,6 +114,15 @@ export interface OrderStatusSummaryData {
   }[];
 }
 
+export interface AiInsightItem {
+  id: string;
+  type: "golden_hour" | "leakage" | "recommendation";
+  title: string;
+  highlight: string;
+  description: string;
+  badge: string;
+}
+
 export interface LivestreamReportData {
   sessionId: string;
   sessionTitle: string;
@@ -123,7 +132,7 @@ export interface LivestreamReportData {
   endedAt: string;
   durationDisplay: string;
   
-  // 7 KPIs
+  // KPIs
   kpis: ReportKpiItem[];
   
   // CCU & Order creation chart
@@ -135,8 +144,11 @@ export interface LivestreamReportData {
   // Top selling products
   topProducts: TopProductReportItem[];
   
-  // Order status lifecycle summary (thay thế card hạ tầng cloud)
+  // Order status lifecycle summary
   orderStatusSummary: OrderStatusSummaryData;
+
+  // AI Strategic Insights
+  aiInsights?: AiInsightItem[];
 
   // AI & Cloud infrastructure stats (optional for technical reference)
   infrastructure?: InfrastructureMetric[];

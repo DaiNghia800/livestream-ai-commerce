@@ -181,6 +181,34 @@ describe("LivestreamCommentService Unit Tests", () => {
       expect(mockSqsService.sendCommentCreatedEvent).toHaveBeenCalledTimes(1);
     });
 
+    it("đẩy nguyên văn bình luận gốc của khách vào SQS cho AI Worker xử lý", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Active Live SQS Raw Content",
+        status: "live",
+      });
+
+      const result = await service.addComment(live.id, {
+        userId: "u-buyer",
+        username: "Hoàng Long",
+        content: "Chốt Mã 2 x1",
+        role: "buyer",
+      });
+
+      expect(result).not.toBeNull();
+      // savedComment keeps the user's original display comment
+      expect(result?.content).toBe("Chốt Mã 2 x1");
+
+      // SQS payload receives the normalized comment for AI Worker
+      expect(mockSqsService.sendCommentCreatedEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session_id: live.id,
+          customer_id: "u-buyer",
+          content: "Chốt Mã 2 1 cái",
+        })
+      );
+    });
+
     it("bỏ qua avatarUrl nếu không có và dùng role mặc định buyer", async () => {
       const live = await livestreamRepo.create({
         merchantId: "m-1",
@@ -681,24 +709,24 @@ describe("LivestreamCommentService Unit Tests", () => {
   });
 
   describe("normalizeCommentForAi", () => {
-    it("chuẩn hóa ký tự nhân Unicode × sang x và thêm Chốt cho mã thứ tự", () => {
+    it("chuẩn hóa ký tự nhân Unicode × sang x và x1 thành 1 cái", () => {
       const normalized = normalizeCommentForAi("Mã 1 × 1");
-      expect(normalized).toBe("Chốt SP01 1 cái");
+      expect(normalized).toBe("Mã 1 1 cái");
     });
 
-    it("tự động thêm tiền tố Chốt cho mã sản phẩm SKU nếu chưa có từ khóa hành động mua", () => {
-      const normalized = normalizeCommentForAi("TUI-XACH-DA 1 cái");
-      expect(normalized).toBe("Chốt TUI-XACH-DA 1 cái");
+    it("chuẩn hóa Chốt Mã 1 x1 thành Chốt Mã 1 1 cái", () => {
+      const normalized = normalizeCommentForAi("Chốt Mã 1 x1");
+      expect(normalized).toBe("Chốt Mã 1 1 cái");
     });
 
     it("giữ nguyên từ khóa mua khi người dùng đã có chốt / mua", () => {
       const normalized = normalizeCommentForAi("chốt mã 2 2 cái");
-      expect(normalized).toBe("chốt SP02 2 cái");
+      expect(normalized).toBe("chốt mã 2 2 cái");
     });
 
-    it("chuẩn hóa đúng mã sản phẩm có gạch nối và số lượng", () => {
-      const normalized = normalizeCommentForAi("BLAZER-HANQUOC x1");
-      expect(normalized).toBe("Chốt BLAZER-HANQUOC 1 cái");
+    it("chuẩn hóa #2 x 2 thành Mã 2 2 cái", () => {
+      const normalized = normalizeCommentForAi("#2 x 2");
+      expect(normalized).toBe("Mã 2 2 cái");
     });
   });
 });

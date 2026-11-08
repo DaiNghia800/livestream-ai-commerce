@@ -345,7 +345,7 @@ test("live monitoring page renders session header, telemetry, and panels", async
     await expect(
       page.locator(".lg\\:hidden").getByText("Nguyễn Thu Thảo"),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Sản phẩm" }).click();
+    await page.getByRole("button", { name: /Sản phẩm/i }).first().click();
     await expect(
       page.locator(".lg\\:hidden").getByText("AO01").first(),
     ).toBeVisible();

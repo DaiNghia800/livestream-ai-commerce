@@ -18,7 +18,7 @@ function formatDeleteLivestreamError(rawMsg: string): string {
     lower.includes("409") ||
     lower.includes("conflict")
   ) {
-    return "Phiên livestream này đã phát sinh đơn hàng của khách. Để bảo vệ quyền lợi người mua và số liệu kế toán shop, hệ thống không cho phép xóa vĩnh viễn phiên này.";
+    return "Phiên livestream này đã phát sinh đơn hàng đã xác nhận của khách. Để bảo vệ quyền lợi người mua và số liệu kế toán shop, hệ thống không cho phép xóa vĩnh viễn phiên này.";
   }
   if (lower.includes("status") && (lower.includes("live") || lower.includes("đang phát"))) {
     return "Phiên livestream đang phát sóng trực tiếp. Vui lòng kết thúc phiên trước khi thực hiện xóa.";

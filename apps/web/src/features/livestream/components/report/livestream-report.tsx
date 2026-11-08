@@ -11,19 +11,21 @@ import {
   Activity,
 } from "lucide-react";
 import { mockLivestreams } from "../../mocks/livestream.mock";
-import { getLivestreamReport } from "../../mocks/report.mock";
+import { getLivestreamReport as getMockLivestreamReport } from "../../mocks/report.mock";
 import {
   getLivestreamDetail,
+  getLivestreamReport as fetchLivestreamReportApi,
   mapBackendLivestreamToFrontend,
   isValidUuid,
 } from "../../api/get-livestreams";
 import type { Livestream } from "../../types/livestream";
+import type { LivestreamReportData } from "../../types/report";
 import { ReportPageHeader } from "./report-page-header";
 import { ReportKpiGrid } from "./report-kpi-grid";
 import { ReportPerformanceChart } from "./report-performance-chart";
 import { ReportConversionFunnel } from "./report-conversion-funnel";
 import { ReportTopProducts } from "./report-top-products";
-import { ReportOrderStatusSummary } from "./report-order-status-summary";
+import { ReportAiInsights } from "./report-ai-insights";
 import { ReportCommentLog } from "./report-comment-log";
 
 interface LivestreamReportProps {
@@ -34,7 +36,7 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
   const [session, setSession] = useState<Livestream | null>(() => {
     const found = mockLivestreams.find((s) => s.id === livestreamId);
     if (found) return found;
-    const report = getLivestreamReport(livestreamId);
+    const report = getMockLivestreamReport(livestreamId);
     if (report) {
       return {
         id: report.sessionId,
@@ -58,27 +60,78 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
     }
     return null;
   });
+
+  const [reportData, setReportData] = useState<LivestreamReportData | null>(() => {
+    return getMockLivestreamReport(livestreamId);
+  });
   const [isLoading, setIsLoading] = useState(!session && isValidUuid(livestreamId));
 
   useEffect(() => {
     let isMounted = true;
-    async function loadSession() {
+    async function loadData() {
       if (!isValidUuid(livestreamId)) {
+        const mock = mockLivestreams.find((s) => s.id === livestreamId);
+        if (mock) {
+          setSession(mock);
+          setReportData(getMockLivestreamReport(livestreamId, mock));
+        }
         setIsLoading(false);
         return;
       }
+
+      setIsLoading(true);
       try {
-        const detail = await getLivestreamDetail(livestreamId);
+        const [detail, report] = await Promise.all([
+          getLivestreamDetail(livestreamId).catch((err) => {
+            console.warn("[LivestreamReport] Could not load session detail:", err);
+            return null;
+          }),
+          fetchLivestreamReportApi(livestreamId).catch((err) => {
+            console.warn("[LivestreamReport] Could not load session report:", err);
+            return null;
+          }),
+        ]);
+
         if (!isMounted) return;
-        const mapped = mapBackendLivestreamToFrontend(detail);
-        setSession(mapped);
+
+        if (detail) {
+          setSession(mapBackendLivestreamToFrontend(detail));
+        } else if (report) {
+          setSession({
+            id: report.sessionId,
+            title: report.sessionTitle,
+            status: "ENDED",
+            thumbnail: "",
+            hostName: "MC",
+            products: (report.topProducts || []).map((p) => ({
+              id: p.id,
+              sku: p.sku,
+              name: p.name,
+              price: p.price,
+              stock: p.remainingStock,
+              image: p.image,
+              chatOrders: p.soldCount,
+            })),
+            startedAt: report.startedAt,
+            endedAt: report.endedAt,
+            subTimeDisplay: report.durationDisplay,
+          } as Livestream);
+        }
+
+        if (report) {
+          setReportData(report);
+        } else {
+          const fallback = getMockLivestreamReport(livestreamId, session || undefined);
+          if (fallback) setReportData(fallback);
+        }
       } catch (err) {
-        console.warn("[LivestreamReport] Could not load session from API:", err);
+        console.error("[LivestreamReport] Error loading report:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     }
-    loadSession();
+
+    loadData();
     return () => {
       isMounted = false;
     };
@@ -235,9 +288,7 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
     );
   }
 
-  // Case E: Session is ENDED -> Fetch and render report
-  const reportData = getLivestreamReport(livestreamId, session || undefined);
-
+  // Case E: Session is ENDED -> Render report
   if (!reportData) {
     return (
       <div className="max-w-2xl mx-auto my-12 p-8 bg-surface-container-lowest rounded-xl border border-outline-variant/70 text-center shadow-xs space-y-4">
@@ -275,10 +326,13 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
         recordingDuration={reportData.recordingDuration}
       />
 
-      {/* 2. KPI Bento Grid */}
+      {/* 2. AI Strategic Insights (Khuyến nghị thông minh từ AI) */}
+      <ReportAiInsights insights={reportData.aiInsights} />
+
+      {/* 3. Core 4-KPI Grid (Đã tinh giản, tập trung vào số liệu sống còn) */}
       <ReportKpiGrid kpis={reportData.kpis} />
 
-      {/* 3. Main Dashboard: Left (Chart + Funnel) & Right (Top Products + Cloud Infra) */}
+      {/* 4. Main Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (7 cols): Performance Chart & Conversion Funnel */}
         <div className="lg:col-span-7 space-y-6">
@@ -286,14 +340,13 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
           <ReportConversionFunnel funnelData={reportData.funnelData} />
         </div>
 
-        {/* Right Column (5 cols): Top Products & Order Status Lifecycle Summary */}
+        {/* Right Column (5 cols): Top Products (Đã loại bỏ khối trạng thái đơn trùng lặp) */}
         <div className="lg:col-span-5 space-y-6">
           <ReportTopProducts products={reportData.topProducts} />
-          <ReportOrderStatusSummary summary={reportData.orderStatusSummary} />
         </div>
       </div>
 
-      {/* 4. Full-width Comment & Order Log Table with search, filter, and pagination */}
+      {/* 5. Full-width Comment & Order Log Table */}
       <ReportCommentLog logs={reportData.commentLogs} />
     </div>
   );

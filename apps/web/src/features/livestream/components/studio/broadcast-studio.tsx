@@ -37,6 +37,8 @@ import type { StudioProductItem } from "../../types/studio";
 import type { Livestream, LivestreamStatus, LiveProductItem } from "../../types/livestream";
 import { useIvsBroadcast } from "../../hooks/use-ivs-broadcast";
 import { useIvsChat } from "../../hooks/use-ivs-chat";
+import { useLivestreamViewers } from "../../hooks/use-livestream-viewers";
+import { useLivestreamLikes } from "../../hooks/use-livestream-likes";
 import { mockStudioChatMessages } from "../../mocks/studio.mock";
 import {
   getLivestreamProducts,
@@ -106,6 +108,18 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     role: "HOST",
     autoConnect: true,
   });
+
+  // Realtime Viewer Tracking via services/realtime (Redis Sliding Window)
+  const isBroadcastingLive = currentStatus === "LIVE";
+  const { viewerCount: liveViewerCount } = useLivestreamViewers(
+    session?.id || livestreamId,
+    isBroadcastingLive
+  );
+  // Realtime Live Hearts / Likes Tracking via services/realtime (Redis Atomic INCRBY Batching)
+  const { likesCount: liveLikesCount } = useLivestreamLikes(
+    session?.id || livestreamId,
+    isBroadcastingLive
+  );
 
   const allChatMessages = useMemo(() => {
     // Chỉ chèn tin nhắn demo cho phiên mẫu LIVE-2025-08; phiên thực tế lấy 100% từ AWS IVS Chat
@@ -815,6 +829,64 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
     return () => document.removeEventListener("click", handleClickLink, true);
   }, [currentStatus]);
 
+  // 2.7 Tự động kết nối lại luồng phát sóng khi tải lại trang nếu phiên đang LIVE (Zero-Click Auto-Resume Live)
+  const hasAutoResumedRef = useRef(false);
+
+  useEffect(() => {
+    // Chỉ tự động kích hoạt khi:
+    // - Đã có thông tin session từ server và không trong trạng thái loading
+    // - Trạng thái phiên là LIVE
+    // - Luồng phát sóng chưa ở trạng thái LIVE (vừa reload trang)
+    // - Chưa bắt đầu quá trình kết nối và chưa từng auto-resume trong lần tải này
+    if (!session || isLoadingSession) return;
+    if (currentStatus !== "LIVE" || broadcastState === "LIVE" || isStarting) return;
+    if (hasAutoResumedRef.current) return;
+
+    hasAutoResumedRef.current = true;
+
+    console.info("[Studio] Phiên livestream đang LIVE. Tự động kết nối lại luồng phát sóng...");
+    setLiveToastMessage("Đang tự động kết nối lại luồng phát sóng...");
+
+    const timer = setTimeout(() => {
+      handleResumeBroadcast();
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [session, isLoadingSession, currentStatus, broadcastState, isStarting]);
+
+  // 2.8 Lắng nghe sự kiện mất mạng (offline) và có mạng trở lại (online) để tự động kết nối lại phát sóng
+  useEffect(() => {
+    if (currentStatus !== "LIVE") return;
+
+    let onlineReconnectTimer: NodeJS.Timeout | null = null;
+
+    const handleNetworkOffline = () => {
+      console.warn("[Studio] Mất kết nối mạng Internet!");
+      setLiveToastMessage("Mất kết nối Internet. Hệ thống sẽ tự động phát sóng lại ngay khi có mạng...");
+    };
+
+    const handleNetworkOnline = () => {
+      console.info("[Studio] Đã có mạng Internet trở lại! Đang chuẩn bị tự động phát sóng lại...");
+      setLiveToastMessage("Đã có mạng trở lại! Đang tự động kết nối lại luồng phát sóng...");
+
+      if (onlineReconnectTimer) clearTimeout(onlineReconnectTimer);
+      onlineReconnectTimer = setTimeout(() => {
+        if (currentStatus === "LIVE" && broadcastState !== "LIVE" && !isStarting) {
+          handleResumeBroadcast();
+        }
+      }, 1200);
+    };
+
+    window.addEventListener("offline", handleNetworkOffline);
+    window.addEventListener("online", handleNetworkOnline);
+
+    return () => {
+      if (onlineReconnectTimer) clearTimeout(onlineReconnectTimer);
+      window.removeEventListener("offline", handleNetworkOffline);
+      window.removeEventListener("online", handleNetworkOnline);
+    };
+  }, [currentStatus, broadcastState, isStarting]);
+
   const handleOpenPendingInNewTab = () => {
     if (pendingNavigationUrl) {
       window.open(pendingNavigationUrl, "_blank", "noopener,noreferrer");
@@ -994,8 +1066,8 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
         sessionTitle={session.title}
         status={currentStatus}
         duration={activeDuration}
-        viewers={isLive ? session.currentViewers || 1940 : isEnded ? 0 : "—"}
-        likesCount="18.5K"
+        viewers={isLive ? (liveViewerCount || session.currentViewers || 0) : isEnded ? 0 : "—"}
+        likesCount={isDemoSession ? "18.5K" : (isLive || isEnded) ? liveLikesCount : "—"}
         chatCount={isLive || isEnded ? session.chatCount || 3420 : "—"}
         aiOrdersCount={isLive || isEnded ? session.aiOrderCount || 284 : "—"}
         isLeftSidebarOpen={isLeftSidebarOpen}
@@ -1173,10 +1245,14 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
                   </span>
                   <div className="min-w-0">
                     <span className="font-bold text-white block">
-                      Luồng phát đang tạm dừng kết nối (Grace Period)
+                      {isStarting
+                        ? "Đang tự động kết nối lại luồng phát sóng..."
+                        : "Luồng phát đang tạm dừng kết nối (Grace Period)"}
                     </span>
                     <span className="text-[11px] text-amber-300/80 truncate block">
-                      Bạn vừa tải lại trang hoặc ngắt kết nối. Kênh AWS IVS đang chờ nhận lại luồng video.
+                      {isStarting
+                        ? "Hệ thống đang tự động bật Camera, Micro và tiếp tục phát sóng lên AWS IVS..."
+                        : "Bạn vừa tải lại trang. Hệ thống đang tự động khôi phục luồng video."}
                     </span>
                   </div>
                 </div>

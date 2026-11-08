@@ -116,5 +116,5 @@ export async function readQtyInSession(
             AND pr.livestream_id = $2) AS total`,
     [params.customerId, params.livestreamId]
   );
-  return Number(result.rows[0].total);
+  return result?.rows?.[0]?.total ? Number(result.rows[0].total) : 0;
 }

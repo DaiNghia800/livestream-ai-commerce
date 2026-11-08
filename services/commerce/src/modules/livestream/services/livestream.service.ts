@@ -5,6 +5,7 @@ import {
   LivestreamListResult,
   LivestreamStatus,
 } from "../types/livestream.types.js";
+import { LivestreamReportResponse } from "../types/livestream-report.types.js";
 import { ILivestreamRepository } from "../repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "../repositories/livestream-product.repository.js";
 import { IIvsService } from "../../../shared/ivs/ivs.service.js";
@@ -14,6 +15,7 @@ import {
   IvsChatTokenResult,
   CreateChatTokenParams,
 } from "../../../shared/ivs/ivs-chat.service.js";
+import { IRedisService } from "../../../shared/redis/redis.service.js";
 
 export interface CreateLivestreamParams {
   merchantId: string;
@@ -116,8 +118,32 @@ export class LivestreamService {
     private readonly repository: ILivestreamRepository,
     private readonly productRepository?: ILivestreamProductRepository,
     private readonly ivsService?: IIvsService,
-    private readonly ivsChatService?: IIvsChatService
+    private readonly ivsChatService?: IIvsChatService,
+    private readonly redisService?: IRedisService
   ) {}
+
+  async getLivestreamReport(id: string): Promise<LivestreamReportResponse> {
+    let redisStats: { peakViewers?: number; likesCount?: number } | undefined =
+      undefined;
+
+    if (this.redisService) {
+      try {
+        redisStats = await this.redisService.getPeakViewersAndLikes(id);
+      } catch (err) {
+        console.warn(
+          `[LivestreamService] Failed to read Redis stats for report:`,
+          err
+        );
+      }
+    }
+
+    const report = await this.repository.getReport(id, redisStats);
+    if (!report) {
+      throw new LivestreamNotFoundError(`Livestream with id ${id} not found`);
+    }
+
+    return report;
+  }
 
   async createLivestream(params: CreateLivestreamParams): Promise<Livestream> {
     const cleanTitle = params.title.trim();
