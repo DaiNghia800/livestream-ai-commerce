@@ -7,7 +7,7 @@ import type { Pool } from "pg";
 import type { DraftOrderService } from "../services/draft-order.service.js";
 import type { IIvsChatService } from "../../../shared/ivs/ivs-chat.service.js";
 import { AllLinesOutOfStockError } from "../../../shared/errors/domain.errors.js";
-import { readHeldQtyInSession } from "../repositories/customer-risk.repository.js";
+import { readQtyInSession } from "../repositories/customer-risk.repository.js";
 import { config } from "../../../config.js";
 
 export interface AiResultsConsumerOptions {
@@ -607,7 +607,7 @@ export class AiResultsConsumerJob {
           ? await this.pool.connect()
           : this.pool;
       try {
-        currentHeldQty = await readHeldQtyInSession(clientOrPool as any, {
+        currentHeldQty = await readQtyInSession(clientOrPool as any, {
           customerId,
           livestreamId: livestream.id,
         });
