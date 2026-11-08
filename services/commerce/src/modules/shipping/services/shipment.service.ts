@@ -244,6 +244,17 @@ export class ShipmentService {
     try {
       await client2.query("BEGIN");
 
+      // Khoá dòng đơn hàng TRƯỚC khi chạm vào vận đơn. Cú bấm đúp: request
+      // thua đang giữ FOR UPDATE trên đơn (giai đoạn 1) và INSERT vận đơn
+      // của nó phải chờ bản ghi chỉ mục chưa commit nếu ta UPDATE vận đơn
+      // trước; ta lại chờ khoá đơn của nó -> Postgres báo deadlock, một
+      // bên trả 500. Lấy khoá đơn trước thì bên thua thấy vận đơn đã
+      // commit, nhận 409 và nhả khoá, ta đi tiếp.
+      //
+      // Đơn hàng sang PROCESSING. Tồn kho CHƯA đụng tới: hàng vẫn nằm
+      // trong kho tới khi hãng đến lấy (QĐ-V3).
+      await markOrderProcessing(client2, input.orderId);
+
       await markShipmentCreated(client2, {
         shipmentId,
         trackingCode: ketQua.trackingCode,
@@ -270,10 +281,6 @@ export class ShipmentService {
         crypto.randomBytes(24).toString("base64url"),
         TRACKING_SONG_NGAY
       );
-
-      // Đơn hàng sang PROCESSING. Tồn kho CHƯA đụng tới: hàng vẫn nằm
-      // trong kho tới khi hãng đến lấy (QĐ-V3).
-      await markOrderProcessing(client2, input.orderId);
 
       await client2.query("COMMIT");
     } catch (err) {

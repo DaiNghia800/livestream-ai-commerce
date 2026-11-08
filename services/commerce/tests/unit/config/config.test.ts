@@ -123,13 +123,25 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
     expect(bat.paymentTrustSignedReturn).toBe(true);
 
     // Production không bao giờ tin RETURN, kể cả khi ai đó để quên cờ.
+    // Production còn đòi SECRET_KEY >= 32 ký tự (CI không có .env nên
+    // phải tự đặt), và phải trả NODE_ENV về trong finally: nếu nạp
+    // config ném lỗi mà NODE_ENV còn kẹt ở "production" thì mọi test
+    // nạp lại config phía sau đổ theo.
     const nodeEnvCu = process.env.NODE_ENV;
+    const secretKeyCu = process.env.SECRET_KEY;
     process.env.NODE_ENV = "production";
-    const prod = await reloadSach(["PAYMENT_TRUST_SIGNED_RETURN"]);
-    expect(prod.paymentTrustSignedReturn).toBe(false);
-    process.env.NODE_ENV = nodeEnvCu;
-    delete process.env.WEB_BASE_URL;
-    delete process.env.PAYMENT_TRUST_SIGNED_RETURN;
+    process.env.SECRET_KEY = "khoa-gia-du-dai-cho-test-production-0123456789";
+    try {
+      const prod = await reloadSach(["PAYMENT_TRUST_SIGNED_RETURN"]);
+      expect(prod.paymentTrustSignedReturn).toBe(false);
+    } finally {
+      if (nodeEnvCu === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnvCu;
+      if (secretKeyCu === undefined) delete process.env.SECRET_KEY;
+      else process.env.SECRET_KEY = secretKeyCu;
+      delete process.env.WEB_BASE_URL;
+      delete process.env.PAYMENT_TRUST_SIGNED_RETURN;
+    }
   });
 
   it("CFG-007 - đường dẫn callback dựng từ publicBaseUrl", async () => {
