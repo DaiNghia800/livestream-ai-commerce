@@ -13,15 +13,19 @@ function CustomerLiveContent() {
     searchParams.get("id-") ||
     undefined;
 
+  if (id) {
+    id = id.trim().replace(/\/+$/, "").replace(/^-+/, "");
+  }
+
   // Resilient fallback: detect if any query key or value matches a UUID
   if (!id) {
     for (const [key, value] of searchParams.entries()) {
-      const cleanVal = (value || "").trim().replace(/^-+/, "");
+      const cleanVal = (value || "").trim().replace(/^-+/, "").replace(/\/+$/, "");
       if (isValidUuid(cleanVal)) {
         id = cleanVal;
         break;
       }
-      const cleanKey = key.trim().replace(/^id-?/, "").replace(/^-+/, "");
+      const cleanKey = key.trim().replace(/^id-?/, "").replace(/^-+/, "").replace(/\/+$/, "");
       if (isValidUuid(cleanKey)) {
         id = cleanKey;
         break;

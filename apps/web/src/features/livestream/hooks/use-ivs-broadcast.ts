@@ -229,6 +229,64 @@ export function useIvsBroadcast() {
     };
   }, [startBroadcast]);
 
+  /**
+   * Tự động kết nối lại khi mạng Internet bị ngắt và có trở lại (Online / Offline Network Recovery)
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let reconnectTimer: NodeJS.Timeout | null = null;
+
+    const handleOffline = () => {
+      if (!isBroadcastingRef.current) return;
+      console.warn("[useIvsBroadcast] Network offline detected. Waiting for reconnection...");
+      setIsReconnecting(true);
+      setReconnectNotice("Mất kết nối Internet. Đang chờ có mạng trở lại để tiếp tục phát sóng...");
+    };
+
+    const handleOnline = async () => {
+      if (!isBroadcastingRef.current || !lastOptionsRef.current) return;
+      console.log("[useIvsBroadcast] Network online restored! Auto-reconnecting to AWS IVS in 1.2s...");
+      setIsReconnecting(true);
+      setReconnectNotice("Đã có mạng trở lại! Đang tự động kết nối lại luồng phát...");
+
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(async () => {
+        try {
+          if (!lastOptionsRef.current) return;
+
+          // Bật lại các track nếu bị ngắt
+          const currentStream = lastOptionsRef.current.localStream;
+          if (currentStream) {
+            currentStream.getTracks().forEach((track) => {
+              if (!track.enabled) track.enabled = true;
+            });
+          }
+
+          await startBroadcast(lastOptionsRef.current);
+          setBroadcastState("LIVE");
+          setReconnectNotice("Đã tự động kết nối lại luồng phát AWS IVS thành công!");
+          setTimeout(() => setReconnectNotice(null), 4000);
+        } catch (err) {
+          console.warn("[useIvsBroadcast] Auto-reconnect after online event failed:", err);
+          setReconnectNotice("Không thể tự động kết nối lại. Vui lòng bấm Tiếp tục phát sóng.");
+          setTimeout(() => setReconnectNotice(null), 5000);
+        } finally {
+          setIsReconnecting(false);
+        }
+      }, 1200);
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [startBroadcast]);
+
   // Cleanup khi unmount
   useEffect(() => {
     return () => {

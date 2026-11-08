@@ -25,6 +25,7 @@ import {
   FlipHorizontal,
 } from "lucide-react";
 import { formatMoney } from "@/lib/format";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
 import type { CustomerLiveProductItem } from "./customer-live-products";
 import type { StudioChatMessage } from "../../types/studio";
 
@@ -32,6 +33,8 @@ interface CustomerLivePlayerProps {
   title?: string;
   playbackUrl?: string | null;
   viewerCount?: number;
+  likesCount?: number;
+  onSendLike?: (count?: number) => void;
   hostName?: string;
   hostSubtitle?: string;
   hostAvatarUrl?: string;
@@ -110,6 +113,8 @@ export function CustomerLivePlayer({
   title = "Đại tiệc Flash Sale BST Linen Hè 2025 - Giảm sốc đến 50%",
   playbackUrl,
   viewerCount = 2845,
+  likesCount,
+  onSendLike,
   hostName = "ChicStyle Official Live",
   hostSubtitle = "Bộ sưu tập Linen Mùa Hè 2025 • Mở bán độc quyền",
   hostAvatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop",
@@ -145,6 +150,7 @@ export function CustomerLivePlayer({
   const [isMuted, setIsMuted] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [likes, setLikes] = useState(initialLikes);
+  const displayLikes = typeof likesCount === "number" ? likesCount : likes;
   const [hasLiked, setHasLiked] = useState(false);
   const [isFollowed, setIsFollowed] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
@@ -471,8 +477,12 @@ export function CustomerLivePlayer({
 
   // Handle Like (#8: spawns 3 hearts when clicked)
   const handleLike = () => {
-    setLikes((prev) => prev + (hasLiked ? -1 : 1));
-    setHasLiked(!hasLiked);
+    if (onSendLike) {
+      onSendLike(1);
+    } else {
+      setLikes((prev) => prev + (hasLiked ? -1 : 1));
+    }
+    setHasLiked(true);
     spawnHearts(3);
   };
 
@@ -598,12 +608,14 @@ export function CustomerLivePlayer({
               </div>
             )}
 
-            {/* Realtime Viewers Counter */}
+            {/* Realtime Viewers Counter (Animated TikTok-style) */}
             <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md text-white px-2.5 py-1 rounded-md text-xs font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <Eye className="w-3.5 h-3.5 text-rose-400" />
-              <span className="font-bold tracking-normal">
-                {viewerCount.toLocaleString("vi-VN")}
-              </span>
+              <AnimatedCounter
+                value={viewerCount}
+                className="font-bold tracking-normal tabular-nums"
+              />
               <span className="text-white/80 font-normal hidden sm:inline">
                 người xem
               </span>
@@ -718,7 +730,7 @@ export function CustomerLivePlayer({
                 </span>
                 <ShoppingBag className="w-3.5 h-3.5 text-amber-300" />
                 <span className="text-xs font-mono font-bold text-amber-300">
-                  #{products.findIndex((p) => p.id === pinnedProduct.id) >= 0 ? products.findIndex((p) => p.id === pinnedProduct.id) + 1 : 1}
+                  {products.findIndex((p) => p.id === pinnedProduct.id) >= 0 ? products.findIndex((p) => p.id === pinnedProduct.id) + 1 : 1}
                 </span>
                 <span className="text-xs font-bold text-white">
                   {formatMoney(pinnedProduct.price)}
@@ -735,7 +747,7 @@ export function CustomerLivePlayer({
                       <span>Đang ghim</span>
                     </span>
                     <span className="bg-white/15 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">
-                      #{pinnedProduct.code || "A001"}
+                      {pinnedProduct.displayIndex || (pinnedProduct.displayCode ? pinnedProduct.displayCode.replace(/^mã\s*/i, "") : "1")}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -824,13 +836,16 @@ export function CustomerLivePlayer({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onBuyPinnedProduct?.(`${pinnedProduct.code || "A001"} x1`)}
+                        onClick={() => {
+                          const buyCode = pinnedProduct.displayCode || pinnedProduct.code || "Mã 1";
+                          onBuyPinnedProduct?.(`Chốt ${buyCode} x1`);
+                        }}
                         className="bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-300 text-[11px] font-bold py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
-                        title={`Chốt ${pinnedProduct.code || "A001"}`}
-                        aria-label={`Chốt ${pinnedProduct.code || "A001"}`}
+                        title={`Chốt ${pinnedProduct.displayCode || pinnedProduct.code || "Mã 1"}`}
+                        aria-label={`Chốt ${pinnedProduct.displayCode || pinnedProduct.code || "Mã 1"}`}
                       >
                         <Zap className="w-3 h-3 fill-amber-300 text-amber-300" />
-                        <span>Chốt {pinnedProduct.code || "A001"}</span>
+                        <span>Chốt {pinnedProduct.displayCode || pinnedProduct.code || "Mã 1"}</span>
                       </button>
                     </div>
                   </div>
@@ -1032,12 +1047,12 @@ export function CustomerLivePlayer({
                     key={code}
                     type="button"
                     onClick={() => {
-                      setFsChatInput(`${code} x1`);
-                      onBuyPinnedProduct?.(code);
+                      setFsChatInput(`Chốt ${code} x1`);
+                      onBuyPinnedProduct?.(`Chốt ${code} x1`);
                     }}
                     className="px-2.5 py-0.5 bg-black/60 hover:bg-amber-400 hover:text-slate-950 backdrop-blur-md border border-amber-400/40 rounded-full text-[11px] font-mono font-bold text-amber-300 transition-all flex-none cursor-pointer active:scale-95 shadow-xs"
                   >
-                    {code} x1
+                    Chốt {code} x1
                   </button>
                 ))}
                 <button
@@ -1060,7 +1075,7 @@ export function CustomerLivePlayer({
                 type="text"
                 value={fsChatInput}
                 onChange={(e) => setFsChatInput(e.target.value)}
-                placeholder="Bình luận hoặc chốt (vd: A001 x1)..."
+                placeholder="Cú pháp: Chốt Mã 1 x1 hoặc Chốt A001 x1..."
                 className="flex-1 min-w-0 text-white placeholder-slate-400 text-xs"
                 style={{
                   background: "transparent",
@@ -1212,10 +1227,10 @@ export function CustomerLivePlayer({
                             type="button"
                             onClick={() => {
                               setShowCartDrawer(false);
-                              onBuyPinnedProduct?.(`Mã ${idx + 1} x1`);
+                              onBuyPinnedProduct?.(`Chốt Mã ${idx + 1} x1`);
                             }}
                             className="px-2.5 py-1.5 bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer active:scale-95"
-                            title={`Gửi cú pháp chốt nhanh Mã ${idx + 1} x1 qua chat`}
+                            title={`Gửi cú pháp Chốt Mã ${idx + 1} x1 qua chat`}
                           >
                             <Zap className="w-3 h-3 fill-amber-300 text-amber-300" />
                             <span>Chốt</span>
@@ -1254,7 +1269,7 @@ export function CustomerLivePlayer({
           <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
             Bấm <strong className="text-primary font-bold">Đặt Mua</strong> trực tiếp trên sản phẩm để đặt hàng nhanh, hoặc bình luận cú pháp{" "}
             <span className="font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded-sm font-mono">
-              [Mã 1 x1] hoặc [Mã 2 x2]
+              [Chốt Mã 1 x1] hoặc [Chốt Mã 2 x2]
             </span>{" "}
             để được trợ lý AI tự động giữ hàng ưu đãi Flash Sale.
           </p>
@@ -1276,9 +1291,10 @@ export function CustomerLivePlayer({
               className={`w-4 h-4 text-rose-500 ${hasLiked ? "fill-rose-500" : ""
                 }`}
             />
-            <span className="font-bold">
-              {likes.toLocaleString("vi-VN")}
-            </span>
+            <AnimatedCounter
+              value={displayLikes}
+              className="font-bold tabular-nums"
+            />
           </button>
 
           <button

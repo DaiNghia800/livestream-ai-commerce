@@ -93,8 +93,11 @@ export function MonitoringSessionHeader({
           >
             {sessionTitle}
           </h1>
-          <span className="text-[10px] sm:text-[11px] font-mono px-1.5 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200/60 shrink-0">
-            #{sessionId}
+          <span
+            className="text-[10px] sm:text-[11px] font-mono px-1.5 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200/60 shrink-0"
+            title={sessionId}
+          >
+            #{sessionId.length > 12 ? `${sessionId.slice(0, 8)}...` : sessionId}
           </span>
           {channelName && (
             <span className="hidden 2xl:inline text-[11px] text-slate-500 shrink-0">

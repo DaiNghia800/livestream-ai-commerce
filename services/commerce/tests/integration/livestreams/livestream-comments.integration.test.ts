@@ -4,6 +4,8 @@ import { createApp } from "../../../src/app.js";
 import { pool } from "../../../src/shared/database/database.js";
 import { PostgresLivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import { PostgresLivestreamCommentRepository } from "../../../src/modules/livestream/repositories/livestream-comment.repository.js";
+import { InMemoryIvsService } from "../../../src/shared/ivs/ivs.service.js";
+import { InMemoryIvsChatService } from "../../../src/shared/ivs/ivs-chat.service.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,8 +21,8 @@ describe("Livestream Comments - PostgreSQL Integration Tests", () => {
     undefined,
     undefined,
     undefined,
-    undefined,
-    undefined,
+    new InMemoryIvsService(),
+    new InMemoryIvsChatService(),
     commentRepo
   );
   let dbConnected = false;

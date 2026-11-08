@@ -2,16 +2,14 @@
 
 import Link from "next/link";
 import {
-  Timer,
   Eye,
-  MessageSquare,
-  Sparkles,
   ArrowLeft,
   Activity,
   Heart,
   Maximize2,
   Minimize2,
 } from "lucide-react";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
 import type { LivestreamStatus } from "../../types/livestream";
 
 export interface StudioSessionBarProps {
@@ -118,51 +116,36 @@ export function StudioSessionBar({
 
       {/* 2. Center: Telemetry Metrics - Ưu tiên hiển thị khi đang LIVE hoặc ĐÃ KẾT THÚC */}
       <div className="flex items-center gap-1 sm:gap-1.5 text-xs shrink-0">
-        {/* Timer */}
-        <div className="flex items-center gap-1.5 bg-surface-container-low border border-outline-variant/50 px-2.5 py-1 rounded-lg shadow-2xs">
-          <Timer className="h-3 w-3 text-primary shrink-0" aria-hidden="true" />
-          <span className="font-mono font-bold text-on-surface text-[11px] tabular-nums">
-            {duration}
-          </span>
-        </div>
-
         {/* Chỉ số hoạt động thời gian thực (chỉ hiển thị khi phát sóng hoặc xem lại) */}
         {(isLive || isEnded) && (
           <>
-            {/* Viewers (Mắt xem) */}
+            {/* Viewers (Mắt xem - Animated TikTok style) */}
             <div className="flex items-center gap-1.5 bg-surface-container-low border border-outline-variant/50 px-2.5 py-1 rounded-lg shadow-2xs">
+              {isLive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              )}
               <Eye className="h-3 w-3 text-rose-500 shrink-0" aria-hidden="true" />
-              <span className="text-outline hidden xl:inline text-[10px]">Mắt:</span>
-              <span className="font-mono font-bold text-on-surface text-[11px] tabular-nums">
-                {typeof viewers === "number" ? viewers.toLocaleString("vi-VN") : viewers}
-              </span>
+              <span className="text-outline hidden sm:inline text-[10px]">Mắt:</span>
+              <AnimatedCounter
+                value={viewers}
+                className="font-mono font-bold text-on-surface text-[11px] tabular-nums"
+              />
             </div>
 
             {/* Likes (Lượt thích) */}
-            <div className="hidden xl:flex items-center gap-1.5 bg-surface-container-low border border-outline-variant/50 px-2.5 py-1 rounded-lg shadow-2xs">
+            <div className="flex items-center gap-1.5 bg-surface-container-low border border-outline-variant/50 px-2.5 py-1 rounded-lg shadow-2xs">
               <Heart className="h-3 w-3 text-rose-500 fill-rose-500 shrink-0" aria-hidden="true" />
-              <span className="text-outline hidden 2xl:inline text-[10px]">Thích:</span>
-              <span className="font-mono font-bold text-on-surface text-[11px] tabular-nums">
-                {likesCount}
-              </span>
-            </div>
-
-            {/* Chat Messages */}
-            <div className="hidden xl:flex items-center gap-1.5 bg-surface-container-low border border-outline-variant/50 px-2.5 py-1 rounded-lg shadow-2xs">
-              <MessageSquare className="h-3 w-3 text-primary shrink-0" aria-hidden="true" />
-              <span className="text-outline hidden 2xl:inline text-[10px]">Chat:</span>
-              <span className="font-mono font-bold text-on-surface text-[11px] tabular-nums">
-                {typeof chatCount === "number" ? chatCount.toLocaleString("vi-VN") : chatCount}
-              </span>
-            </div>
-
-            {/* AI Orders */}
-            <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-lg shadow-2xs">
-              <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" aria-hidden="true" />
-              <span className="text-emerald-800 hidden xl:inline text-[10px] font-semibold">Đơn AI:</span>
-              <span className="font-mono font-extrabold text-emerald-700 text-[11px] tabular-nums">
-                {typeof aiOrdersCount === "number" ? aiOrdersCount.toLocaleString("vi-VN") : aiOrdersCount}
-              </span>
+              <span className="text-outline hidden sm:inline text-[10px]">Thích:</span>
+              {typeof likesCount === "number" ? (
+                <AnimatedCounter
+                  value={likesCount}
+                  className="font-mono font-bold text-on-surface text-[11px] tabular-nums"
+                />
+              ) : (
+                <span className="font-mono font-bold text-on-surface text-[11px] tabular-nums">
+                  {likesCount}
+                </span>
+              )}
             </div>
           </>
         )}

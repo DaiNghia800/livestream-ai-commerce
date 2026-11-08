@@ -106,5 +106,5 @@ export async function readHeldQtyInSession(
         AND COALESCE(o.livestream_id, pr.livestream_id) = $2`,
     [params.customerId, params.livestreamId]
   );
-  return Number(result.rows[0].total);
+  return result?.rows?.[0]?.total ? Number(result.rows[0].total) : 0;
 }

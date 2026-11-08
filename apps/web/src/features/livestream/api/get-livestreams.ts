@@ -10,6 +10,7 @@ import {
   DEFAULT_DEV_MERCHANT_ID,
 } from "./create-livestream";
 import type { Livestream, LivestreamStatus } from "../types/livestream";
+import type { LivestreamReportData } from "../types/report";
 
 export interface BackendLivestreamProductSku {
   id: string;
@@ -561,6 +562,34 @@ export async function getIvsChatToken(
   }
 
   return (await res.json()) as IvsChatTokenResponse;
+}
+
+/**
+ * Gọi API GET /api/livestreams/:id/report lấy dữ liệu tổng kết báo cáo phiên livestream
+ */
+export async function getLivestreamReport(
+  id: string
+): Promise<LivestreamReportData> {
+  if (!id || !isValidUuid(id)) {
+    throw new Error(`Phiên livestream không tồn tại hoặc ID không hợp lệ: ${id}`);
+  }
+
+  const url = `${COMMERCE_API_BASE_URL}/api/livestreams/${id}/report`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null);
+    throw new Error(
+      errBody?.message ||
+        `Lỗi tải báo cáo livestream (HTTP ${res.status})`
+    );
+  }
+
+  return (await res.json()) as LivestreamReportData;
 }
 
 

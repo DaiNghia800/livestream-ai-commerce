@@ -103,17 +103,21 @@ export class PostgresLivestreamCommentRepository
       const query = `
         SELECT * FROM (
           SELECT
-            id,
-            livestream_id AS "livestreamId",
-            user_id AS "userId",
-            username,
-            avatar_url AS "avatarUrl",
-            content,
-            role,
-            created_at AS "createdAt"
-          FROM livestream_comments
-          WHERE livestream_id = $1 AND created_at < $2
-          ORDER BY created_at DESC
+            c.id,
+            c.livestream_id AS "livestreamId",
+            c.user_id AS "userId",
+            c.username,
+            c.avatar_url AS "avatarUrl",
+            c.content,
+            c.role,
+            c.created_at AS "createdAt",
+            EXISTS(
+              SELECT 1 FROM order_idempotency_keys oik
+              WHERE oik.idempotency_key = 'ai-comment-' || c.id::text
+            ) AS "orderCreated"
+          FROM livestream_comments c
+          WHERE c.livestream_id = $1 AND c.created_at < $2
+          ORDER BY c.created_at DESC
           LIMIT $3
         ) sub
         ORDER BY "createdAt" ASC
@@ -128,17 +132,21 @@ export class PostgresLivestreamCommentRepository
 
     const query = `
       SELECT
-        id,
-        livestream_id AS "livestreamId",
-        user_id AS "userId",
-        username,
-        avatar_url AS "avatarUrl",
-        content,
-        role,
-        created_at AS "createdAt"
-      FROM livestream_comments
-      WHERE livestream_id = $1
-      ORDER BY created_at ASC
+        c.id,
+        c.livestream_id AS "livestreamId",
+        c.user_id AS "userId",
+        c.username,
+        c.avatar_url AS "avatarUrl",
+        c.content,
+        c.role,
+        c.created_at AS "createdAt",
+        EXISTS(
+          SELECT 1 FROM order_idempotency_keys oik
+          WHERE oik.idempotency_key = 'ai-comment-' || c.id::text
+        ) AS "orderCreated"
+      FROM livestream_comments c
+      WHERE c.livestream_id = $1
+      ORDER BY c.created_at ASC
       LIMIT $2
     `;
 

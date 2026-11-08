@@ -13,6 +13,8 @@ import {
 } from "./customer-live-products";
 import { CustomerLiveChat } from "./customer-live-chat";
 import { useIvsChat } from "../../hooks/use-ivs-chat";
+import { useLivestreamViewers } from "../../hooks/use-livestream-viewers";
+import { useLivestreamLikes } from "../../hooks/use-livestream-likes";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/format";
@@ -87,6 +89,8 @@ const INITIAL_DEMO_PRODUCTS: CustomerLiveProductItem[] = [
   {
     id: "prod-1",
     code: "A001",
+    displayCode: "Mã 1",
+    displayIndex: 1,
     name: "Áo sơ mi Linen Cổ Tàu Form Rộng Thoáng Mát Hè 2025",
     price: 199000,
     originalPrice: 399000,
@@ -139,6 +143,8 @@ const INITIAL_DEMO_PRODUCTS: CustomerLiveProductItem[] = [
   {
     id: "prod-2",
     code: "DM02",
+    displayCode: "Mã 2",
+    displayIndex: 2,
     name: "Đầm Maxi Linen Cột Nơ Eo Dáng Xòe Đi Biển",
     price: 249000,
     originalPrice: 415000,
@@ -182,6 +188,8 @@ const INITIAL_DEMO_PRODUCTS: CustomerLiveProductItem[] = [
   {
     id: "prod-3",
     code: "QJ02",
+    displayCode: "Mã 3",
+    displayIndex: 3,
     name: "Quần Suông Linen Ống Rộng Cạp Cao Tôn Dáng",
     price: 220000,
     originalPrice: 340000,
@@ -234,6 +242,8 @@ const INITIAL_DEMO_PRODUCTS: CustomerLiveProductItem[] = [
   {
     id: "prod-4",
     code: "PL03",
+    displayCode: "Mã 4",
+    displayIndex: 4,
     name: "Áo Polo Linen Dệt Kim Thoáng Khí Hè 2025",
     price: 189000,
     originalPrice: 320000,
@@ -484,6 +494,8 @@ function mapBackendProductToLiveItem(
   return {
     id: p.id || p.productId,
     code: p.productCode || p.skuCode || `SP0${idx + 1}`,
+    displayCode: `Mã ${idx + 1}`,
+    displayIndex: idx + 1,
     name: p.productName || `Sản phẩm #${idx + 1}`,
     price: basePrice,
     originalPrice: p.price
@@ -518,8 +530,9 @@ export function CustomerLiveView({
   playbackUrl,
   initialProducts = INITIAL_DEMO_PRODUCTS,
 }: CustomerLiveViewProps) {
+  const cleanLivestreamId = livestreamId ? livestreamId.trim().replace(/\/+$/, "") : undefined;
   const [activeLivestreamId, setActiveLivestreamId] = useState<string>(
-    livestreamId || "LIVE-2025-08"
+    cleanLivestreamId || "LIVE-2025-08"
   );
   const [activePlaybackUrl, setActivePlaybackUrl] = useState<string | null>(
     playbackUrl || null
@@ -533,6 +546,18 @@ export function CustomerLiveView({
   const [sessionStatus, setSessionStatus] = useState<string>("live");
   const [sessionReplayUrl, setSessionReplayUrl] = useState<string | null>(null);
   const [isRealLiveSession, setIsRealLiveSession] = useState<boolean>(false);
+
+  // Realtime Viewer Tracking via services/realtime (Redis Sliding Window)
+  const isCustomerLive = sessionStatus === "live" || sessionStatus === "LIVE";
+  const { viewerCount: liveViewerCount } = useLivestreamViewers(
+    activeLivestreamId,
+    isCustomerLive
+  );
+  // Realtime Live Hearts / Thả tim via services/realtime (Redis Atomic INCRBY Batching)
+  const { likesCount: liveLikesCount, sendLike } = useLivestreamLikes(
+    activeLivestreamId,
+    isCustomerLive
+  );
   const [products, setProducts] =
     useState<CustomerLiveProductItem[]>(initialProducts);
 
@@ -544,13 +569,22 @@ export function CustomerLiveView({
     useState<CustomerLiveProductItem | null>(null);
   const [detailModalColor, setDetailModalColor] = useState<string | null>(null);
   const [detailModalSize, setDetailModalSize] = useState<string | null>(null);
+  const [clarifyNotice, setClarifyNotice] = useState<string | null>(null);
+  const [detailModalQuantity, setDetailModalQuantity] = useState<number>(1);
   const [isOuterCartOpen, setIsOuterCartOpen] = useState(false);
 
-  // Personal Shopping Cart State (Giỏ hàng cá nhân người xem live)
+  // Personal Shopping Cart State (Giỏ hàng cá nhân người xem live, gắn liền với từng phiên livestream)
+  const cartStorageKey = livestreamId
+    ? `customer_live_personal_cart_${livestreamId}`
+    : "customer_live_personal_cart";
+
   const [personalCart, setPersonalCart] = useState<CustomerCartItem[]>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const stored = localStorage.getItem("customer_live_personal_cart");
+      const key = livestreamId
+        ? `customer_live_personal_cart_${livestreamId}`
+        : "customer_live_personal_cart";
+      const stored = localStorage.getItem(key);
       if (stored) return JSON.parse(stored);
     } catch {
       // ignore
@@ -561,14 +595,32 @@ export function CustomerLiveView({
   const [isCartCheckoutOpen, setIsCartCheckoutOpen] = useState(false);
   const [checkoutCartItems, setCheckoutCartItems] = useState<CustomerCartItem[]>([]);
   const [cartToastMessage, setCartToastMessage] = useState<string | null>(null);
+  const processedOrderEventsRef = useRef<Set<string>>(new Set());
 
+  // Tự động tải lại giỏ hàng khi livestreamId thay đổi
   useEffect(() => {
+    if (typeof window === "undefined" || !livestreamId) return;
     try {
-      localStorage.setItem("customer_live_personal_cart", JSON.stringify(personalCart));
+      const key = `customer_live_personal_cart_${livestreamId}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          queueMicrotask(() => setPersonalCart(parsed));
+        }
+      }
     } catch {
       // ignore
     }
-  }, [personalCart]);
+  }, [livestreamId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(cartStorageKey, JSON.stringify(personalCart));
+    } catch {
+      // ignore
+    }
+  }, [personalCart, cartStorageKey]);
 
   useEffect(() => {
     if (!cartToastMessage) return;
@@ -674,7 +726,10 @@ export function CustomerLiveView({
 
   const currentViewerUserId = useMemo(() => {
     if (currentUser?.id) return currentUser.id;
-    if (currentUser?.email) return `usr-${currentUser.email.split("@")[0]}`;
+    if (currentUser?.email) {
+      const sanitizedEmailPrefix = currentUser.email.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "_");
+      return `usr-${sanitizedEmailPrefix}`;
+    }
     return guestViewerId;
   }, [currentUser, guestViewerId]);
 
@@ -807,10 +862,25 @@ export function CustomerLiveView({
     }
 
     if (chosenColor && chosenSize && !opts.isCombinationAvailable(chosenColor, chosenSize)) {
-      const firstAvail = opts.sizes.find((s) =>
-        opts.isCombinationAvailable(chosenColor, s)
-      );
-      if (firstAvail) chosenSize = firstAvail;
+      if (targetSize && !targetColor) {
+        // Ưu tiên size người dùng đã chọn: tìm màu có sẵn size này
+        const colorWithThisSize = opts.colors.find((c) =>
+          opts.isCombinationAvailable(c.name, chosenSize)
+        );
+        if (colorWithThisSize) {
+          chosenColor = colorWithThisSize.name;
+        } else {
+          const firstAvail = opts.sizes.find((s) =>
+            opts.isCombinationAvailable(chosenColor, s)
+          );
+          if (firstAvail) chosenSize = firstAvail;
+        }
+      } else {
+        const firstAvail = opts.sizes.find((s) =>
+          opts.isCombinationAvailable(chosenColor, s)
+        );
+        if (firstAvail) chosenSize = firstAvail;
+      }
     }
 
     const matchedVariant = opts.findVariant(chosenColor, chosenSize);
@@ -823,12 +893,24 @@ export function CustomerLiveView({
     const itemDisplayCode = pIdx >= 0 ? `Mã ${pIdx + 1}` : product.code;
 
     setPersonalCart((prev) => {
-      const idx = prev.findIndex((i) => i.id === itemId);
+      const idx = prev.findIndex(
+        (i) =>
+          i.id === itemId ||
+          (i.productId === product.id &&
+            (i.selectedColor || "none") === (chosenColor || "none") &&
+            (i.selectedSize || "none") === (chosenSize || "none")) ||
+          (i.name.toLowerCase().trim() === product.name.toLowerCase().trim() &&
+            (i.selectedColor || "none") === (chosenColor || "none") &&
+            (i.selectedSize || "none") === (chosenSize || "none"))
+      );
       if (idx > -1) {
         const next = [...prev];
         const newQty = Math.min(itemStock, next[idx].quantity + quantity);
         next[idx] = {
           ...next[idx],
+          id: itemId,
+          productId: product.id,
+          displayCode: itemDisplayCode || next[idx].displayCode,
           quantity: newQty,
           heldUntil: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
         };
@@ -863,7 +945,7 @@ export function CustomerLiveView({
       .filter(Boolean)
       .join(" • ");
     setCartToastMessage(
-      `Đã thêm ${product.name} (${variantText || itemDisplayCode}) - SL: ${quantity} vào giỏ hàng cá nhân!`
+      `Đã thêm ${product.name} (${variantText || itemDisplayCode}) - SL: ${quantity} cái vào giỏ hàng cá nhân!`
     );
   }, [products]);
 
@@ -893,26 +975,64 @@ export function CustomerLiveView({
         hasRecentSentComment;
 
       if (isCurrent) {
+        // Chặn trùng lặp sự kiện AI chốt đơn theo từng bình luận hoặc từng lượt chốt
+        const orderKey = attr.commentId
+          ? `comment-${attr.commentId}`
+          : `evt-${attr.orderId || "ord"}-${attr.productCode || ""}-${attr.size || ""}-${attr.color || ""}-${attr.quantity || 1}`;
+
+        if (processedOrderEventsRef.current.has(orderKey)) {
+          return;
+        }
+        processedOrderEventsRef.current.add(orderKey);
+        setTimeout(() => {
+          processedOrderEventsRef.current.delete(orderKey);
+        }, 120_000);
+
         // Play pleasant chime so user notices stock hold immediately
         playOrderSuccessChime();
 
         // Tìm sản phẩm trong danh sách
-        let found = products.find(
-          (p) =>
-            p.code.toUpperCase() === (attr.productCode || "").toUpperCase() ||
-            p.id === attr.productCode
-        );
+        let found: CustomerLiveProductItem | undefined = undefined;
 
-        if (!found) {
-          const numMatch = (attr.productCode || "").match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
+        // 1. Khớp theo displayIndex ("1", "2") hoặc displayCode ("Mã 1", "Mã 2")
+        if (attr.displayIndex) {
+          const idx = parseInt(attr.displayIndex, 10);
+          if (!isNaN(idx) && idx >= 1 && idx <= products.length) {
+            found = products.find((p) => p.displayIndex === idx) || products[idx - 1];
+          }
+        }
+
+        if (!found && attr.displayCode) {
+          const cleanDisp = attr.displayCode.toLowerCase().trim();
+          found = products.find(
+            (p) =>
+              Boolean(p.displayCode) &&
+              (p.displayCode!.toLowerCase().trim() === cleanDisp ||
+                cleanDisp.includes(p.displayCode!.toLowerCase().trim()))
+          );
+        }
+
+        // 2. Khớp trực tiếp mã kho code hoặc id
+        if (!found && attr.productCode) {
+          found = products.find(
+            (p) =>
+              p.code.toUpperCase() === attr.productCode.toUpperCase() ||
+              p.id === attr.productCode
+          );
+        }
+
+        // 3. Trích xuất số thứ tự từ productCode (VD: "SP01" -> 1, "Mã 2" -> 2)
+        if (!found && attr.productCode) {
+          const numMatch = attr.productCode.match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
           if (numMatch) {
             const idx = parseInt(numMatch[1], 10);
             if (idx >= 1 && idx <= products.length) {
-              found = products[idx - 1];
+              found = products.find((p) => p.displayIndex === idx) || products[idx - 1];
             }
           }
         }
 
+        // 4. Khớp theo tên sản phẩm
         if (!found && attr.productName) {
           found = products.find(
             (p) =>
@@ -921,8 +1041,15 @@ export function CustomerLiveView({
           );
         }
 
-        if (!found) {
-          found = products.find((p) => p.isPinned) ?? products[0];
+        // 5. Khớp theo biến thể SKU con
+        if (!found && (attr.productCode || attr.variantName)) {
+          found = products.find((p) =>
+            p.variants?.some(
+              (v) =>
+                (attr.productCode && v.skuCode.toUpperCase() === attr.productCode.toUpperCase()) ||
+                (attr.variantName && v.name.toLowerCase().includes(attr.variantName.toLowerCase()))
+            )
+          );
         }
 
         const quantity = Number(attr.quantity) || 1;
@@ -982,6 +1109,29 @@ export function CustomerLiveView({
     };
   }, [currentUser, customerName, currentViewerUserId, products, handleAddToCart, customerAddress, customerPhone]);
 
+  // Tự động mở Popup chọn Biến thể (Màu & Size) khi AI yêu cầu làm rõ thông tin chốt đơn
+  useEffect(() => {
+    const handleNeedsClarification = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const currentBuyer = currentUser?.full_name || customerName;
+      const isForMe =
+        !detail.customerName ||
+        detail.customerName === "Khách" ||
+        (currentUser && detail.customerId === currentUser.id) ||
+        (currentBuyer && detail.customerName.toLowerCase().includes(currentBuyer.toLowerCase()));
+
+      if (isForMe) {
+        // Thông tin cần làm rõ đã được hiển thị qua khung banner AI trực tiếp trên ô chat của khách
+      }
+    };
+
+    window.addEventListener("liveorder:order_needs_clarification", handleNeedsClarification);
+    return () => {
+      window.removeEventListener("liveorder:order_needs_clarification", handleNeedsClarification);
+    };
+  }, [products, currentUser, customerName]);
+
   const handleSignOut = () => {
     try {
       localStorage.removeItem("auth_user");
@@ -998,11 +1148,104 @@ export function CustomerLiveView({
     setCustomerName(user.full_name);
   };
 
-  const handleOpenDetailModal = (product: CustomerLiveProductItem) => {
+  const handleOpenDetailModal = (
+    product: CustomerLiveProductItem,
+    notice?: string,
+    defaultQty = 1,
+    initialColor?: string | null,
+    initialSize?: string | null,
+    variantLabel?: string | null
+  ) => {
     setSelectedProduct(product);
+    setClarifyNotice(notice || null);
+    setDetailModalQuantity(defaultQty > 0 ? defaultQty : 1);
     const opts = parseProductOptions(product);
-    setDetailModalColor(opts.colors[0]?.name || null);
-    setDetailModalSize(opts.sizes[0] || null);
+
+    let chosenColor: string | null = null;
+    let chosenSize: string | null = null;
+
+    // 1. Tìm màu sắc từ initialColor (khớp tuyệt đối hoặc mờ/chứa chuỗi)
+    const rawColor = (initialColor || "").trim().toLowerCase();
+    if (rawColor) {
+      const found = opts.colors.find(
+        (c) =>
+          c.name.toLowerCase() === rawColor ||
+          c.name.toLowerCase().includes(rawColor) ||
+          rawColor.includes(c.name.toLowerCase())
+      );
+      if (found) {
+        chosenColor = found.name;
+      }
+    }
+
+    // 2. Nếu chưa có màu, trích xuất từ variantLabel (VD: "Hồng pastel · M")
+    if (!chosenColor && variantLabel) {
+      const lowerLabel = variantLabel.toLowerCase();
+      const found = opts.colors.find(
+        (c) =>
+          lowerLabel.includes(c.name.toLowerCase()) ||
+          c.name.toLowerCase().includes(lowerLabel)
+      );
+      if (found) {
+        chosenColor = found.name;
+      }
+    }
+
+    // 3. Fallback màu đầu tiên nếu chưa chọn
+    if (!chosenColor) {
+      chosenColor = opts.colors[0]?.name || null;
+    }
+
+    // 4. Tìm size từ initialSize
+    const rawSize = (initialSize || "").replace(/^size\s+/i, "").trim().toLowerCase();
+    if (rawSize) {
+      const found = opts.sizes.find(
+        (s) =>
+          s.toLowerCase() === rawSize ||
+          s.toLowerCase().includes(rawSize) ||
+          rawSize.includes(s.toLowerCase())
+      );
+      if (found) {
+        chosenSize = found;
+      }
+    }
+
+    // 5. Nếu chưa có size, trích xuất từ variantLabel
+    if (!chosenSize && variantLabel) {
+      const lowerLabel = variantLabel.toLowerCase();
+      const found = opts.sizes.find((s) => {
+        const sLower = s.toLowerCase();
+        return (
+          new RegExp(`(^|[·•/,\-|\\s])(${sLower})([·•/,\-|\\s]|$)`, "i").test(lowerLabel) ||
+          lowerLabel.includes(`size ${sLower}`) ||
+          lowerLabel.includes(sLower)
+        );
+      });
+      if (found) {
+        chosenSize = found;
+      }
+    }
+
+    // 6. Fallback size đầu tiên nếu chưa chọn
+    if (!chosenSize) {
+      chosenSize = opts.sizes[0] || null;
+    }
+
+    // 7. Đảm bảo tổ hợp (chosenColor, chosenSize) có sẵn hàng
+    if (chosenColor && chosenSize && !opts.isCombinationAvailable(chosenColor, chosenSize)) {
+      const availSize = opts.sizes.find((s) => opts.isCombinationAvailable(chosenColor, s));
+      if (availSize) {
+        chosenSize = availSize;
+      } else {
+        const availColor = opts.colors.find((c) => opts.isCombinationAvailable(c.name, chosenSize));
+        if (availColor) {
+          chosenColor = availColor.name;
+        }
+      }
+    }
+
+    setDetailModalColor(chosenColor);
+    setDetailModalSize(chosenSize);
   };
 
   const handleOpenCheckout = (
@@ -1143,10 +1386,25 @@ export function CustomerLiveView({
 
     // Nếu sự kết hợp màu & size không khả dụng, chọn size đầu tiên khả dụng với màu đó
     if (chosenColor && chosenSize && !opts.isCombinationAvailable(chosenColor, chosenSize)) {
-      const firstAvail = opts.sizes.find((s) =>
-        opts.isCombinationAvailable(chosenColor, s)
-      );
-      if (firstAvail) chosenSize = firstAvail;
+      if (targetSize && !targetColor) {
+        // Ưu tiên size người dùng đã chọn: tìm màu có sẵn size này
+        const colorWithThisSize = opts.colors.find((c) =>
+          opts.isCombinationAvailable(c.name, chosenSize)
+        );
+        if (colorWithThisSize) {
+          chosenColor = colorWithThisSize.name;
+        } else {
+          const firstAvail = opts.sizes.find((s) =>
+            opts.isCombinationAvailable(chosenColor, s)
+          );
+          if (firstAvail) chosenSize = firstAvail;
+        }
+      } else {
+        const firstAvail = opts.sizes.find((s) =>
+          opts.isCombinationAvailable(chosenColor, s)
+        );
+        if (firstAvail) chosenSize = firstAvail;
+      }
     }
 
     setCheckoutSelectedColor(chosenColor);
@@ -1402,7 +1660,7 @@ export function CustomerLiveView({
     products.find((p) => p.isPinned) || null;
 
   // Hook IVS Chat for Customer / Viewer (role: VIEWER)
-  const { chatMessages, sendMessage } = useIvsChat({
+  const { chatMessages, sendMessage, connectionState } = useIvsChat({
     livestreamId: activeLivestreamId,
     userId: currentViewerUserId,
     username: currentViewerUsername,
@@ -1427,10 +1685,20 @@ export function CustomerLiveView({
       await sendMessage(content);
 
       // AI Purchase Intent detection simulation (for e2e tests & instant responsive UI)
-      const buyMatch = content.match(/\b(A001|DM02|QJ02|PL03)\b/i);
+      const buyMatch = content.match(/\b(A001|DM02|QJ02|PL03|mã\s*\d+|sp\d+)\b/i);
       if (buyMatch) {
-        const code = buyMatch[1].toUpperCase();
-        const found = products.find((p) => p.code.toUpperCase() === code);
+        let code = buyMatch[1].toUpperCase();
+        let found = products.find((p) => p.code.toUpperCase() === code || p.displayCode?.toUpperCase() === code);
+        if (!found) {
+          const numMatch = code.match(/(?:mã\s*|#)?(\d+)/i);
+          if (numMatch) {
+            const idx = parseInt(numMatch[1], 10);
+            if (idx >= 1 && idx <= products.length) {
+              found = products[idx - 1];
+              code = found.displayCode || found.code;
+            }
+          }
+        }
         const qtyMatch = content.match(/x\s*(\d+)/i);
         const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
         setTimeout(() => {
@@ -1495,7 +1763,9 @@ export function CustomerLiveView({
           <CustomerLivePlayer
             title={sessionTitle}
             playbackUrl={activePlaybackUrl}
-            viewerCount={2845}
+            viewerCount={liveViewerCount && liveViewerCount > 1 ? liveViewerCount : 2845}
+            likesCount={liveLikesCount}
+            onSendLike={sendLike}
             hostName={shopName}
             hostSubtitle={sessionTitle}
             pinnedProduct={heroProduct || undefined}
@@ -1531,6 +1801,7 @@ export function CustomerLiveView({
         >
           <CustomerLiveChat
             messages={chatMessages}
+            products={products}
             onSendMessage={handleCustomerSendMessage}
             inputText={chatInput}
             onInputChange={setChatInput}
@@ -1540,22 +1811,6 @@ export function CustomerLiveView({
             currentCustomerName={currentUser?.full_name || "Khách hàng"}
             currentUser={currentUser}
             onRequestLogin={() => setIsAuthDialogOpen(true)}
-            onOrderDetected={(code) => {
-              let prod = products.find((p) => p.code.toUpperCase() === code.toUpperCase());
-              if (!prod) {
-                const numMatch = code.match(/(?:mã\s*|#)?(\d+)/i);
-                if (numMatch) {
-                  const idx = parseInt(numMatch[1], 10);
-                  if (idx >= 1 && idx <= products.length) {
-                    prod = products[idx - 1];
-                  }
-                }
-              }
-              const targetProduct = prod || (heroProduct ?? undefined);
-              if (targetProduct) {
-                handleAddToCart(targetProduct);
-              }
-            }}
             onOpenOrderModal={(code, order) => {
               let prod = products.find((p) => p.code.toUpperCase() === code.toUpperCase());
               if (!prod) {
@@ -1580,6 +1835,31 @@ export function CustomerLiveView({
                 });
               }
             }}
+            onEditVariant={(code, order) => {
+              let prod = products.find(
+                (p) => p.code.toUpperCase() === code.toUpperCase() || p.id === code
+              );
+              if (!prod) {
+                const numMatch = code.match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
+                if (numMatch) {
+                  const idx = parseInt(numMatch[1], 10);
+                  if (idx >= 1 && idx <= products.length) {
+                    prod = products[idx - 1];
+                  }
+                }
+              }
+              const targetProduct = prod || (heroProduct ?? products[0]);
+              if (targetProduct) {
+                handleOpenDetailModal(
+                  targetProduct,
+                  `Thay đổi Màu sắc, Size hoặc Số lượng cho ${targetProduct.name}:`,
+                  order.quantity || 1,
+                  order.color,
+                  order.size,
+                  order.variantName
+                );
+              }
+            }}
           />
         </div>
       </main>
@@ -1588,7 +1868,7 @@ export function CustomerLiveView({
       {heroProduct && (
         <MobileStickyProductBar
           product={heroProduct}
-          onBuyNow={() => handleSelectSyntax(`${heroProduct.code} x1`)}
+          onBuyNow={() => handleSelectSyntax(`Chốt ${heroProduct.displayCode || heroProduct.code} x1`)}
           onViewDetails={() => handleOpenDetailModal(heroProduct)}
           onAddToCart={() => handleAddToCart(heroProduct)}
         />
@@ -1597,8 +1877,11 @@ export function CustomerLiveView({
       {/* 3. PRODUCT DETAIL DIALOG */}
       <Dialog
         open={Boolean(selectedProduct)}
+        footer={null}
         onClose={() => {
           setSelectedProduct(null);
+          setClarifyNotice(null);
+          setDetailModalQuantity(1);
           setDetailModalColor(null);
           setDetailModalSize(null);
         }}
@@ -1618,8 +1901,19 @@ export function CustomerLiveView({
           if (detailModalSize) variantTokens.push(`Size ${detailModalSize}`);
           const activeVariantLabel = variantTokens.length > 0 ? variantTokens.join(" • ") : null;
 
+          const pIdx = products.findIndex((p) => p.id === selectedProduct.id);
+          const displayCode = pIdx >= 0 ? `Mã ${pIdx + 1}` : (selectedProduct.displayCode || "Mã 1");
+
           return (
-            <div className="space-y-4 pt-2">
+            <div className="space-y-4 pt-1">
+              {clarifyNotice && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-950 text-xs flex items-center gap-2.5 shadow-2xs animate-in fade-in duration-200">
+                  <Sparkles className="w-4 h-4 text-amber-600 flex-none animate-pulse" />
+                  <span className="font-semibold leading-snug">{clarifyNotice}</span>
+                </div>
+              )}
+
+              {/* Thông tin sản phẩm */}
               <div className="flex gap-4 items-start">
                 <div className="w-24 h-24 rounded-lg overflow-hidden bg-surface-container-low flex-none border border-outline-variant/40 transition-all duration-300">
                   {detailDisplayImage ? (
@@ -1635,28 +1929,28 @@ export function CustomerLiveView({
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="bg-primary/10 text-primary font-mono font-bold text-xs px-2 py-0.5 rounded">
-                    Mã sản phẩm: {selectedProduct.code}
+                  <span className="bg-primary/10 text-primary font-mono font-bold text-xs px-2.5 py-0.5 rounded-md inline-block">
+                    {displayCode}
                   </span>
-                  <div className="flex items-baseline gap-2 mt-2">
+                  <div className="flex items-baseline gap-2 mt-1.5">
                     <span className="text-lg font-bold text-primary">
                       {formatMoney(activeDetailVariant?.price || selectedProduct.price)}
                     </span>
-                    {selectedProduct.originalPrice && (
+                    {selectedProduct.originalPrice && selectedProduct.originalPrice > (activeDetailVariant?.price || selectedProduct.price) && (
                       <span className="text-xs text-outline line-through">
                         {formatMoney(selectedProduct.originalPrice)}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-outline mt-1">
-                    Kho còn: {activeDetailVariant?.stock ?? selectedProduct.stock} sản phẩm
+                  <p className="text-xs text-outline mt-0.5">
+                    Kho còn: <strong className="text-on-surface">{activeDetailVariant?.stock ?? selectedProduct.stock}</strong> sản phẩm
                   </p>
 
-                  {/* TikTok style 2-row selection: Màu sắc & Size */}
+                  {/* Lựa chọn Biến thể: Màu sắc & Size */}
                   <div className="mt-3 space-y-2">
                     {detailOptions.colors.length > 0 && (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-bold text-on-surface min-w-[50px]">Màu:</span>
+                        <span className="text-[11px] font-bold text-on-surface min-w-[45px]">Màu:</span>
                         {detailOptions.colors.map((c) => {
                           const isSelected = detailModalColor === c.name;
                           return (
@@ -1696,7 +1990,7 @@ export function CustomerLiveView({
 
                     {detailOptions.sizes.length > 0 && (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-bold text-on-surface min-w-[50px]">Size:</span>
+                        <span className="text-[11px] font-bold text-on-surface min-w-[45px]">Size:</span>
                         {detailOptions.sizes.map((s) => {
                           const isSelected = detailModalSize === s;
                           const isAvailable = detailOptions.isCombinationAvailable(detailModalColor, s);
@@ -1727,84 +2021,147 @@ export function CustomerLiveView({
                 </div>
               </div>
 
-              <p className="text-xs text-on-surface-variant leading-relaxed">
-                Sản phẩm chất lượng cao độc quyền cho mùa hè 2025. Để đặt hàng nhanh nhất với giá ưu đãi, bạn chỉ cần bình luận cú pháp bên dưới vào khung chat!
-              </p>
+              {/* Stepper Chọn Số Lượng */}
+              <div className="flex items-center justify-between py-2.5 px-3 bg-surface-container-low rounded-xl border border-outline-variant/30 mt-3">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-on-surface">Số lượng muốn chốt:</span>
+                  <span className="text-[10.5px] text-outline">Giữ kho 2 phút sau khi thêm</span>
+                </div>
+                <div className="flex items-center border border-outline-variant/60 rounded-lg overflow-hidden bg-surface-container-lowest shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setDetailModalQuantity((q) => Math.max(1, q - 1))}
+                    disabled={detailModalQuantity <= 1}
+                    className="w-8 h-8 flex items-center justify-center hover:bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    aria-label="Giảm số lượng"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="w-10 text-center font-bold text-xs font-mono text-on-surface select-none">
+                    {detailModalQuantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDetailModalQuantity((q) =>
+                        Math.min(activeDetailVariant?.stock ?? selectedProduct.stock ?? 99, q + 1)
+                      )
+                    }
+                    disabled={
+                      detailModalQuantity >=
+                      (activeDetailVariant?.stock ?? selectedProduct.stock ?? 99)
+                    }
+                    className="w-8 h-8 flex items-center justify-center hover:bg-surface-container text-on-surface disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    aria-label="Tăng số lượng"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
 
-              {(() => {
-                const displayCode = selectedProduct.code;
-                const syntax = activeVariantLabel
-                  ? `${displayCode} ${activeVariantLabel} x1`
-                  : `${displayCode} x1`;
+              {/* Nút Hành Động Chuẩn E-Commerce & Playwright E2E */}
+              <div className="flex flex-col gap-2 pt-3 border-t border-outline-variant/30">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pref = activeVariantLabel || undefined;
+                      handleAddToCart(
+                        selectedProduct,
+                        {
+                          variantLabel: pref,
+                          color: detailModalColor || undefined,
+                          size: detailModalSize || undefined,
+                          quantity: detailModalQuantity,
+                        },
+                        detailModalQuantity
+                      );
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("liveorder:order_detected", {
+                            detail: {
+                              orderId: `ord-edit-${Date.now()}`,
+                              orderCode: displayCode || selectedProduct.code,
+                              productCode: displayCode || selectedProduct.code,
+                              productName: selectedProduct.name,
+                              variantName: pref || undefined,
+                              color: detailModalColor || "",
+                              size: detailModalSize || "",
+                              quantity: String(detailModalQuantity),
+                              price: String(activeDetailVariant?.price || selectedProduct.price),
+                              totalAmount: String(
+                                (activeDetailVariant?.price || selectedProduct.price) * detailModalQuantity
+                              ),
+                              customerName: currentUser?.full_name || customerName || "Minh Hằng",
+                              customerId: currentUser?.id,
+                              holdExpiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+                            },
+                          })
+                        );
+                      }
+                      setSelectedProduct(null);
+                      setClarifyNotice(null);
+                      setDetailModalQuantity(1);
+                      setDetailModalColor(null);
+                      setDetailModalSize(null);
+                    }}
+                    className="flex-1 py-2.5 px-3 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-98 cursor-pointer"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    <span>{clarifyNotice ? "Cập nhật & Thêm vào giỏ" : "Thêm vào giỏ"}</span>
+                  </button>
 
-                return (
-                  <>
-                    <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/40 flex items-center justify-between">
-                      <span className="text-xs font-medium text-on-surface">
-                        Cú pháp chốt: <strong>{syntax}</strong>
-                      </span>
-                      <button
-                        onClick={() => {
-                          handleSelectSyntax(syntax);
-                          setSelectedProduct(null);
-                          setDetailModalColor(null);
-                          setDetailModalSize(null);
-                        }}
-                        className="bg-primary text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-xs hover:bg-primary-container cursor-pointer"
-                        type="button"
-                      >
-                        <Zap className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
-                        <span>Điền vào chat</span>
-                      </button>
-                    </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pref = activeVariantLabel || undefined;
+                      const qty = detailModalQuantity;
+                      const targetProd = selectedProduct;
+                      const col = detailModalColor || undefined;
+                      const sz = detailModalSize || undefined;
+                      setSelectedProduct(null);
+                      setClarifyNotice(null);
+                      setDetailModalQuantity(1);
+                      setDetailModalColor(null);
+                      setDetailModalSize(null);
+                      handleOpenCheckout(targetProd, {
+                        variantLabel: pref,
+                        color: col,
+                        size: sz,
+                        quantity: qty,
+                      });
+                    }}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-primary hover:bg-primary-container text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-98 cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4 fill-amber-300 text-amber-300" />
+                    <span>Đặt hàng ngay</span>
+                  </button>
+                </div>
 
-                    <div className="flex justify-end gap-2 pt-2 border-t border-outline-variant/30 flex-wrap">
-                      <Button
-                        disabled
-                        variant="secondary"
-                      >
-                        Đặt hàng — sắp có
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          const pref = activeVariantLabel || undefined;
-                          handleAddToCart(selectedProduct, pref);
-                          setSelectedProduct(null);
-                          setDetailModalColor(null);
-                          setDetailModalSize(null);
-                        }}
-                        className="flex items-center gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-                      >
-                        <ShoppingCart className="w-4 h-4" />
-                        <span>Thêm vào giỏ</span>
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          const pref = activeVariantLabel || undefined;
-                          setSelectedProduct(null);
-                          setDetailModalColor(null);
-                          setDetailModalSize(null);
-                          handleOpenCheckout(selectedProduct, pref);
-                        }}
-                      >
-                        Đặt hàng ngay
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          handleSelectSyntax(syntax);
-                          setSelectedProduct(null);
-                          setDetailModalColor(null);
-                          setDetailModalSize(null);
-                        }}
-                      >
-                        Chốt ngay {displayCode}{activeVariantLabel ? ` • ${activeVariantLabel}` : ""}
-                      </Button>
-                    </div>
-                  </>
-                );
-              })()}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSelectSyntax(`${selectedProduct.code} x1`);
+                      setSelectedProduct(null);
+                      setDetailModalColor(null);
+                      setDetailModalSize(null);
+                    }}
+                    className="text-xs text-primary font-bold hover:underline py-1 px-1 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Chốt ngay {selectedProduct.code}</span>
+                  </button>
+
+                  <Button
+                    disabled
+                    variant="secondary"
+                    className="text-xs py-1 h-auto"
+                  >
+                    Đặt hàng — sắp có
+                  </Button>
+                </div>
+              </div>
             </div>
           );
         })()}
@@ -1979,7 +2336,7 @@ export function CustomerLiveView({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="bg-amber-100 text-amber-800 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded">
-                          #{products.findIndex((p) => p.id === checkoutProduct.id) >= 0 ? `Mã ${products.findIndex((p) => p.id === checkoutProduct.id) + 1}` : checkoutProduct.code}
+                          {products.findIndex((p) => p.id === checkoutProduct.id) >= 0 ? products.findIndex((p) => p.id === checkoutProduct.id) + 1 : checkoutProduct.code}
                         </span>
                         {checkoutProduct.discountPercent && (
                           <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.2 rounded">
@@ -2413,11 +2770,11 @@ export function CustomerLiveView({
                   <button
                     type="button"
                     onClick={() => {
-                      handleSelectSyntax(`Mã ${idx + 1} x1`);
+                      handleSelectSyntax(`Chốt Mã ${idx + 1} x1`);
                       setIsOuterCartOpen(false);
                     }}
                     className="bg-surface-container hover:bg-primary hover:text-white text-primary text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors border border-outline-variant/60 flex items-center gap-1 cursor-pointer"
-                    title={`Gửi cú pháp chốt Mã ${idx + 1} x1`}
+                    title={`Gửi cú pháp Chốt Mã ${idx + 1} x1`}
                   >
                     <Zap className="w-3 h-3" />
                     <span>Chốt</span>

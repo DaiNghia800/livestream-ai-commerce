@@ -3,6 +3,10 @@ import { LivestreamComment } from "../../modules/livestream/types/livestream-com
 
 export interface IRedisService {
   isAvailable(): boolean;
+  get(key: string): Promise<string | null>;
+  getPeakViewersAndLikes(
+    livestreamId: string
+  ): Promise<{ peakViewers: number; likesCount: number }>;
   pushComment(
     livestreamId: string,
     comment: LivestreamComment,
@@ -129,6 +133,46 @@ export class RedisService implements IRedisService {
     }
   }
 
+  async get(key: string): Promise<string | null> {
+    if (!this.client || !this.connected) return null;
+    try {
+      return await this.client.get(key);
+    } catch (err) {
+      console.warn(`[RedisService] Failed to GET ${key}:`, err);
+      return null;
+    }
+  }
+
+  async getPeakViewersAndLikes(
+    livestreamId: string
+  ): Promise<{ peakViewers: number; likesCount: number }> {
+    let peakViewers = 0;
+    let likesCount = 0;
+
+    if (!this.client || !this.connected) {
+      return { peakViewers, likesCount };
+    }
+
+    try {
+      const [peak1, peak2, likes] = await Promise.all([
+        this.client.get(`live:peak:${livestreamId}`).catch(() => null),
+        this.client.get(`live:presence:peak:${livestreamId}`).catch(() => null),
+        this.client.get(`live:likes:${livestreamId}`).catch(() => null),
+      ]);
+
+      const p1 = peak1 ? parseInt(peak1, 10) : 0;
+      const p2 = peak2 ? parseInt(peak2, 10) : 0;
+      peakViewers = Math.max(isNaN(p1) ? 0 : p1, isNaN(p2) ? 0 : p2);
+
+      const l = likes ? parseInt(likes, 10) : 0;
+      likesCount = isNaN(l) ? 0 : l;
+    } catch (err) {
+      console.warn(`[RedisService] Failed to fetch peak viewers/likes:`, err);
+    }
+
+    return { peakViewers, likesCount };
+  }
+
   async disconnect(): Promise<void> {
     if (this.client) {
       try {
@@ -139,5 +183,66 @@ export class RedisService implements IRedisService {
       this.connected = false;
       this.client = null;
     }
+  }
+}
+
+export class InMemoryRedisService implements IRedisService {
+  private store = new Map<string, string>();
+  private comments = new Map<string, LivestreamComment[]>();
+
+  isAvailable(): boolean {
+    return true;
+  }
+
+  set(key: string, value: string): void {
+    this.store.set(key, value);
+  }
+
+  async get(key: string): Promise<string | null> {
+    return this.store.get(key) ?? null;
+  }
+
+  async getPeakViewersAndLikes(
+    livestreamId: string
+  ): Promise<{ peakViewers: number; likesCount: number }> {
+    const peak1 = this.store.get(`live:peak:${livestreamId}`);
+    const peak2 = this.store.get(`live:presence:peak:${livestreamId}`);
+    const likes = this.store.get(`live:likes:${livestreamId}`);
+
+    const p1 = peak1 ? parseInt(peak1, 10) : 0;
+    const p2 = peak2 ? parseInt(peak2, 10) : 0;
+    const peakViewers = Math.max(isNaN(p1) ? 0 : p1, isNaN(p2) ? 0 : p2);
+
+    const l = likes ? parseInt(likes, 10) : 0;
+    const likesCount = isNaN(l) ? 0 : l;
+
+    return { peakViewers, likesCount };
+  }
+
+  async pushComment(
+    livestreamId: string,
+    comment: LivestreamComment,
+    maxKeep = 200
+  ): Promise<void> {
+    const list = this.comments.get(livestreamId) || [];
+    list.unshift(comment);
+    if (list.length > maxKeep) {
+      list.length = maxKeep;
+    }
+    this.comments.set(livestreamId, list);
+  }
+
+  async getRecentComments(
+    livestreamId: string,
+    limit = 100
+  ): Promise<LivestreamComment[] | null> {
+    const list = this.comments.get(livestreamId);
+    if (!list || list.length === 0) return null;
+    return [...list.slice(0, limit)].reverse();
+  }
+
+  async disconnect(): Promise<void> {
+    this.store.clear();
+    this.comments.clear();
   }
 }
