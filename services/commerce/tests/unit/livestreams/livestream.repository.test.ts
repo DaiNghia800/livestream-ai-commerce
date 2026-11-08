@@ -607,6 +607,352 @@ describe("LivestreamRepository - Unit Tests", () => {
       expect(result?.id).toBe(mockLiveRow.id);
       expect(result?.status).toBe("live");
     });
+
+    it("REPO-PG-022 - getReport returns null when livestream session not found", async () => {
+      vi.spyOn(pool, "query").mockResolvedValueOnce({ rows: [] } as any);
+      const report = await repo.getReport("00000000-0000-0000-0000-000000000000");
+      expect(report).toBeNull();
+    });
+
+    it("REPO-PG-023 - getReport returns full report metrics and KPIs when session exists", async () => {
+      const now = new Date();
+      const mockSession = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchant_id: "a0000000-0000-0000-0000-000000000001",
+        title: "Test Live",
+        playback_url: "https://playback.live/stream.m3u8",
+        replay_url: null,
+        scheduled_at: now.toISOString(),
+        started_at: new Date(now.getTime() - 3600000).toISOString(),
+        ended_at: now.toISOString(),
+        status: "ended",
+        created_at: now.toISOString(),
+      };
+
+      vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [mockSession] } as any) // 1. Session
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              total_orders: 10,
+              confirmed_orders: 8,
+              completed_orders: 6,
+              pending_orders: 2,
+              expired_orders: 1,
+              cancelled_orders: 1,
+              ai_orders: 5,
+              total_revenue: 5000000,
+              confirmed_revenue: 4000000,
+              paid_revenue: 3000000,
+            },
+          ],
+        } as any) // 2. Orders agg
+        .mockResolvedValueOnce({
+          rows: [{ paid_count: 6, cod_count: 2, paid_amount: 3000000 }],
+        } as any) // 3. Payments agg
+        .mockResolvedValueOnce({
+          rows: [{ total_comments: 50, purchase_comments: 15 }],
+        } as any) // 4. Comments agg
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: "sku-1",
+              sku_code: "SP-01",
+              variant_name: "Size M",
+              product_name: "Áo Thun",
+              price: 150000,
+              image: "",
+              sold_count: 8,
+              revenue: 1200000,
+              remaining_stock: 20,
+              low_stock_threshold: 5,
+            },
+          ],
+        } as any) // 5. Top products
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: "ord-1",
+              created_at: now.toISOString(),
+              total_amount: 150000,
+              status: "COMPLETED",
+            },
+          ],
+        } as any) // 6. Order times for timeline
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: "c-1",
+              created_at: now.toISOString(),
+              username: "Minh Hằng",
+              content: "Chốt SP-01 1 cái",
+              user_id: "u-1",
+              sku_id: "sku-1",
+              sku_code: "SP-01",
+              product_name: "Áo Thun",
+              quantity: 1,
+              order_id: "ord-1",
+              order_code: "ORD-1",
+              order_status: "COMPLETED",
+              total_amount: 150000,
+              payment_method: "COD",
+              payment_status: "PAID",
+            },
+          ],
+        } as any); // 7. Comment logs
+
+      const report = await repo.getReport(mockSession.id, { peakViewers: 150, likesCount: 420 });
+
+      expect(report).toBeDefined();
+      expect(report?.sessionId).toBe(mockSession.id);
+      expect(report?.sessionTitle).toBe("Test Live");
+      expect(report?.kpis).toHaveLength(4);
+      expect(report?.funnelData.stages).toHaveLength(4);
+      expect(report?.topProducts).toHaveLength(1);
+      expect(report?.commentLogs).toHaveLength(1);
+    });
+
+    it("REPO-PG-024 - getReport handles empty session with 0 orders and comments gracefully", async () => {
+      const now = new Date();
+      const mockSession = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchant_id: "a0000000-0000-0000-0000-000000000001",
+        title: "Empty Live Session",
+        playback_url: null,
+        replay_url: null,
+        scheduled_at: null,
+        started_at: null,
+        ended_at: null,
+        status: "ended",
+        created_at: new Date(now.getTime() - 15 * 60000).toISOString(), // 15 mins ago
+      };
+
+      vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [mockSession] } as any) // 1. Session
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              total_orders: 0,
+              confirmed_orders: 0,
+              completed_orders: 0,
+              pending_orders: 0,
+              expired_orders: 0,
+              cancelled_orders: 0,
+              ai_orders: 0,
+              total_revenue: 0,
+              confirmed_revenue: 0,
+              paid_revenue: 0,
+            },
+          ],
+        } as any) // 2. Orders agg
+        .mockResolvedValueOnce({
+          rows: [{ paid_count: 0, cod_count: 0, paid_amount: 0 }],
+        } as any) // 3. Payments agg
+        .mockResolvedValueOnce({
+          rows: [{ total_comments: 0, unique_commenters: 0 }],
+        } as any) // 4. Comments agg
+        .mockResolvedValueOnce({ rows: [] } as any) // 5. Top products primary (empty)
+        .mockResolvedValueOnce({ rows: [] } as any) // 5b. Top products fallback (empty)
+        .mockResolvedValueOnce({ rows: [] } as any) // 6. Order times
+        .mockResolvedValueOnce({ rows: [] } as any); // 7. Comment logs
+
+      // Không truyền redisStats -> test fallback redisStats?.peakViewers ?? 0
+      const report = await repo.getReport(mockSession.id);
+
+      expect(report).toBeDefined();
+      expect(report?.sessionId).toBe(mockSession.id);
+      expect(report?.durationDisplay).toContain("phút");
+      expect(report?.recordingUrl).toBeUndefined();
+      expect(report?.topProducts).toHaveLength(0);
+      expect(report?.commentLogs).toHaveLength(0);
+      expect(report?.funnelData.stages[0].count).toBe(0);
+      expect(report?.funnelData.stages[3].percentageOfTotal).toBe(0);
+      expect(report?.aiInsights[1].badge).toBe("Hiệu suất cao");
+    });
+
+    it("REPO-PG-025 - getReport handles session with leakage, low stock, out of stock and various comment statuses", async () => {
+      const now = new Date();
+      const started = new Date(now.getTime() - 90 * 60000); // 1.5 hours ago
+      const mockSession = {
+        id: "11111111-1111-4111-8111-111111111111",
+        merchant_id: "a0000000-0000-0000-0000-000000000001",
+        title: "Active Sale Session",
+        playback_url: "https://playback.live/stream.m3u8",
+        replay_url: "https://replay.live/stream.mp4",
+        scheduled_at: started.toISOString(),
+        started_at: started.toISOString(),
+        ended_at: now.toISOString(),
+        status: "ended",
+        created_at: started.toISOString(),
+      };
+
+      vi.spyOn(pool, "query")
+        .mockResolvedValueOnce({ rows: [mockSession] } as any) // 1. Session
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              total_orders: 10,
+              confirmed_orders: 4,
+              completed_orders: 2,
+              pending_orders: 2,
+              expired_orders: 2,
+              cancelled_orders: 2,
+              ai_orders: 3,
+              total_revenue: 1000000,
+              confirmed_revenue: 500000,
+              paid_revenue: 300000,
+            },
+          ],
+        } as any) // 2. Orders agg
+        .mockResolvedValueOnce({
+          rows: [{ paid_count: 2, cod_count: 2, paid_amount: 300000 }],
+        } as any) // 3. Payments agg
+        .mockResolvedValueOnce({
+          rows: [{ total_comments: 20, unique_commenters: 10 }],
+        } as any) // 4. Comments agg
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              sku_id: "sku-out",
+              sku_code: "OUT-1",
+              name: "Váy Dạ Hội",
+              price: 200000,
+              image: "",
+              sold_count: 5,
+              revenue: 1000000,
+              remaining_stock: 0,
+              low_stock_threshold: 5,
+            },
+            {
+              sku_id: "sku-low",
+              sku_code: "LOW-1",
+              name: "Áo Sơ Mi",
+              price: 100000,
+              image: "https://img.jpg",
+              sold_count: 2,
+              revenue: 200000,
+              remaining_stock: 3,
+              low_stock_threshold: 5,
+            },
+          ],
+        } as any) // 5. Top products
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: "ord-1",
+              created_at: started.toISOString(),
+              total_amount: 200000,
+              status: "CONFIRMED",
+            },
+          ],
+        } as any) // 6. Order times
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: "c-1",
+              created_at: started.toISOString(),
+              username: "Lan",
+              content: "Chốt",
+              user_id: "u-1",
+              sku_id: "sku-out",
+              sku_code: "OUT-1",
+              product_name: "Váy Dạ Hội",
+              quantity: 2,
+              order_id: "ord-1",
+              order_code: "ORD-1",
+              order_status: "CONFIRMED",
+              total_amount: 400000,
+              payment_method: "ONLINE",
+              payment_status: "PENDING",
+            },
+            {
+              id: "c-2",
+              created_at: started.toISOString(),
+              username: "Hoa",
+              content: "Shop ở đâu vậy ạ",
+              user_id: "u-2",
+              sku_id: null,
+              sku_code: null,
+              product_name: null,
+              quantity: null,
+              order_id: null,
+              order_code: null,
+              order_status: null,
+              total_amount: null,
+              payment_method: null,
+              payment_status: null,
+            },
+            {
+              id: "c-3",
+              created_at: started.toISOString(),
+              username: null,
+              content: "Chốt đơn nha",
+              user_id: "u-3",
+              sku_id: null,
+              sku_code: null,
+              product_name: null,
+              quantity: 1,
+              order_id: "ord-3",
+              order_code: null,
+              order_status: "DRAFT",
+              total_amount: 100000,
+              payment_method: "COD",
+              payment_status: "PENDING",
+            },
+            {
+              id: "c-4",
+              created_at: started.toISOString(),
+              username: "Mai",
+              content: "Hủy đơn",
+              user_id: "u-4",
+              sku_id: null,
+              sku_code: null,
+              product_name: null,
+              quantity: 1,
+              order_id: "ord-4",
+              order_code: "ORD-4",
+              order_status: "CANCELLED",
+              total_amount: 100000,
+              payment_method: "COD",
+              payment_status: "PENDING",
+            },
+            {
+              id: "c-5",
+              created_at: started.toISOString(),
+              username: "Chi",
+              content: "Cho mình mua với",
+              user_id: "u-5",
+              sku_id: null,
+              sku_code: null,
+              product_name: null,
+              quantity: null,
+              order_id: null,
+              order_code: null,
+              order_status: null,
+              total_amount: null,
+              payment_method: null,
+              payment_status: null,
+            },
+          ],
+        } as any); // 7. Comment logs
+
+      const report = await repo.getReport(mockSession.id, { peakViewers: 0, likesCount: 0 });
+
+      expect(report).toBeDefined();
+      expect(report?.recordingUrl).toBe("https://replay.live/stream.mp4");
+      expect(report?.durationDisplay).toContain("giờ");
+      expect(report?.topProducts[0].status).toBe("OUT_OF_STOCK");
+      expect(report?.topProducts[1].status).toBe("LOW_STOCK");
+      expect(report?.aiInsights[1].badge).toBe("Cần tối ưu");
+      expect(report?.commentLogs).toHaveLength(5);
+      expect(report?.commentLogs[0].status).toBe("ORDER_CONFIRMED");
+      expect(report?.commentLogs[0].linkedOrder?.paymentMethod).toBe("BANK_TRANSFER");
+      expect(report?.commentLogs[1].status).toBe("NOT_INTENT");
+      expect(report?.commentLogs[2].status).toBe("ORDER_PENDING");
+      expect(report?.commentLogs[2].customerName).toBe("Khách xem live");
+      expect(report?.commentLogs[3].status).toBe("CANCELLED");
+      expect(report?.commentLogs[4].status).toBe("INTENT_DETECTED");
+    });
   });
 
   describe("InMemoryLivestreamRepository", () => {
@@ -1059,6 +1405,61 @@ describe("LivestreamRepository - Unit Tests", () => {
       // 3. findActiveLiveByMerchantId bỏ qua item thuộc merchant khác hoặc không live
       const notFoundForOther = await repo.findActiveLiveByMerchantId("c0000000-0000-0000-0000-000000000003");
       expect(notFoundForOther).toBeNull();
+    });
+
+    it("REPO-MEM-022 - getReport returns null when session does not exist in memory", async () => {
+      const res = await repo.getReport("00000000-0000-0000-0000-000000000000");
+      expect(res).toBeNull();
+    });
+
+    it("REPO-MEM-023 - getReport returns full report metrics for stored session in memory", async () => {
+      const live = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "BST Mùa Hè",
+        description: "Sale",
+        coverImageKey: null,
+        status: "ended",
+        channelArn: null,
+        playbackUrl: null,
+        scheduledAt: null,
+        startedAt: null,
+        endedAt: null,
+      });
+
+      const report = await repo.getReport(live.id, { peakViewers: 200, likesCount: 600 });
+      expect(report).toBeDefined();
+      expect(report?.sessionId).toBe(live.id);
+      expect(report?.sessionTitle).toBe("BST Mùa Hè");
+      expect(report?.kpis).toHaveLength(4);
+      expect(report?.funnelData.stages).toHaveLength(4);
+    });
+
+    it("REPO-MEM-024 - getReport uses default redisStats fallback and replayUrl when available", async () => {
+      const now = new Date();
+      const live = await repo.create({
+        merchantId: "a0000000-0000-0000-0000-000000000001",
+        title: "Default Fallback Live",
+        description: null,
+        coverImageKey: null,
+        status: "ended",
+        channelArn: null,
+        playbackUrl: "https://playback.live/m3u8",
+        scheduledAt: null,
+        startedAt: now.toISOString(),
+        endedAt: now.toISOString(),
+      });
+      // Gán replayUrl cho session
+      const stored = (repo as any).items.get(live.id);
+      if (stored) {
+        stored.replayUrl = "https://replay.live/saved.mp4";
+      }
+
+      // Không truyền redisStats -> test fallback ?? 120 và ?? 450
+      const report = await repo.getReport(live.id);
+      expect(report).toBeDefined();
+      expect(report?.recordingUrl).toBe("https://replay.live/saved.mp4");
+      expect(report?.kpis.find((k) => k.id === "peakCcu")?.value).toBe("120");
+      expect(report?.kpis.find((k) => k.id === "peakCcu")?.subValue).toContain("450 lượt thả tim");
     });
   });
 });
