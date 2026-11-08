@@ -78,3 +78,34 @@ test("expired reservation does not offer confirmation", async ({ page }) => {
   await expect(page.getByText("Đơn này đã đóng.", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Xác nhận đơn hàng" })).toHaveCount(0);
 });
+
+// Cổng thanh toán đưa trình duyệt về /confirm/<token>?thanhToan=ok|loi.
+// Banner chỉ là lời cổng nói; trạng thái đơn vẫn đọc từ server.
+for (const ca of [
+  { thanhToan: "ok", thay: "Cổng báo thanh toán thành công.", khongThay: "Đơn đang chờ thanh toán." },
+  { thanhToan: "loi", thay: "Thanh toán không thành công hoặc đã bị huỷ ở cổng.", khongThay: "Cổng báo thanh toán thành công." },
+]) {
+  test(`gateway return with thanhToan=${ca.thanhToan} shows the matching banner`, async ({ page }) => {
+    await page.route("**/api/orders/confirm/test-token", (route) => route.fulfill({ json: {
+      id: "order-3", orderCode: "LIVE-AWAIT", status: "AWAITING_PAYMENT", totalAmount: "199000.00", heldUntil: null,
+      recipientName: "Nguyễn An", recipientPhone: "0901234567", shippingAddress: "12 Nguyễn Huệ, TP. Hồ Chí Minh",
+      addressNormalized: true, items: [{ id: "item-1", skuId: "1", skuCode: "AO-L", productName: "Áo linen", quantity: 1, requestedQty: 1, isPartial: false, unitPrice: "199000.00" }],
+    } }));
+    await page.route("**/api/payments/customer/confirm/test-token/status", (route) => route.fulfill({ json: {
+      method: "ONLINE", status: "PENDING", amount: "199000.00", paidAmount: "0.00",
+    } }));
+    await page.route("**/api/payments/customer/confirm/test-token/gateways", (route) => route.fulfill({ json: {
+      items: [{ name: "mock", label: "Cổng giả (môi trường thử)", ready: true, missing: [] }],
+    } }));
+    await page.route("**/api/payments/customer/confirm/test-token", (route) => route.fulfill({ json: {
+      available: false, reason: "UNCONFIGURED", status: null, amount: null, paidAmount: null,
+      txnRef: null, bankCode: null, accountNumber: null, accountName: null, qrUrl: null, sandbox: true,
+    } }));
+
+    await page.goto(`/confirm/test-token?thanhToan=${ca.thanhToan}`);
+    await expect(page.getByText(ca.thay, { exact: false })).toBeVisible();
+    await expect(page.getByText(ca.khongThay, { exact: false })).toHaveCount(0);
+    // Vẫn chọn được cổng để trả (lại).
+    await expect(page.getByRole("button", { name: /Tiếp tục|Thanh toán/ })).toBeVisible();
+  });
+}

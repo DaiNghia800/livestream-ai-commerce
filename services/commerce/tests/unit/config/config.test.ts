@@ -79,7 +79,7 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
     for (const k of Object.keys(process.env)) {
       if (
         !giuLai.includes(k) &&
-        /^(VNPAY_|MOMO_|ZALOPAY_|MOCK_GATEWAY|PUBLIC_BASE_URL|PAYMENT_GATEWAY|HOLD_|REVIEW_QTY|MAX_HELD|RISK_SCORE|OUTBOX_|EXPIRE_|REALTIME_|AI_WORKER_|API_PREFIX|PORT|AWS_REGION|S3_BUCKET|SQS_)/.test(k)
+        /^(VNPAY_|MOMO_|ZALOPAY_|MOCK_GATEWAY|PUBLIC_BASE_URL|WEB_BASE_URL|PAYMENT_GATEWAY|PAYMENT_TRUST|HOLD_|REVIEW_QTY|MAX_HELD|RISK_SCORE|OUTBOX_|EXPIRE_|REALTIME_|AI_WORKER_|API_PREFIX|PORT|AWS_REGION|S3_BUCKET|SQS_)/.test(k)
       ) {
         delete process.env[k];
       }
@@ -109,6 +109,27 @@ describe("config - giá trị mặc định khi không đặt biến môi trư�
     const cfg = await reloadSach();
     expect(cfg.defaultGateway).toBe("mock");
     expect(cfg.publicBaseUrl).toBe("http://localhost:8000");
+  });
+
+  it("CFG-009 - web khách mặc định cổng 3000, bỏ dấu / cuối; cờ tin RETURN mặc định tắt", async () => {
+    const macDinh = await reloadSach();
+    expect(macDinh.webBaseUrl).toBe("http://localhost:3000");
+    expect(macDinh.paymentTrustSignedReturn).toBe(false);
+
+    process.env.WEB_BASE_URL = "https://demo.example.com/";
+    process.env.PAYMENT_TRUST_SIGNED_RETURN = "true";
+    const bat = await reloadSach(["WEB_BASE_URL", "PAYMENT_TRUST_SIGNED_RETURN"]);
+    expect(bat.webBaseUrl).toBe("https://demo.example.com");
+    expect(bat.paymentTrustSignedReturn).toBe(true);
+
+    // Production không bao giờ tin RETURN, kể cả khi ai đó để quên cờ.
+    const nodeEnvCu = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const prod = await reloadSach(["PAYMENT_TRUST_SIGNED_RETURN"]);
+    expect(prod.paymentTrustSignedReturn).toBe(false);
+    process.env.NODE_ENV = nodeEnvCu;
+    delete process.env.WEB_BASE_URL;
+    delete process.env.PAYMENT_TRUST_SIGNED_RETURN;
   });
 
   it("CFG-007 - đường dẫn callback dựng từ publicBaseUrl", async () => {

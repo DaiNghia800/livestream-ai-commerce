@@ -210,7 +210,7 @@ export async function markPaidAndConfirmed(
  */
 export async function findAwaitingPaymentOlderThan(
   client: PoolClient,
-  hours: number,
+  minutes: number,
   limit = 100
 ): Promise<string[]> {
   const result = await client.query<{ id: string }>(
@@ -221,10 +221,10 @@ export async function findAwaitingPaymentOlderThan(
               (SELECT max(h.created_at) FROM order_status_history h
                 WHERE h.order_id = o.id AND h.to_status = 'AWAITING_PAYMENT'),
               o.created_at
-            ) < NOW() - make_interval(hours => $1)
+            ) < NOW() - make_interval(mins => $1)
       ORDER BY o.created_at
       LIMIT $2`,
-    [hours, limit]
+    [minutes, limit]
   );
   return result.rows.map((r) => r.id);
 }

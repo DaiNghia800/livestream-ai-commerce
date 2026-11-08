@@ -158,11 +158,12 @@ describe("Job dọn đơn chờ thanh toán quá hạn", () => {
         WHERE order_id = $1 AND to_status = 'AWAITING_PAYMENT'`, [cu.id]);
 
     const lifecycle = new OrderLifecycleService(pool);
-    const tat = await new ExpireAwaitingPaymentJob(pool, lifecycle, { ttlHours: 0 }).runOnce();
+    const tat = await new ExpireAwaitingPaymentJob(pool, lifecycle, { ttlMinutes: 0 }).runOnce();
     expect(tat).toEqual({ scanned: 0, cancelled: 0, failed: 0 });
     expect((await docDon(cu.id)).status).toBe("AWAITING_PAYMENT");
 
-    const kq = await new ExpireAwaitingPaymentJob(pool, lifecycle, { ttlHours: 24 }).runOnce();
+    // 30 phút: đơn cũ (30 giờ) bị huỷ, đơn vừa đặt thì không.
+    const kq = await new ExpireAwaitingPaymentJob(pool, lifecycle, { ttlMinutes: 30 }).runOnce();
     expect(kq.cancelled).toBeGreaterThanOrEqual(1);
     expect(await docDon(cu.id)).toMatchObject({ status: "CANCELLED", cancel_reason: LY_DO_QUA_HAN_THANH_TOAN });
     expect((await docDon(moi.id)).status).toBe("AWAITING_PAYMENT");

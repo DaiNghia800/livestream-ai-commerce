@@ -27,8 +27,8 @@ export interface AppConfig {
   holdSoftSeconds: number;
   /** Khoảng cách giữa hai lượt quét đơn hết hạn. */
   expireJobIntervalMs: number;
-  /** Đơn chọn trả online chưa trả sau chừng này giờ thì tự huỷ; 0 = không huỷ. */
-  awaitingPaymentTtlHours: number;
+  /** Đơn chọn trả online chưa trả sau chừng này PHÚT thì tự huỷ; 0 = không huỷ. */
+  awaitingPaymentTtlMinutes: number;
   /**
    * Đầu vào HTTP của Realtime service để nhận sự kiện outbox.
    * Khác NEXT_PUBLIC_REALTIME_URL (WebSocket cho trình duyệt).
@@ -50,6 +50,14 @@ export interface AppConfig {
   // ── Cổng thanh toán điện tử, TOÀN BỘ là sandbox ─────────────────
   /** Gốc đường dẫn của chính service này, để cổng gọi ngược về. */
   publicBaseUrl: string;
+  /** Gốc đường dẫn web khách (Next.js), nơi trình duyệt quay về sau khi trả. */
+  webBaseUrl: string;
+  /**
+   * Chỉ dev: tin kênh RETURN có chữ ký hợp lệ như IPN. Cổng ngoài internet
+   * không gọi được localhost nên IPN không bao giờ tới; bật cờ này để tiền
+   * về được ghi nhận ngay khi trình duyệt quay về. Production luôn tắt.
+   */
+  paymentTrustSignedReturn: boolean;
   /** Cổng dùng khi client không nêu rõ. */
   defaultGateway: string;
   vnpay: {
@@ -213,7 +221,10 @@ export const config: AppConfig = {
   holdSoftSeconds: parseInt(process.env.HOLD_SOFT_SECONDS || "300", 10),
   // Khoảng cách giữa hai lượt quét đề nghị quá hạn.
   expireJobIntervalMs: parseInt(process.env.EXPIRE_JOB_INTERVAL_MS || "30000", 10),
-  awaitingPaymentTtlHours: parseInt(process.env.AWAITING_PAYMENT_TTL_HOURS || "24", 10),
+  // Ưu tiên AWAITING_PAYMENT_TTL_MINUTES; biến giờ cũ vẫn nhận; mặc định 24 giờ.
+  awaitingPaymentTtlMinutes: process.env.AWAITING_PAYMENT_TTL_MINUTES !== undefined
+    ? parseInt(process.env.AWAITING_PAYMENT_TTL_MINUTES, 10) || 0
+    : (parseInt(process.env.AWAITING_PAYMENT_TTL_HOURS || "24", 10) || 0) * 60,
   // services/realtime còn rỗng nên mặc định không có URL: publisher
   // chạy ở chế độ ghi log, không sinh ra sự kiện FAILED giả.
   realtimeEventsUrl: process.env.REALTIME_EVENTS_URL || undefined,
@@ -239,6 +250,13 @@ export const config: AppConfig = {
   riskScoreThreshold: parseFloat(process.env.RISK_SCORE_THRESHOLD || "0.45"),
 
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:8000",
+  webBaseUrl: (process.env.WEB_BASE_URL || "http://localhost:3000").replace(/\/+$/, ""),
+  // Chữ ký HMAC bằng secret của cổng nên gói RETURN không giả được; cái
+  // thiếu là bảo đảm "tới nơi" (khách đóng tab là mất). Vì thế chỉ cho
+  // bật ngoài production, nơi IPN bắt buộc phải có.
+  paymentTrustSignedReturn:
+    process.env.NODE_ENV !== "production" &&
+    process.env.PAYMENT_TRUST_SIGNED_RETURN === "true",
 
   // Mặc định là cổng giả chạy trong máy: người mới kéo repo về chạy
   // được ngay cả luồng thanh toán mà không cần đăng ký tài khoản thử

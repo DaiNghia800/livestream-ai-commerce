@@ -112,6 +112,25 @@ duyệt.
 
 ---
 
+## 3b. Chạy ở localhost: IPN không tới được
+
+Cổng ngoài internet không gọi được `http://localhost:8000`, nên sau khi
+khách trả xong ở sandbox, khoản thu vẫn `PENDING` và đơn vẫn chờ thanh
+toán (tới hạn `AWAITING_PAYMENT_TTL_MINUTES` thì tự huỷ). Trang return
+chỉ hiển thị; chỉ IPN mới ghi nhận tiền. Hai cách:
+
+| Cách | Khi nào | Làm gì |
+|---|---|---|
+| **Tunnel** (đúng luồng thật) | Demo, nghiệm thu | `ngrok http 8000` (hoặc `cloudflared tunnel --url http://localhost:8000`), đặt `PUBLIC_BASE_URL=<url tunnel>`, khởi động lại Commerce. VNPay: vào `sandbox.vnpayment.vn/merchantv2` khai IPN URL `<url tunnel>/api/payments/vnpay/ipn` (VNPay lấy IPN từ portal, không gửi theo từng giao dịch). MoMo/ZaloPay gửi IPN URL theo request nên tự ăn `PUBLIC_BASE_URL`. |
+| **Cờ dev** `PAYMENT_TRUST_SIGNED_RETURN=true` | Dev hằng ngày | Gói RETURN có **chữ ký hợp lệ** (HMAC bằng secret của cổng, không giả được) được xử lý như IPN; chống trùng theo mã giao dịch của cổng, nên IPN tới sau qua tunnel không ghi đôi. Khách đóng tab trước khi quay về thì vẫn kẹt PENDING — vì thế production bỏ qua cờ này. |
+
+Sau khi trả, trình duyệt luôn được đưa về
+`<WEB_BASE_URL>/confirm/<token>?thanhToan=ok|loi` (mặc định
+`http://localhost:3000`); trang đó tự hỏi trạng thái thật. Muốn xem JSON
+của endpoint return (Postman) thì gửi kèm `Accept: application/json`.
+
+---
+
 ## 4. Chuyển khoản VietQR qua SePay
 
 Khác ba cổng trên: đây không phải cổng thanh toán mà là **đối soát tự

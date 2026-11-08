@@ -44,8 +44,13 @@ function fakeRes() {
       if (this.statusCode === 0) this.statusCode = 200;
       return this;
     },
+    location: undefined as string | undefined,
+    redirect(code: number, url: string) {
+      this.statusCode = code;
+      this.location = url;
+    },
   };
-  return res as unknown as Response & { statusCode: number; body: any };
+  return res as unknown as Response & { statusCode: number; body: any; location?: string };
 }
 
 function fakeReq(overrides: Record<string, unknown> = {}) {
@@ -56,6 +61,8 @@ function fakeReq(overrides: Record<string, unknown> = {}) {
     query: {},
     header: (name: string) =>
       name === "x-bank-webhook-secret" ? config.bankWebhookSecret : undefined,
+    // Trình duyệt thường không xin JSON; test nào cần thì ghi đè.
+    get: () => undefined,
     socket: {},
     ...overrides,
   } as never;
@@ -463,10 +470,39 @@ describe("PaymentController — luồng cổng điện tử", () => {
     await new PaymentController({
       handleGatewayCallback: vi
         .fn()
-        .mockResolvedValue({ outcome: "ORDER_NOT_FOUND", payment: null }),
+        .mockResolvedValue({ outcome: "ORDER_NOT_FOUND", payment: null, confirmToken: null }),
     } as never).gatewayReturn(fakeReq({ params: { gateway: "mock" }, query: {} }), res);
 
     expect(res.body.payment).toBeNull();
     expect(res.body.outcome).toBe("ORDER_NOT_FOUND");
+  });
+
+  it("trang quay về: có token thì redirect sang trang xác nhận trên web", async () => {
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi.fn().mockResolvedValue({
+        outcome: "ERROR", payment: { id: "p1" }, confirmToken: "tok-123",
+      }),
+    } as never).gatewayReturn(fakeReq({ params: { gateway: "vnpay" }, query: {} }), res);
+
+    expect(res.statusCode).toBe(302);
+    expect(res.location).toBe(`${config.webBaseUrl}/confirm/tok-123?thanhToan=loi`);
+    expect(res.body).toBeUndefined();
+  });
+
+  it("trang quay về: xin JSON thì không redirect dù có token", async () => {
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi.fn().mockResolvedValue({
+        outcome: "ALREADY_CONFIRMED", payment: { id: "p1", status: "PAID" }, confirmToken: "tok-123",
+      }),
+    } as never).gatewayReturn(
+      fakeReq({ params: { gateway: "vnpay" }, query: {}, get: () => "application/json" }),
+      res
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.outcome).toBe("ALREADY_CONFIRMED");
+    expect(res.body.note).toContain("IPN");
   });
 });

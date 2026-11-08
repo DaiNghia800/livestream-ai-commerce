@@ -80,11 +80,16 @@ async function bootstrap() {
   expireRequestsJob.start();
 
   // Đơn chọn trả online mà khách bỏ, không trả: không giữ tồn nên không
-  // gấp, chỉ dọn cho danh sách đơn của shop sạch (AWAITING_PAYMENT_TTL_HOURS).
+  // gấp, chỉ dọn cho danh sách đơn của shop sạch (AWAITING_PAYMENT_TTL_MINUTES).
   const expireAwaitingPaymentJob = new ExpireAwaitingPaymentJob(
     pool,
     new OrderLifecycleService(pool),
-    { ttlHours: config.awaitingPaymentTtlHours, intervalMs: Math.max(config.expireJobIntervalMs, 60_000) }
+    { ttlMinutes: config.awaitingPaymentTtlMinutes, intervalMs: Math.max(config.expireJobIntervalMs, 60_000) }
+  );
+  console.log(
+    config.awaitingPaymentTtlMinutes > 0
+      ? `[ExpireAwaitingPaymentJob] Huỷ đơn chờ thanh toán quá ${config.awaitingPaymentTtlMinutes} phút`
+      : "[ExpireAwaitingPaymentJob] Tắt (AWAITING_PAYMENT_TTL_MINUTES=0)"
   );
   expireAwaitingPaymentJob.start();
 

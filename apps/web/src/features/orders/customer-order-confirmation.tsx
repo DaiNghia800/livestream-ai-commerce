@@ -16,6 +16,7 @@
  */
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -68,6 +69,9 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
   // hỏi lại thì màn hình đứng ở "chờ thanh toán" dù đã thu xong, và
   // khách rất dễ trả thêm lần nữa.
   const { daThu, phuongThuc } = useThanhToanXong(token, data?.status);
+  // Cổng thanh toán đưa trình duyệt về đây kèm ?thanhToan=ok|loi. Chỉ là
+  // lời cổng nói với trình duyệt; trạng thái thật vẫn lấy từ server ở trên.
+  const ketQuaCong = useSearchParams().get("thanhToan");
   // Tiền về thì đơn đổi trạng thái phía server (giữ hàng → CONFIRMED, hay
   // hết hàng → CANCELLED): đọc lại để màn hình nói đúng chuyện đã xảy ra.
   useEffect(() => {
@@ -190,7 +194,19 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
           sẽ đóng gói và bàn giao cho đơn vị vận chuyển.
         </div>
       ) : null}
-      {data.status === "AWAITING_PAYMENT" && !laCod && (
+      {data.status === "AWAITING_PAYMENT" && !laCod && !daThu && ketQuaCong === "ok" && (
+        <div className="notice notice-info" role="status">
+          <strong>Cổng báo thanh toán thành công.</strong> Đang chờ hệ thống
+          ghi nhận tiền về; trang sẽ tự cập nhật, bạn không cần trả lại.
+        </div>
+      )}
+      {data.status === "AWAITING_PAYMENT" && !laCod && !daThu && ketQuaCong === "loi" && (
+        <div className="notice notice-danger" role="alert">
+          <strong>Thanh toán không thành công hoặc đã bị huỷ ở cổng.</strong> Hàng
+          chưa được giữ. Bạn có thể chọn cổng và thanh toán lại bên dưới.
+        </div>
+      )}
+      {data.status === "AWAITING_PAYMENT" && !laCod && ketQuaCong !== "ok" && (
         <div className="notice notice-warning" role="status">
           <strong>Đơn đang chờ thanh toán.</strong> Hàng chưa được giữ; ngay
           khi tiền về, hệ thống giữ hàng và chuyển đơn sang đã xác nhận.
