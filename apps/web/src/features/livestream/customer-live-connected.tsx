@@ -99,6 +99,10 @@ export function CustomerLiveConnected() {
     gioRef.current = { gio: gio.gio, taiLai: gio.taiLai };
   }, [gio.gio, gio.taiLai]);
 
+  // Hai effect dưới đọc localStorage SAU khi hydrate rồi mới set state:
+  // đọc trong useState() thì server và client render khác nhau. Rule
+  // set-state-in-effect không phân biệt được ca này nên tắt cục bộ.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     let user: { id?: number; full_name?: string } | null = null;
     try {
@@ -147,6 +151,7 @@ export function CustomerLiveConnected() {
       }
     } catch { localStorage.removeItem(key); }
   }, [session?.id, customerId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     let active = true;
@@ -205,9 +210,14 @@ export function CustomerLiveConnected() {
 
   useEffect(() => {
     if (!pending || !autoCheck) return;
-    void checkConfirmation();
+    // Kiểm tra ngay một nhịp rồi lặp mỗi 3 giây. Nhịp đầu đi qua timer
+    // để effect không gọi hàm set state một cách đồng bộ.
+    const dauTien = window.setTimeout(() => { void checkConfirmation(); }, 0);
     const timer = window.setInterval(() => { void checkConfirmation(); }, 3000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(dauTien);
+      window.clearInterval(timer);
+    };
   }, [pending, autoCheck, checkConfirmation]);
 
   async function handleComment(event: FormEvent<HTMLFormElement>) {

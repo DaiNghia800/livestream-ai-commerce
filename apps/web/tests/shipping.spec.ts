@@ -193,20 +193,24 @@ test("đã lấy hàng rồi thì KHÔNG cho huỷ, và nói rõ vì sao", async
 
 test("đơn tự giao mới có nút bấm tay trạng thái", async ({ page }) => {
   await stubApi(page, {
-    shipmentDetail: { ...SHIP_TU_GIAO, events: [] },
+    // Trang chi tiết cần đủ trường chi tiết (người gửi/nhận, hàng hoá, mô
+    // phỏng): lấy khung của SHIP_DETAIL rồi phủ dữ liệu đơn tự giao lên.
+    shipmentDetail: { ...SHIP_DETAIL, ...SHIP_TU_GIAO, events: [], moPhong: [] },
   });
   await page.goto("/shop/shipping/ship-4");
 
   await expect(page.getByText(/trạng thái do shop bấm/)).toBeVisible();
+  // exact: bảng giả lập hãng cũng có nút "Đã lấy hàng <mã hãng>"; nút bấm
+  // tay của đơn tự giao thì chỉ có đúng nhãn trạng thái.
   await expect(
-    page.getByRole("button", { name: "Đã lấy hàng" }),
+    page.getByRole("button", { name: "Đã lấy hàng", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Giao thành công" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Giao thành công", exact: true })).toBeHidden();
 });
 
 test("vận đơn đang chờ hãng xác minh không cho huỷ", async ({ page }) => {
   await stubApi(page, {
-    shipmentDetail: { ...SHIP_TU_GIAO, status: "REQUESTED", events: [] },
+    shipmentDetail: { ...SHIP_DETAIL, ...SHIP_TU_GIAO, status: "REQUESTED", events: [], moPhong: [] },
   });
   await page.goto("/shop/shipping/ship-4");
   await expect(page.getByRole("button", { name: "Huỷ vận đơn" })).toBeHidden();
@@ -216,7 +220,7 @@ test("đơn đi hãng thật KHÔNG có nút bấm tay", async ({ page }) => {
   await stubApi(page);
   await page.goto("/shop/shipping/ship-1");
 
-  await expect(page.getByRole("button", { name: "Đã lấy hàng" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Đã lấy hàng", exact: true })).toBeHidden();
 });
 
 // ── Trang theo dõi công khai ───────────────────────────────────────

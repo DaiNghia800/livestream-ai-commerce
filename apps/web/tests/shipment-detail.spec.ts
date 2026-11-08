@@ -41,7 +41,7 @@ test.describe("Chi tiết vận đơn — thông tin bưu kiện", () => {
 
     const khoi = page.getByText("Thông tin bưu kiện").locator("..");
     await expect(khoi).toContainText("28×20×5 cm");
-    await expect(khoi).toContainText("500 g");
+    await expect(khoi).toContainText("600 g");
     await expect(khoi).toContainText("23/10 - 24/10");
     // Mã SKU và số lượng: đủ để đối chiếu khi hãng báo thiếu hàng.
     await expect(khoi).toContainText("AO01-BE-L × 2");
