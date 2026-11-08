@@ -52,6 +52,94 @@ function saveCachedChatMessages(livestreamId: string, messages: StudioChatMessag
   }
 }
 
+/**
+ * Kiểm tra xem nội dung bình luận có phù hợp với sản phẩm được chốt hay không,
+ * tránh việc gắn nhãn [Đã chốt đơn] bừa bãi vào bình luận của sản phẩm khác.
+ */
+function isCommentMatchingProduct(
+  content: string,
+  productCode?: string,
+  productName?: string,
+  displayCode?: string,
+  displayIndex?: number | string
+): boolean {
+  if (!content) return false;
+  const lower = content.toLowerCase();
+
+  // 1. Khớp trực tiếp mã kho nếu có trong nội dung (VD: "TUI-XACH-DA", "QUAN-JEAN-WIDE", "SM-LUA", "A001")
+  if (productCode && productCode.length >= 3 && lower.includes(productCode.toLowerCase())) {
+    return true;
+  }
+
+  // 2. Trích xuất số thứ tự mục tiêu (Target Index): từ displayIndex, displayCode, hoặc productCode
+  let targetNum: number | null = null;
+  if (displayIndex !== undefined && displayIndex !== null && String(displayIndex).trim() !== "") {
+    const parsedIdx = parseInt(String(displayIndex), 10);
+    if (!isNaN(parsedIdx) && parsedIdx > 0) {
+      targetNum = parsedIdx;
+    }
+  }
+
+  if (targetNum === null && displayCode) {
+    const dispMatch = displayCode.match(/(?:mã\s*(?:số)?|sp|#)?\s*0*(\d+)/i);
+    if (dispMatch) {
+      targetNum = parseInt(dispMatch[1], 10);
+    }
+  }
+
+  if (targetNum === null && productCode) {
+    const numMatch = productCode.match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
+    if (numMatch) {
+      targetNum = parseInt(numMatch[1], 10);
+    }
+  }
+
+  // 3. Trích xuất số thứ tự mà khách bình luận nhắc tới (VD: "Chốt Mã 1", "Lấy sp 2", "Mã 3")
+  const commentNumMatch = content.match(/(?:mã\s*(?:số)?|sp|#)\s*0*(\d+)/i);
+  const commentNum = commentNumMatch ? parseInt(commentNumMatch[1], 10) : null;
+
+  if (commentNum !== null) {
+    if (targetNum !== null) {
+      // Bắt buộc phải trùng số thứ tự: Nếu comment nói "Mã 2" mà đơn duyệt là "Mã 1", TUYỆT ĐỐI KHÔNG MATCH!
+      return commentNum === targetNum;
+    }
+    // Nếu khách nhắc cụ thể số thứ tự "Mã X" nhưng mục tiêu không có số thứ tự:
+    // Chỉ match nếu tên sản phẩm khớp rõ ràng
+    if (productName) {
+      const cleanWords = productName
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(
+          (w) =>
+            w.length >= 3 &&
+            !["cho", "các", "nhung", "loai", "hang", "dáng", "cao", "cấp", "thời", "trang", "bản"].includes(w)
+        );
+      const matchedCount = cleanWords.filter((w) => lower.includes(w)).length;
+      return matchedCount >= 2;
+    }
+    return false;
+  }
+
+  // 4. Khớp theo từ khóa có nghĩa trong tên sản phẩm (VD: "quần jean", "túi xách", "sơ mi", "blazer")
+  if (productName) {
+    const cleanWords = productName
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(
+        (w) =>
+          w.length >= 3 &&
+          !["cho", "các", "nhung", "loai", "hang", "dáng", "cao", "cấp", "thời", "trang", "bản"].includes(w)
+      );
+    const matchedCount = cleanWords.filter((w) => lower.includes(w)).length;
+    if (matchedCount >= 2 || (cleanWords.length === 1 && matchedCount === 1)) {
+      return true;
+    }
+  }
+
+  // Nếu comment không có số thứ tự và cũng không khớp tên sản phẩm: KHÔNG MATCH!
+  return false;
+}
+
 export function useIvsChat({
   livestreamId,
   userId = "merchant-host",
@@ -108,21 +196,55 @@ export function useIvsChat({
         const chronological = historicalMsgs;
 
         setChatMessages((prev) => {
+          // Xây dựng map các tin nhắn đã có trong cache (lưu giữ nhãn chốt đơn, trạng thái duyệt)
+          const prevMapById = new Map<string, StudioChatMessage>();
+          const prevMapByFp = new Map<string, StudioChatMessage>();
+          prev.forEach((m) => {
+            prevMapById.set(m.id, m);
+            const fp = `${m.userId || "anon"}:${m.content.trim().toLowerCase()}`;
+            prevMapByFp.set(fp, m);
+          });
+
           const mapById = new Map<string, StudioChatMessage>();
           const seenFingerprints = new Set<string>();
 
-          // 1. Dữ liệu từ Server (Redis/DB) là Nguồn Chân Lý (Source of Truth)
-          chronological.forEach((m) => {
-            mapById.set(m.id, m);
-            const fp = `${m.userId || "anon"}:${m.content.trim().toLowerCase()}`;
+          // 1. Dữ liệu từ Server kết hợp với metadata đã lưu trong cache
+          chronological.forEach((serverMsg) => {
+            const fp = `${serverMsg.userId || "anon"}:${serverMsg.content.trim().toLowerCase()}`;
+            const cachedMsg = prevMapById.get(serverMsg.id) || prevMapByFp.get(fp);
+
+            const isOrder = Boolean(serverMsg.orderCreated || cachedMsg?.orderCreated);
+            const isReview = (cachedMsg?.status === "NEEDS_REVIEW" || serverMsg.status === "NEEDS_REVIEW") && !isOrder;
+
+            const mergedMsg: StudioChatMessage = {
+              ...serverMsg,
+              orderCreated: isOrder,
+              badge: isOrder
+                ? "AI Chốt Đơn"
+                : isReview
+                  ? "Cần xử lý"
+                  : (cachedMsg?.badge ?? serverMsg.badge),
+              status: isOrder
+                ? "PENDING_CONFIRMATION"
+                : isReview
+                  ? "NEEDS_REVIEW"
+                  : (cachedMsg?.status ?? serverMsg.status),
+              reviewReason: cachedMsg?.reviewReason ?? serverMsg.reviewReason,
+              orderId: cachedMsg?.orderId ?? serverMsg.orderId,
+              extractedSku: cachedMsg?.extractedSku ?? serverMsg.extractedSku,
+              extractedProductName: cachedMsg?.extractedProductName ?? serverMsg.extractedProductName,
+              extractedQuantity: cachedMsg?.extractedQuantity ?? serverMsg.extractedQuantity,
+            };
+
+            mapById.set(serverMsg.id, mergedMsg);
             seenFingerprints.add(fp);
           });
 
           // 2. Chỉ giữ lại các tin local chưa kịp đồng bộ nếu chưa tồn tại trên server (loại bỏ duplicate)
-          prev.forEach((m) => {
-            const fp = `${m.userId || "anon"}:${m.content.trim().toLowerCase()}`;
-            if (!mapById.has(m.id) && !seenFingerprints.has(fp)) {
-              mapById.set(m.id, m);
+          prev.forEach((localMsg) => {
+            const fp = `${localMsg.userId || "anon"}:${localMsg.content.trim().toLowerCase()}`;
+            if (!mapById.has(localMsg.id) && !seenFingerprints.has(fp)) {
+              mapById.set(localMsg.id, localMsg);
               seenFingerprints.add(fp);
             }
           });
@@ -444,9 +566,10 @@ export function useIvsChat({
 
         // Bắt sự kiện đơn hàng được AI nhận diện & giữ kho thành công
         if (evt.eventName === "app:order_detected" && evt.attributes) {
+          const attr = evt.attributes;
           if (typeof window !== "undefined") {
             window.dispatchEvent(
-              new CustomEvent("liveorder:order_detected", { detail: evt.attributes })
+              new CustomEvent("liveorder:order_detected", { detail: attr })
             );
           }
 
@@ -460,39 +583,61 @@ export function useIvsChat({
                 minute: "2-digit",
               });
 
-          const systemOrderMsg: StudioChatMessage = {
-            id: `order-sys-${evt.attributes.orderId || Date.now()}`,
-            userId: "ai-system",
-            userName: "🤖 Trợ lý AI",
-            content: `🎉 Chúc mừng ${evt.attributes.customerName} đã chốt thành công ${evt.attributes.quantity || 1}x ${evt.attributes.productName || evt.attributes.productCode}! Hệ thống đã giữ tồn kho trong 2 phút.`,
-            timestamp,
-            badge: "AI Chốt Đơn",
-            status: "PARSED",
-            extractedSku: evt.attributes.productCode,
-            extractedQuantity: Number(evt.attributes.quantity) || 1,
-            orderCreated: true,
-            orderId: evt.attributes.orderId,
-          };
-
           setChatMessages((prev) => {
-            if (prev.some((m) => m.id === systemOrderMsg.id)) return prev;
-            const updated = [...prev, systemOrderMsg];
+            const customerNameLower = (attr.customerName || "").toLowerCase().trim();
+            // Chỉ gắn nhãn [Đã chốt đơn] cho DUY NHẤT 1 bình luận vừa chốt đơn tương ứng
+            let matchedIndex = -1;
+            if (attr.commentId) {
+              matchedIndex = prev.findIndex((m) => m.id === attr.commentId);
+            }
+            if (matchedIndex === -1 && customerNameLower) {
+              // Tìm từ dưới lên: Phải khớp tên người mua VÀ nội dung bình luận phải nói đúng sản phẩm đó!
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const m = prev[i];
+                if (
+                  m.userId !== "ai-system" &&
+                  !m.orderCreated &&
+                  (m.userName.toLowerCase().trim().includes(customerNameLower) ||
+                    customerNameLower.includes(m.userName.toLowerCase().trim())) &&
+                  !/(?:không|đừng|chưa|chẳng)/i.test(m.content) &&
+                  isCommentMatchingProduct(
+                    m.content,
+                    attr.productCode,
+                    attr.productName,
+                    attr.displayCode,
+                    attr.displayIndex
+                  )
+                ) {
+                  matchedIndex = i;
+                  break;
+                }
+              }
+            }
+
+            const updated = prev.map((m, idx) => {
+              if (idx === matchedIndex) {
+                return {
+                  ...m,
+                  status: "PENDING_CONFIRMATION" as const,
+                  badge: "AI Chốt Đơn" as const,
+                  orderCreated: true,
+                  extractedSku: attr.productCode,
+                  extractedProductName: attr.productName,
+                  extractedQuantity: Number(attr.quantity) || 1,
+                  orderId: attr.orderCode || attr.orderId,
+                };
+              }
+              return m;
+            });
+
             saveCachedChatMessages(livestreamId, updated);
             return updated;
           });
-          onMessageReceivedRef.current?.(systemOrderMsg);
         }
 
         // Bắt sự kiện AI yêu cầu khách làm rõ thông tin chốt đơn
         if (evt.eventName === "app:order_needs_clarification" && evt.attributes) {
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(
-              new CustomEvent("liveorder:order_needs_clarification", {
-                detail: evt.attributes,
-              })
-            );
-          }
-
+          const attr = evt.attributes;
           const timestamp = evt.sendTime
             ? new Date(evt.sendTime).toLocaleTimeString("vi-VN", {
                 hour: "2-digit",
@@ -503,25 +648,100 @@ export function useIvsChat({
                 minute: "2-digit",
               });
 
+          const clarifyId =
+            attr.commentId
+              ? `clarify-${attr.commentId}`
+              : attr.id
+                ? `clarify-${attr.id}`
+                : `clarify-sys-${Date.now()}`;
+
           const systemClarifyMsg: StudioChatMessage = {
-            id: `clarify-sys-${Date.now()}`,
+            id: clarifyId,
             userId: "ai-system",
             userName: "🤖 Trợ lý AI",
             content:
-              evt.attributes.message ||
-              `@${evt.attributes.customerName} vui lòng bình luận thêm màu sắc hoặc kích thước để shop giữ hàng nhé!`,
+              attr.message ||
+              `@${attr.customerName || "Khách"} vui lòng bình luận thêm màu sắc hoặc kích thước để shop giữ hàng nhé!`,
             timestamp,
             badge: "AI Hỗ Trợ",
             status: "NEEDS_REVIEW",
-            reviewReason: "Cần bổ sung chi tiết",
+            reviewReason: attr.reviewReason || "Cần bổ sung chi tiết",
+            targetUserName: attr.customerName,
           };
 
+          // Chống trùng lặp tin nhắn nếu sự kiện nhận qua cả WebSocket và REST event broadcast
+          if (isDuplicateMessage(systemClarifyMsg)) {
+            return;
+          }
+
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("liveorder:order_needs_clarification", {
+                detail: attr,
+              })
+            );
+          }
+
           setChatMessages((prev) => {
-            const updated = [...prev, systemClarifyMsg];
+            const customerNameLower = (attr.customerName || "").toLowerCase().trim();
+            let matchedIndex = -1;
+            if (attr.commentId) {
+              matchedIndex = prev.findIndex((m) => m.id === attr.commentId);
+            }
+            if (
+              matchedIndex === -1 &&
+              customerNameLower &&
+              customerNameLower !== "bạn" &&
+              customerNameLower !== "khách"
+            ) {
+              const isCooldown =
+                attr.reviewReason?.includes("Cooldown") ||
+                attr.reviewReason?.includes("quá nhanh") ||
+                attr.reasonCodes?.includes("order_cooldown");
+
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const m = prev[i];
+                if (
+                  m.userId !== "ai-system" &&
+                  !m.orderCreated &&
+                  (m.userName.toLowerCase().trim().includes(customerNameLower) ||
+                    customerNameLower.includes(m.userName.toLowerCase().trim()))
+                ) {
+                  if (isCooldown) {
+                    matchedIndex = i;
+                    break;
+                  }
+                  if (
+                    isCommentMatchingProduct(
+                      m.content,
+                      attr.productCode,
+                      undefined,
+                      attr.displayCode,
+                      attr.displayIndex
+                    )
+                  ) {
+                    matchedIndex = i;
+                    break;
+                  }
+                }
+              }
+            }
+
+            const updated = prev.map((m, idx) => {
+              if (idx === matchedIndex) {
+                return {
+                  ...m,
+                  status: "NEEDS_REVIEW" as const,
+                  badge: "Cần xử lý" as const,
+                  reviewReason: attr.reviewReason || attr.message || "Cần bổ sung chi tiết",
+                };
+              }
+              return m;
+            });
+
             saveCachedChatMessages(livestreamId, updated);
             return updated;
           });
-          onMessageReceivedRef.current?.(systemClarifyMsg);
         }
       });
 
@@ -570,44 +790,7 @@ export function useIvsChat({
       const cleanContent = content.trim();
       if (!cleanContent) return;
 
-      // 1. Lưu vào Redis Cache (và đẩy SQS nếu là buyer có tín hiệu mua)
-      if (isValidUuid(livestreamId)) {
-        void postLivestreamComment(livestreamId, {
-          userId,
-          username,
-          content: cleanContent,
-          role: role === "HOST" ? "host" : role === "MODERATOR" ? "moderator" : "buyer",
-          skipIvsBroadcast: true,
-        });
-      }
-
-      // 2. Nếu đang kết nối với IVS room thật
-      if (roomRef.current && connectionStateRef.current === "CONNECTED") {
-        try {
-          const { SendMessageRequest } = await import(
-            "amazon-ivs-chat-messaging"
-          );
-          const req = new SendMessageRequest(cleanContent, attributes);
-
-          // Khống chế timeout 3.5 giây để không bị treo Promise khi rớt mạng
-          const sendPromise = roomRef.current.sendMessage(req);
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(
-              () => reject(new Error("IVS sendMessage timeout (3500ms)")),
-              3500
-            );
-          });
-          await Promise.race([sendPromise, timeoutPromise]);
-          return;
-        } catch (err) {
-          console.warn(
-            "[useIvsChat] Error sending to IVS (fallback sang hiển thị local):",
-            err
-          );
-        }
-      }
-
-      // Local / Offline fallback: Tự tạo tin nhắn hiển thị ngay lập tức (thêm vào cuối mảng)
+      // 1. Hiển thị lạc quan (Optimistic UI) ngay lập tức trên tab người gửi
       const localMsg: StudioChatMessage = {
         id: `local-${Date.now()}`,
         userId,
@@ -626,6 +809,40 @@ export function useIvsChat({
         return updated;
       });
       onMessageReceivedRef.current?.(localMsg);
+
+      // Đánh dấu fingerprint để tránh hiển thị duplicate khi event app:comment dội về chính tab này
+      const fp = `${userId || "anon"}:${cleanContent.toLowerCase()}`;
+      recentSeenRef.current.set(fp, Date.now());
+
+      // 2. Gửi lên Commerce Backend để lưu DB/Redis, đẩy SQS và Backend broadcast app:comment tới tất cả người xem khác
+      if (isValidUuid(livestreamId)) {
+        void postLivestreamComment(livestreamId, {
+          userId,
+          username,
+          content: cleanContent,
+          role: role === "HOST" ? "host" : role === "MODERATOR" ? "moderator" : "buyer",
+          skipIvsBroadcast: false,
+        }).then((savedMsg) => {
+          if (savedMsg?.id) {
+            setChatMessages((prev) =>
+              prev.map((m) => (m.id === localMsg.id ? { ...m, id: savedMsg.id } : m))
+            );
+          }
+        });
+      }
+
+      // 3. Nếu đang kết nối IVS room thật, vẫn thử gửi song song qua room.sendMessage (nếu fail thì Backend đã broadcast giúp)
+      if (roomRef.current && connectionStateRef.current === "CONNECTED") {
+        try {
+          const { SendMessageRequest } = await import(
+            "amazon-ivs-chat-messaging"
+          );
+          const req = new SendMessageRequest(cleanContent, attributes);
+          void roomRef.current.sendMessage(req).catch(() => {});
+        } catch {
+          // Bỏ qua lỗi gửi client WebSocket, Backend sendEvent đã đảm bảo đồng bộ
+        }
+      }
     },
     [livestreamId, userId, username, role]
   );

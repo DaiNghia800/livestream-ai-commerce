@@ -7,7 +7,6 @@ import {
   Truck,
   ArrowRight,
   Clock,
-  ShoppingBag,
   Lock,
   Sparkles,
   X,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 import type { StudioChatMessage } from "../../types/studio";
 import type { CustomerAuthUser } from "../../types/customer-auth";
+import type { CustomerLiveProductItem } from "./customer-live-products";
 
 export interface DetectedOrder {
   id: string;
@@ -49,25 +49,10 @@ interface CustomerLiveChatProps {
   currentUser?: CustomerAuthUser | null;
   onRequestLogin?: () => void;
   onOpenOrderModal?: (productCode: string, order?: DetectedOrder) => void;
+  onEditVariant?: (productCode: string, order: DetectedOrder) => void;
   onOrderDetected?: (code: string) => void;
+  products?: CustomerLiveProductItem[];
 }
-
-/** #5 Social proof toast data */
-interface SocialToast {
-  id: string;
-  text: string;
-}
-
-const SOCIAL_NAMES = [
-  "Phương Linh",
-  "Minh Châu",
-  "Hồng Hạnh",
-  "Thanh Tâm",
-  "Ngọc Bích",
-  "Lan Anh",
-  "Thu Hương",
-  "Khánh Vân",
-];
 
 const RESERVATION_SECS = 120; // 2 phút (demo / flash sale)
 
@@ -98,7 +83,7 @@ function formatCountdown(secs: number): string {
   const safeSecs = Math.max(0, secs);
   const m = Math.floor(safeSecs / 60);
   const s = safeSecs % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 /** Web Audio API chime when AI locks stock for the customer */
@@ -111,7 +96,7 @@ function playOrderAudioChime() {
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      ctx.resume().catch(() => { });
     }
     const now = ctx.currentTime;
 
@@ -155,26 +140,66 @@ export function CustomerLiveChat({
   currentUser = null,
   onRequestLogin,
   onOpenOrderModal,
+  onEditVariant,
   onOrderDetected,
+  products = [],
 }: CustomerLiveChatProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detectedOrders, setDetectedOrders] = useState<DetectedOrder[]>([]);
-  // #5 Social proof toasts
-  const [toasts, setToasts] = useState<SocialToast[]>([]);
+  // AI clarification / warning banner right above chat input
+  const [aiNotice, setAiNotice] = useState<{
+    id: string;
+    message: string;
+    isInvalidCode?: boolean;
+  } | null>(null);
   // #9 Input highlight flash
   const [inputFlash, setInputFlash] = useState(false);
   const isFlashing = inputFlash || highlightFlash;
 
   const chatFeedRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef<boolean>(true);
   const internalInputRef = useRef<HTMLInputElement>(null);
   const effectiveInputRef = inputRef || internalInputRef;
 
-  // Auto-scroll chat feed to bottom on new message
+  const getOrderDisplayCode = useCallback(
+    (code: string, productName?: string) => {
+      if (!code) return "Mã SP";
+      if (code.startsWith("Mã ") || code.startsWith("#Mã ")) {
+        return code.replace(/^#/, "");
+      }
+      const numMatch = code.match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
+      if (numMatch) {
+        return `Mã ${parseInt(numMatch[1], 10)}`;
+      }
+      if (products && products.length > 0) {
+        const pIdx = products.findIndex(
+          (p) =>
+            p.code.toUpperCase() === code.toUpperCase() ||
+            p.id === code ||
+            (productName && p.name.toLowerCase().includes(productName.toLowerCase()))
+        );
+        if (pIdx > -1) {
+          return `Mã ${pIdx + 1}`;
+        }
+      }
+      return code.startsWith("#") ? code : `#${code}`;
+    },
+    [products]
+  );
+
+  // Auto-scroll chat feed to bottom on new message ONLY if user is already near bottom.
+  // DO NOT depend on detectedOrders to avoid jerky scroll on every countdown second!
   useEffect(() => {
-    if (chatFeedRef.current) {
+    if (shouldAutoScrollRef.current && chatFeedRef.current) {
       chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight;
     }
-  }, [messages, detectedOrders]);
+  }, [messages]);
+
+  const handleChatScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+    shouldAutoScrollRef.current = isNearBottom;
+  }, []);
 
   // #4 Countdown timer: tick every second for all active orders, keep expired orders for 15s
   useEffect(() => {
@@ -195,31 +220,6 @@ export function CustomerLiveChat({
     }, 1000);
     return () => clearInterval(tick);
   }, [detectedOrders.length]);
-
-  // #5 Social proof toasts — appear every 18–30s
-  const showSocialToast = useCallback((code: string) => {
-    const name = SOCIAL_NAMES[Math.floor(Math.random() * SOCIAL_NAMES.length)];
-    const qty = Math.floor(Math.random() * 2) + 1;
-    const id = `toast-${Date.now()}`;
-    setToasts((prev) => [...prev, { id, text: `🛍️ ${name} vừa chốt ${code} x${qty}` }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
-  }, []);
-
-  useEffect(() => {
-    if (availableCodes.length === 0) return;
-    // First toast after 18s, then random 18–30s
-    const scheduleNext = () => {
-      const delay = 18000 + Math.random() * 12000;
-      return setTimeout(() => {
-        const code = availableCodes[Math.floor(Math.random() * availableCodes.length)];
-        showSocialToast(code);
-        timeoutRef.current = scheduleNext();
-      }, delay);
-    };
-    // eslint-disable-next-line prefer-const
-    let timeoutRef = { current: scheduleNext() };
-    return () => clearTimeout(timeoutRef.current);
-  }, [availableCodes, showSocialToast]);
 
   // Lắng nghe sự kiện chốt đơn AI và làm rõ đơn từ IVS Chat realtime
   useEffect(() => {
@@ -255,8 +255,10 @@ export function CustomerLiveChat({
         playOrderAudioChime();
 
         const newOrder: DetectedOrder = {
-          id: attr.orderId || `order-${Date.now()}`,
-          code: attr.productCode || attr.orderCode || "SP",
+          id: attr.commentId
+            ? `comment-${attr.commentId}`
+            : `${attr.orderId || "ord"}-${attr.productCode || ""}-${attr.size || ""}-${attr.color || ""}`,
+          code: attr.displayCode || attr.productCode || attr.orderCode || "SP",
           productName: attr.productName,
           variantName: attr.variantName,
           color: attr.color,
@@ -277,26 +279,24 @@ export function CustomerLiveChat({
         };
 
         setDetectedOrders((prev) => {
-          if (
-            prev.some(
-              (o) =>
-                o.id === newOrder.id ||
-                (o.code === newOrder.code && o.confirmToken === newOrder.confirmToken)
-            )
-          ) {
-            return prev;
+          const existingIdx = prev.findIndex(
+            (o) =>
+              o.id === newOrder.id ||
+              (o.code === newOrder.code &&
+                o.color === newOrder.color &&
+                o.size === newOrder.size)
+          );
+          if (existingIdx > -1) {
+            const next = [...prev];
+            next[existingIdx] = {
+              ...next[existingIdx],
+              ...newOrder,
+              secondsLeft: Math.max(next[existingIdx].secondsLeft, newOrder.secondsLeft),
+            };
+            return next;
           }
           return [...prev, newOrder];
         });
-
-        if (attr.productCode) {
-          onOrderDetected?.(attr.productCode);
-        }
-      } else {
-        const text = `🛍️ ${attr.customerName || "Khách"} vừa chốt ${attr.quantity || 1}x ${attr.productCode || "sản phẩm"}`;
-        const id = `toast-${Date.now()}`;
-        setToasts((prev) => [...prev, { id, text }]);
-        setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
       }
     };
 
@@ -320,15 +320,15 @@ export function CustomerLiveChat({
           currentCustomerName.toLowerCase().includes((attr.customerName || "").toLowerCase()));
 
       if (isCurrentCustomer) {
-        const id = `toast-clarify-${Date.now()}`;
-        setToasts((prev) => [
-          ...prev,
-          {
-            id,
-            text: `💡 AI: ${attr.message || "Vui lòng bình luận thêm màu/size để shop chốt đơn nhé!"}`,
-          },
-        ]);
-        setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 6000);
+        const noticeId = `notice-${Date.now()}`;
+        setAiNotice({
+          id: noticeId,
+          message: attr.message || "Vui lòng bình luận thêm thông tin để shop chốt đơn nhé!",
+          isInvalidCode: attr.isInvalidCode === "true" || attr.isInvalidProduct === "true",
+        });
+        setTimeout(() => {
+          setAiNotice((cur) => (cur?.id === noticeId ? null : cur));
+        }, 12000);
       }
     };
 
@@ -357,10 +357,15 @@ export function CustomerLiveChat({
     const cleanText = inputText.trim();
     if (!cleanText || isSubmitting) return;
 
+    setAiNotice(null);
     setIsSubmitting(true);
     try {
       await onSendMessage(cleanText);
       onInputChange("");
+      shouldAutoScrollRef.current = true;
+      if (chatFeedRef.current) {
+        chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight;
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -372,6 +377,7 @@ export function CustomerLiveChat({
       onRequestLogin?.();
       return;
     }
+    setAiNotice(null);
     onInputChange(syntax);
     effectiveInputRef.current?.focus();
     // Trigger highlight flash
@@ -406,119 +412,180 @@ export function CustomerLiveChat({
       <div
         ref={chatFeedRef}
         id="chatFeed"
+        onScroll={handleChatScroll}
         className="flex-1 overflow-y-auto p-3.5 space-y-3 custom-scrollbar bg-surface/30 text-xs"
       >
-        {/* Render Live Messages */}
-        {messages.map((msg) => (
-          <div key={msg.id} className="flex items-start gap-2 text-xs">
-            <div className="w-7 h-7 rounded-full bg-surface-container-high text-primary flex items-center justify-center font-bold text-[11px] flex-none border border-outline-variant/40">
-              {msg.userName ? msg.userName.charAt(0).toUpperCase() : "K"}
-            </div>
-            <div className="flex-1 bg-surface-container-low/80 p-2.5 rounded-xl rounded-tl-none border border-outline-variant/30">
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="font-semibold text-on-surface">
-                  {msg.userName || "Khách hàng"}
-                </span>
-                <span className="text-[10px] text-outline">
-                  {msg.timestamp || "Vừa xong"}
-                </span>
+        {/* Render Live Messages: Chỉ hiển thị tin nhắn của người xem thật, thông báo AI trợ lý hiển thị ở khung banner riêng */}
+        {messages
+          .filter((msg) => msg.userId !== "ai-system")
+          .map((msg) => (
+            <div key={msg.id} className="flex items-start gap-2 text-xs">
+              <div className="w-7 h-7 rounded-full bg-surface-container-high text-primary flex items-center justify-center font-bold text-[11px] flex-none border border-outline-variant/40">
+                {msg.userName ? msg.userName.charAt(0).toUpperCase() : "K"}
               </div>
-              <p className="text-on-surface leading-normal">{msg.content}</p>
+              <div className="flex-1 bg-surface-container-low/80 p-2.5 rounded-xl rounded-tl-none border border-outline-variant/30">
+                <div className="flex items-center justify-between mb-0.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-semibold text-on-surface truncate">
+                      {msg.userName || "Khách hàng"}
+                    </span>
+                    {msg.orderCreated ? (
+                      <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[9px] shrink-0">
+                        Đã chốt đơn
+                      </span>
+                    ) : msg.status === "NEEDS_REVIEW" ? (
+                      <span
+                        className="px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[9px] shrink-0"
+                        title={msg.reviewReason || "Cần xử lý"}
+                      >
+                        {msg.reviewReason?.includes("Cooldown") || msg.reviewReason?.includes("quá nhanh")
+                          ? "Thao tác quá nhanh"
+                          : "Cần bổ sung"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-[10px] text-outline shrink-0 ml-1">
+                    {msg.timestamp || "Vừa xong"}
+                  </span>
+                </div>
+                <p className="text-on-surface leading-normal">{msg.content}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* ======================================================== */}
       {/* GOLDEN UX: PINNED AI HOLD ORDER BAR (CỐ ĐỊNH TRÊN Ô NHẬP CHAT, KHÔNG BỊ TRÔI) */}
       {/* ======================================================== */}
       {activeHoldOrder ? (
-        <div className="mx-3 my-1.5 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-primary/10 to-emerald-500/15 border border-amber-400/50 shadow-md backdrop-blur-xs flex flex-col gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
-              <Sparkles className="w-4 h-4 text-secondary animate-pulse" />
-              <span>Hệ thống AI Gemini đã ghi nhận:</span>
-            </div>
-            <span className="text-emerald-700 bg-emerald-100 font-bold text-[10px] px-2 py-0.5 rounded-full">
-              ĐÃ GIỮ CHỖ
-            </span>
-          </div>
-
+        <div className="mx-3 my-1.5 p-3 rounded-xl bg-white border border-primary/25 border-l-4 border-l-primary shadow-md shadow-primary/10 flex flex-col gap-2.5 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
+          {/* Top Row: AI Status + Countdown + Close 'X' */}
           <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-bold text-xs text-on-surface truncate">
-                  Đơn hàng: {activeHoldOrder.quantity || 1}x {activeHoldOrder.productName || activeHoldOrder.code}
-                </span>
-                <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/40">
-                  #{activeHoldOrder.code}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-[10.5px] text-outline mt-0.5">
-                <span className="font-medium text-rose-600 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-rose-500 animate-pulse" />
-                  <span>Thời gian giữ chỗ còn lại</span>
-                  <strong className="font-mono">({formatCountdown(activeHoldOrder.secondsLeft)})</strong>
-                </span>
-                {activeHoldOrder.variantName && (
-                  <>
-                    <span>•</span>
-                    <span className="text-primary font-medium truncate">
-                      {activeHoldOrder.variantName}
-                    </span>
-                  </>
-                )}
-              </div>
+            <div className="flex items-center gap-1.5 text-xs text-on-surface font-semibold min-w-0">
+              <Sparkles className="w-3.5 h-3.5 text-primary flex-none" />
+              <span className="truncate">Đã giữ hàng cho bạn</span>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-none">
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenOrderModal) {
-                    onOpenOrderModal(activeHoldOrder.code, activeHoldOrder);
-                  }
-                }}
-                className="py-1.5 px-3 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer"
-              >
-                <span>Điền địa chỉ nhận hàng</span>
-                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-              </button>
+            <div className="flex items-center gap-2 flex-none">
+              <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 bg-rose-50 border border-rose-200/80 px-2.5 py-0.5 rounded-full">
+                <Clock className="w-3 h-3 text-rose-500 animate-pulse" />
+                <span>Còn</span>
+                <span className="font-mono font-bold tracking-tight">
+                  {formatCountdown(activeHoldOrder.secondsLeft)}
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setDetectedOrders((prev) => prev.filter((o) => o.id !== activeHoldOrder.id));
                 }}
                 aria-label="Đóng thông báo giữ kho"
-                className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+                className="p-1 -mr-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
+
+          {/* Middle Row: Product info (Rõ ràng, không bị ép cắt chữ 2x ...) */}
+          {(() => {
+            const displayCode = getOrderDisplayCode(
+              activeHoldOrder.code,
+              activeHoldOrder.productName
+            );
+            return (
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[10px] font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded border border-primary/20 flex-none">
+                    {displayCode}
+                  </span>
+                  <span className="font-bold text-xs text-on-surface truncate">
+                    {activeHoldOrder.productName || displayCode}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-outline font-medium truncate pl-0.5 flex-wrap">
+                  <span>
+                    Số lượng:{" "}
+                    <strong className="text-primary font-bold">
+                      {activeHoldOrder.quantity || 1} cái
+                    </strong>
+                  </span>
+                  {activeHoldOrder.variantName && (
+                    <>
+                      <span>•</span>
+                      <span>
+                        Phân loại:{" "}
+                        <strong className="text-on-surface-variant font-semibold">
+                          {activeHoldOrder.variantName}
+                        </strong>
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Bottom Row: Action Buttons (Rộng rãi, dễ bấm) */}
+          <div className="flex items-center gap-2 pt-1 border-t border-outline-variant/30">
+            {onEditVariant && (
+              <button
+                type="button"
+                onClick={() => onEditVariant(activeHoldOrder.code, activeHoldOrder)}
+                className="flex-1 py-1.5 px-2.5 rounded-lg border border-outline-variant/70 bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors cursor-pointer text-center"
+                title="Thay đổi màu sắc, size hoặc số lượng"
+              >
+                Đổi màu/size
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenOrderModal) {
+                  onOpenOrderModal(activeHoldOrder.code, activeHoldOrder);
+                }
+              }}
+              className="flex-1 py-1.5 px-3 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <span>Điền địa chỉ</span>
+              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          </div>
         </div>
       ) : expiredHoldOrder ? (
-        <div className="mx-3 my-1.5 p-2.5 rounded-xl bg-surface-container-high border border-rose-500/40 shadow-md backdrop-blur-xs flex items-center justify-between gap-2.5 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-600 flex items-center justify-center flex-none font-bold shadow-xs">
-              <Clock className="w-4 h-4 text-rose-500" />
+        <div className="mx-3 my-1.5 p-3 rounded-xl bg-white border border-rose-200 border-l-4 border-l-rose-500 shadow-md shadow-rose-500/10 flex flex-col gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-rose-600 font-semibold min-w-0">
+              <Clock className="w-3.5 h-3.5 flex-none" />
+              <span className="truncate">Hết hạn giữ chỗ</span>
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-bold text-xs text-rose-600 truncate">
-                  Đã hết 2 phút giữ chỗ: {expiredHoldOrder.productName || expiredHoldOrder.code}
+            <button
+              type="button"
+              onClick={() => {
+                setDetectedOrders((prev) => prev.filter((o) => o.id !== expiredHoldOrder.id));
+              }}
+              aria-label="Đóng thông báo hết hạn"
+              className="p-1 -mr-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-xs text-on-surface truncate">
+                  {expiredHoldOrder.productName || expiredHoldOrder.code} (SL: {expiredHoldOrder.quantity || 1} cái)
                 </span>
-                <span className="text-[10px] font-mono font-bold text-rose-600 bg-rose-500/10 px-1.5 py-0.2 rounded border border-rose-500/20">
-                  #{expiredHoldOrder.code}
+                <span className="text-[10px] font-mono font-medium text-outline bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/40 flex-none">
+                  {getOrderDisplayCode(expiredHoldOrder.code, expiredHoldOrder.productName)}
                 </span>
               </div>
               <p className="text-[10.5px] text-outline mt-0.5 truncate">
-                Tồn kho đã hoàn trả. Nhấn <strong className="text-on-surface">Chốt lại</strong> để gửi lại cú pháp mua.
+                Tồn kho đã hoàn trả. Bấm <strong className="text-on-surface">Chốt lại</strong> để đặt lại.
               </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-1.5 flex-none">
             <button
               type="button"
               onClick={() => {
@@ -526,25 +593,61 @@ export function CustomerLiveChat({
                 handlePillClick(syntax);
                 setDetectedOrders((prev) => prev.filter((o) => o.id !== expiredHoldOrder.id));
               }}
-              className="py-1.5 px-3 rounded-lg bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white text-xs font-extrabold flex items-center gap-1 shadow-xs transition-transform active:scale-95 cursor-pointer"
+              className="py-1.5 px-3 rounded-lg bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-semibold border border-outline-variant/50 flex items-center gap-1 shadow-xs transition-colors cursor-pointer flex-none"
               title="Điền lại cú pháp chốt đơn vào ô bình luận"
             >
-              <RotateCcw className="w-3.5 h-3.5 stroke-[2.5]" />
+              <RotateCcw className="w-3.5 h-3.5" />
               <span>Chốt lại</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDetectedOrders((prev) => prev.filter((o) => o.id !== expiredHoldOrder.id));
-              }}
-              aria-label="Đóng thông báo hết hạn"
-              className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       ) : null}
+
+      {/* ======================================================== */}
+      {/* AI CLARIFICATION / WARNING BANNER (NỔI BẬT TRÊN Ô CHAT) */}
+      {/* ======================================================== */}
+      {aiNotice && (
+        <div className="mx-3 my-1.5 p-3 rounded-xl bg-amber-50 border border-amber-300/80 text-amber-950 shadow-sm flex flex-col gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 flex-none">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2 min-w-0 flex-1">
+              <Sparkles className="w-4 h-4 text-amber-600 flex-none mt-0.5 animate-pulse" />
+              <div className="text-xs leading-relaxed">
+                <span className="font-bold text-amber-800 mr-1.5">Trợ lý AI:</span>
+                <span className="font-medium text-amber-950">{aiNotice.message}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiNotice(null)}
+              aria-label="Đóng thông báo AI"
+              className="p-1 -mr-1 -mt-0.5 rounded text-amber-700/70 hover:text-amber-950 hover:bg-amber-200/50 transition-colors cursor-pointer flex-none"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {aiNotice.isInvalidCode && availableCodes.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-amber-200/70">
+              <span className="text-[10.5px] font-semibold text-amber-900 flex-none">
+                Gợi ý chốt nhanh:
+              </span>
+              {availableCodes.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    handlePillClick(`Chốt ${c} x1`);
+                    setAiNotice(null);
+                  }}
+                  className="px-2 py-0.5 rounded-md bg-white border border-amber-300 hover:bg-amber-100 text-[11px] font-mono font-bold text-amber-900 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Quick Purchase Syntax Chip Pills */}
       <div className="px-3.5 pt-2 pb-1.5 border-t border-outline-variant/30 bg-surface-container-low/50 flex items-center gap-1.5 overflow-x-auto custom-scrollbar flex-none">
@@ -612,7 +715,7 @@ export function CustomerLiveChat({
               onChange={(e) => onInputChange(e.target.value)}
               placeholder={
                 currentUser
-                  ? "Nhập bình luận hoặc cú pháp mua (VD: Mã 1 x1, Mã 2 x2)..."
+                  ? "Cú pháp chốt đơn: Chốt Mã 1 x1 (hoặc Lấy Mã 2 2 cái)..."
                   : "🔒 Vui lòng đăng nhập để bình luận chốt đơn..."
               }
               autoComplete="off"
@@ -657,19 +760,6 @@ export function CustomerLiveChat({
         <div className="flex items-center justify-between mt-1.5 px-1 text-[10px] text-outline">
           <span>{currentUser ? "Nhấn Enter để gửi bình luận" : "Bắt buộc đăng nhập trước khi bình luận"}</span>
         </div>
-      </div>
-
-      {/* #5 Social Proof Toasts — fixed bottom-left corner */}
-      <div className="fixed bottom-20 left-3 z-[60] flex flex-col gap-2 pointer-events-none">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="bg-surface-container-lowest border border-outline-variant/60 shadow-lg rounded-xl px-3 py-2 flex items-center gap-2 text-xs font-medium text-on-surface animate-in slide-in-from-left-4 fade-in duration-300"
-          >
-            <ShoppingBag className="w-3.5 h-3.5 text-primary flex-none" />
-            <span>{t.text}</span>
-          </div>
-        ))}
       </div>
     </aside>
   );

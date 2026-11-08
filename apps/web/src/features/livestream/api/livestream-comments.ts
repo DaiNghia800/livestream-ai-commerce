@@ -11,6 +11,7 @@ export interface BackendCommentItem {
   content: string;
   role: "host" | "moderator" | "buyer";
   createdAt: string;
+  orderCreated?: boolean;
 }
 
 export interface PostCommentPayload {
@@ -35,6 +36,7 @@ export function mapBackendCommentToStudioChatMessage(
         minute: "2-digit",
       });
 
+  const isOrder = Boolean(item.orderCreated);
   return {
     id: item.id,
     userId: item.userId,
@@ -43,7 +45,9 @@ export function mapBackendCommentToStudioChatMessage(
     content: item.content,
     timestamp,
     createdAt: item.createdAt,
-    badge: item.role === "host" ? "Chủ shop" : undefined,
+    badge: isOrder ? "AI Chốt Đơn" : item.role === "host" ? "Chủ shop" : undefined,
+    orderCreated: isOrder,
+    status: isOrder ? "PENDING_CONFIRMATION" : undefined,
   };
 }
 
