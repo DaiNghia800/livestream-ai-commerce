@@ -1,4 +1,6 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { config } from "../../../src/config.js";
 import {
   createCommentConfirmationReceipt,
   readCommentConfirmationReceipt,
@@ -25,5 +27,24 @@ describe("comment confirmation receipt", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  /** Ký một payload tuỳ ý bằng đúng bí mật của service, để thử các gói "đúng chữ ký nhưng sai ruột". */
+  function kyPayload(payload: string): string {
+    const chuKy = createHmac("sha256", config.secretKey).update(payload).digest("base64url");
+    return `${payload}.${chuKy}`;
+  }
+
+  it("rejects oversized, non-object and malformed payloads even when signed", () => {
+    // Quá dài: chặn trước khi tốn công tính HMAC.
+    const hopLe = createCommentConfirmationReceipt(commentId, customerId, livestreamId);
+    expect(readCommentConfirmationReceipt(hopLe + "a".repeat(2048), commentId)).toBeNull();
+
+    // Chữ ký đúng nhưng ruột là JSON không phải object.
+    expect(readCommentConfirmationReceipt(kyPayload(Buffer.from("null").toString("base64url")), commentId)).toBeNull();
+    expect(readCommentConfirmationReceipt(kyPayload(Buffer.from("123").toString("base64url")), commentId)).toBeNull();
+
+    // Chữ ký đúng nhưng ruột không phải JSON: JSON.parse ném, hàm phải nuốt và trả null.
+    expect(readCommentConfirmationReceipt(kyPayload(Buffer.from("{oops").toString("base64url")), commentId)).toBeNull();
   });
 });
