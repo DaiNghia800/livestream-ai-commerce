@@ -153,6 +153,42 @@ export class LivestreamController {
     }
   };
 
+  getReport = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = GetLivestreamParamSchema.parse(req.params);
+
+      const report = await this.livestreamService.getLivestreamReport(id);
+
+      res.status(200).json(report);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: err.errors.map((e) => e.message).join("; "),
+          details: err.errors,
+        });
+        return;
+      }
+
+      if (err instanceof LivestreamNotFoundError) {
+        res.status(404).json({
+          error: "NotFoundError",
+          message: err.message,
+        });
+        return;
+      }
+
+      console.error(
+        "[LivestreamController] Internal error getting livestream report:",
+        err
+      );
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to get livestream report",
+      });
+    }
+  };
+
   updateStatus = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = GetLivestreamParamSchema.parse(req.params);

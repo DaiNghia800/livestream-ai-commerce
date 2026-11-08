@@ -91,25 +91,14 @@ export function validateCommentContent(content: string, role: string): void {
 export function normalizeCommentForAi(rawContent: string): string {
   let text = rawContent.trim();
 
-  // Chuẩn hóa ký tự nhân × (\u00d7) sang x
+  // 1. Chuẩn hóa ký tự nhân × (\u00d7) sang x
   text = text.replace(/×/g, "x");
 
-  // 1. Chuẩn hóa "mã 2", "mã số 2", "#2", "số 2" -> "SP02" (hoặc SP + 2 chữ số)
-  text = text.replace(/(?:mã\s*(?:số)?|số|#)\s*0*(\d{1,3})\b/gi, (_, num) => {
-    return num.length === 1 ? `SP0${num}` : `SP${num}`;
-  });
+  // 2. Chuẩn hóa cú pháp nhanh: "x1" -> "1 cái", "x 2" -> "2 cái" để AI Worker hiểu đúng số lượng, tránh nhầm "x1" là mã sản phẩm
+  text = text.replace(/\bx\s*(\d+)\b/gi, "$1 cái");
 
-  // 2. Chuẩn hóa cú pháp nhanh: "SP01 x1" -> "Chốt SP01 1 cái", "SP02 x 2" -> "Chốt SP02 2 cái"
-  text = text.replace(/x\s*(\d+)\b/gi, "$1 cái");
-
-  // 3. Nếu câu có chứa SP01, SP02... hoặc mã sản phẩm (TUI-XACH-DA, BLAZER-HANQUOC...) mà chưa có từ khóa chốt/mua/đặt/lấy/order:
-  const hasBuyKeyword = /(?:\b)(?:chốt|mua|order|đặt|lấy|cho)(?:\b)/i.test(text);
-  if (
-    !hasBuyKeyword &&
-    (/\bSP\d+\b/i.test(text) || /\b[A-Za-z0-9]+-[A-Za-z0-9_-]+\b/.test(text))
-  ) {
-    text = `Chốt ${text}`;
-  }
+  // 3. Chuẩn hóa các cách viết tắt: "#1", "số 1", "mã số 1" về dạng đồng nhất "Mã 1"
+  text = text.replace(/(?:mã\s*số|số|#)\s*0*(\d{1,3})\b/gi, "Mã $1");
 
   return text;
 }
@@ -271,6 +260,8 @@ export class LivestreamCommentService {
     });
 
     if (filterResult.shouldProcess) {
+      // Chuẩn hóa cú pháp livestream (Mã 1 -> SP01, x1 -> 1 cái) giúp AI Worker bóc tách chính xác
+      const aiContent = normalizeCommentForAi(savedComment.content);
       const event: CommentCreatedEvent = {
         schema_version: 1,
         event_id: crypto.randomUUID(),
@@ -279,7 +270,7 @@ export class LivestreamCommentService {
         comment_id: savedComment.id,
         session_id: livestreamId,
         customer_id: savedComment.userId,
-        content: savedComment.content,
+        content: aiContent,
       };
 
       try {

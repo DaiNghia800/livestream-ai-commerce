@@ -9,6 +9,7 @@ export interface LivestreamComment {
   content: string;
   role: CommentRole;
   createdAt: string;
+  orderCreated?: boolean;
 }
 
 export interface CreateCommentInput {
