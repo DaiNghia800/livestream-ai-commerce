@@ -24,8 +24,9 @@ export function MonitoringMetrics({
             Chỉ số thời gian thực
           </h2>
         </div>
-        <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">
-          Dữ liệu mô phỏng
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Dữ liệu trực tiếp
         </span>
       </div>
 

@@ -30,10 +30,12 @@ export interface StudioChatMessage {
   status?: StudioChatMessageStatus;
   isAiParsed?: boolean;
   extractedSku?: string;
+  extractedProductName?: string;
   extractedQuantity?: number;
   orderCreated?: boolean;
   orderId?: string;
   reviewReason?: string;
+  targetUserName?: string;
   badge?: string;
   createdAt?: string;
 }

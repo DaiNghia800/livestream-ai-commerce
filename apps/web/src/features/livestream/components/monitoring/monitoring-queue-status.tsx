@@ -24,8 +24,8 @@ export function MonitoringQueueStatus({
             Trạng thái hàng đợi
           </h2>
         </div>
-        <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">
-          Dữ liệu mô phỏng
+        <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">
+          AWS SQS Worker
         </span>
       </div>
 

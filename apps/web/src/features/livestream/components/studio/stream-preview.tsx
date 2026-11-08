@@ -243,10 +243,12 @@ export function StudioStreamPreview({
                     <Radio className="h-6 w-6 animate-pulse" aria-hidden="true" />
                   </div>
                   <h4 className="text-xs sm:text-sm font-bold text-amber-300">
-                    Luồng phát video đang tạm dừng
+                    {isResuming ? "Đang tự động kết nối lại luồng phát..." : "Luồng phát video đang tạm dừng"}
                   </h4>
                   <p className="text-[11px] text-slate-300 leading-relaxed text-center">
-                    Phiên phát sóng vẫn đang hoạt động. Vui lòng kết nối lại Camera để tiếp tục đẩy luồng video lên AWS IVS.
+                    {isResuming
+                      ? "Hệ thống đang tự động khôi phục Camera/Micro và đẩy luồng video lên AWS IVS..."
+                      : "Phiên phát sóng vẫn đang hoạt động. Vui lòng kết nối lại Camera để tiếp tục đẩy luồng video lên AWS IVS."}
                   </p>
                   <button
                     type="button"

@@ -26,11 +26,17 @@ const STATUS_FILTERS: { value: string; label: string }[] = [
 export function ReportCommentLog({ logs }: ReportCommentLogProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [intentOnly, setIntentOnly] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Filter logic
   const filteredLogs = useMemo(() => {
     return logs.filter((item) => {
+      // 0. Intent Only (Hide non-intent chat spam by default)
+      if (intentOnly && item.status === "NOT_INTENT") {
+        return false;
+      }
+
       // 1. Status Filter
       if (statusFilter !== "ALL" && item.status !== statusFilter) {
         return false;
@@ -50,7 +56,7 @@ export function ReportCommentLog({ logs }: ReportCommentLogProps) {
 
       return true;
     });
-  }, [logs, statusFilter, searchTerm]);
+  }, [logs, statusFilter, searchTerm, intentOnly]);
 
   // Pagination calculation
   const totalItems = filteredLogs.length;
@@ -120,6 +126,22 @@ export function ReportCommentLog({ logs }: ReportCommentLogProps) {
               ))}
             </select>
           </div>
+
+          {/* Quick Toggle: Hide non-intent spam */}
+          <button
+            type="button"
+            onClick={() => {
+              setIntentOnly(!intentOnly);
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+              intentOnly
+                ? "bg-primary/10 border-primary/30 text-primary"
+                : "bg-surface-container-low border-outline-variant text-on-surface-variant hover:text-on-surface"
+            }`}
+          >
+            {intentOnly ? "✓ Đang ẩn bình luận dạo" : "Hiện cả bình luận dạo"}
+          </button>
         </div>
       </div>
 
