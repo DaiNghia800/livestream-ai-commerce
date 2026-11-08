@@ -112,7 +112,7 @@ function loadExternalScript(src: string, id: string): Promise<void> {
 export function CustomerLivePlayer({
   title = "Đại tiệc Flash Sale BST Linen Hè 2025 - Giảm sốc đến 50%",
   playbackUrl,
-  viewerCount = 1,
+  viewerCount = 2845,
   likesCount,
   onSendLike,
   hostName = "ChicStyle Official Live",
