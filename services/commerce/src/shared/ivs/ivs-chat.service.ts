@@ -178,10 +178,12 @@ export class IvsChatService implements IIvsChatService {
       attributes.avatarUrl = params.avatarUrl;
     }
 
+    const sanitizedUserId = params.userId.replace(/[^a-zA-Z0-9_-]/g, "_") || "user";
+
     try {
       const command = new CreateChatTokenCommand({
         roomIdentifier: params.roomArn,
-        userId: params.userId,
+        userId: sanitizedUserId,
         capabilities,
         sessionDurationInMinutes: 180, // 3 giờ
         attributes,
