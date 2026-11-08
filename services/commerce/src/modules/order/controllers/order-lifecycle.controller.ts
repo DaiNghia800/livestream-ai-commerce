@@ -1,13 +1,17 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
+import { CodNotAllowedError } from "../../payment/errors/payment.errors.js";
 import {
   InvalidOrderStateError,
+  OrderAccessError,
   OrderNotFoundError,
+  OutOfStockError,
 } from "../../../shared/errors/domain.errors.js";
 import {
   CancelIntentRequestSchema,
   CancelOrderRequestSchema,
   ConfirmOrderRequestSchema,
+  SetOrderAddressRequestSchema,
 } from "../schemas/order.schema.js";
 import type { CancelIntentService } from "../services/cancel-intent.service.js";
 import type { OrderLifecycleService } from "../services/order-lifecycle.service.js";
@@ -67,14 +71,17 @@ export class OrderLifecycleController {
   /**
    * GET /orders/confirm/:token
    *
-   * Khách bấm vào link trong tin nhắn. Vừa đọc đơn vừa gia hạn giữ hàng
-   * nên dùng GET có tác dụng phụ — chấp nhận được vì không có cách nào
-   * khác để biết khách đã mở link, mà đó chính là tín hiệu quyết định
-   * tầng hai của TTL.
+   * Khách bấm vào link trong tin nhắn. Vừa đọc đơn vừa ghi dấu "đã mở
+   * link" nên dùng GET có tác dụng phụ — chấp nhận được vì không có
+   * cách nào khác để biết khách đã mở, mà đó là bằng chứng họ có thật.
    */
   openConfirmLink = async (req: Request, res: Response): Promise<void> => {
     try {
-      res.json(this.presentCustomerOrder(await this.service.openConfirmLink(req.params.token)));
+      res.json(
+        this.presentCustomerOrder(
+          await this.service.openConfirmLink(req.params.token, req.auth?.userId ?? null)
+        )
+      );
     } catch (err) {
       this.handleError(err, res, "open confirm link");
     }
@@ -84,7 +91,11 @@ export class OrderLifecycleController {
   confirm = async (req: Request, res: Response): Promise<void> => {
     try {
       const input = ConfirmOrderRequestSchema.parse(req.body);
-      res.json(this.presentCustomerOrder(await this.service.confirmOrder(req.params.token, input)));
+      res.json(
+        this.presentCustomerOrder(
+          await this.service.confirmOrder(req.params.token, input, req.auth?.userId ?? null)
+        )
+      );
     } catch (err) {
       this.handleError(err, res, "confirm order");
     }
@@ -120,6 +131,23 @@ export class OrderLifecycleController {
     }
   };
 
+  /**
+   * POST /orders/:orderId/address — shop sửa tay địa chỉ giao.
+   *
+   * Lối thoát cho cảnh báo "địa chỉ chưa chuẩn hoá": không có đường
+   * này thì shop đọc cảnh báo xong không làm gì được, mà đơn cũng
+   * không đẩy sang hãng được.
+   */
+  setAddress = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = SetOrderAddressRequestSchema.parse(req.body);
+      const changedBy = req.header("X-Merchant-Id") ?? undefined;
+      res.json(await this.service.setOrderAddress(req.params.orderId, input, changedBy));
+    } catch (err) {
+      this.handleError(err, res, "set order address");
+    }
+  };
+
   /** POST /orders/:orderId/complete — hàng đã rời kho, trừ tồn thật. */
   complete = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -149,9 +177,42 @@ export class OrderLifecycleController {
       return;
     }
 
+    // Đơn đã nối với tài khoản: 401 khi chưa đăng nhập (trang khách
+    // mời đăng nhập), 403 khi đăng nhập sai người.
+    if (err instanceof OrderAccessError) {
+      res
+        .status(err.kind === "LOGIN_REQUIRED" ? 401 : 403)
+        .json({
+          error: err.kind === "LOGIN_REQUIRED" ? "LoginRequired" : "NotYourOrder",
+          message: err.message,
+        });
+      return;
+    }
+
     // 409 chứ không 400: yêu cầu hợp lệ, chỉ là đơn đang ở trạng thái
     // không cho phép. Client thường nên tải lại đơn rồi hiển thị trạng
     // thái mới, chứ không phải sửa dữ liệu gửi lên.
+    // 422: yêu cầu đúng hình thức nhưng nghiệp vụ không cho — khách
+    // này không được trả tiền khi nhận. Khác 409: đơn không ở trạng
+    // thái sai, chỉ là lựa chọn thanh toán bị từ chối.
+    if (err instanceof CodNotAllowedError) {
+      res.status(422).json({ error: "CodNotAllowed", message: err.message });
+      return;
+    }
+
+    // Hết hàng ĐÚNG LÚC xác nhận: đơn nháp không giữ tồn, người khác
+    // vừa bấm trước. Trả về mã nào thiếu và còn bao nhiêu để trang
+    // khách nói thẳng, thay vì một câu "lỗi" chung chung. 409 vì đơn
+    // vẫn là nháp, khách tải lại sẽ thấy đúng trạng thái.
+    if (err instanceof OutOfStockError) {
+      res.status(409).json({
+        error: "OutOfStock",
+        message: err.message,
+        rejected: [{ skuId: err.skuId, requested: err.requested, sellable: err.sellable }],
+      });
+      return;
+    }
+
     if (err instanceof InvalidOrderStateError) {
       res.status(409).json({
         error: "InvalidOrderState",
@@ -175,11 +236,13 @@ export class OrderLifecycleController {
       orderCode: order.orderCode,
       status: order.status,
       totalAmount: order.totalAmount,
-      heldUntil: order.heldUntil,
       recipientName: order.recipientName ?? null,
       recipientPhone: order.recipientPhone ?? null,
       shippingAddress: order.shippingAddress ?? null,
       addressNormalized: order.addressNormalized ?? false,
+      // Bối cảnh phiên live: khách nhận ra đơn của mình nhờ tên phiên
+      // và chính câu họ đã gõ, chứ không nhờ mã đơn.
+      livestreamTitle: order.livestreamTitle ?? null,
       items: order.items,
     };
   }

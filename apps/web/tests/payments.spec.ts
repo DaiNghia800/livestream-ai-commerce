@@ -1,22 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import ExcelJS from "exceljs";
 import { PAYMENT_PAID, PAYMENT_UNDERPAID, stubApi } from "./fixtures/api";
 
-/**
- * Bấm một chip lọc.
- *
- * `force` ở đây KHÔNG phải để che lỗi giao diện. Trên viewport cảm
- * ứng, phép kiểm chạm của Playwright báo nhãn "Nguồn đơn" chắn mất
- * chip, trong khi `document.elementFromPoint` tại đúng tâm chip trả
- * về chính chip đó và nhãn nằm cách 80px phía trên. Phần tử thật sự
- * bấm được; chỉ heuristic là sai.
- *
- * Cú bấm có ăn hay không thì các assert ngay sau đó chứng minh: danh
- * sách phải đổi theo bộ lọc.
- */
-async function clickChip(page: Page, name: RegExp) {
-  const chip = page.getByRole("button", { name });
-  await chip.scrollIntoViewIfNeeded();
-  await chip.click({ force: true });
+async function activate(page: Page, name: string | RegExp) {
+  await page.getByRole("button", { name }).focus();
+  await page.keyboard.press("Enter");
 }
 
 function collectConsoleErrors(page: Page) {
@@ -36,28 +24,27 @@ test("payment list links through to the transaction detail", async ({ page }) =>
     page.getByRole("heading", { name: "Đối soát thu tiền" }),
   ).toBeVisible();
 
-  // Hàng chip cuộn ngang trên mobile nên phải kéo vào khung
-  // trước khi bấm, nếu không Playwright chờ mãi vì phần tử nằm
-  // ngoài vùng nhìn thấy.
-  await clickChip(page, /^Đã thanh toán/);
+  await activate(page, /^Bộ lọc/);
+  await activate(page, "Giá trị cho Trạng thái");
+  await page.getByRole("option", { name: "Đã thanh toán" }).focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
   await expect(page.getByText(PAYMENT_PAID.txnRef, { exact: true })).toBeVisible();
   // exact: true để không dính nhãn sr-only của link thao tác.
   await expect(
     page.getByText(PAYMENT_UNDERPAID.txnRef, { exact: true }),
   ).toHaveCount(0);
 
-  await clickChip(page, /^Tất cả/);
-  // Tên khả truy cập của link giờ đã kèm mã giao dịch nên trỏ thẳng
-  // được, không phải đi vòng qua dòng bảng.
-  //
-  // Cột thao tác nằm cuối một bảng rộng, trên màn hình hẹp nó phải
-  // cuộn ngang trong `.table-wrap` mới thấy. Kéo vào khung trước rồi
-  // mới bấm, cùng lý do như clickChip.
+  await activate(page, /^Bộ lọc/);
+  await activate(page, "Đặt lại");
+  await page.keyboard.press("Escape");
+  // Cột thao tác nằm cuối bảng rộng; kích hoạt bằng bàn phím xác nhận
+  // link vẫn dùng được cả khi bảng đang cuộn ngang trên điện thoại.
   const link = page.getByRole("link", {
     name: `Xem chi tiết giao dịch ${PAYMENT_PAID.txnRef}`,
   });
-  await link.scrollIntoViewIfNeeded();
-  await link.click({ force: true });
+  await link.focus();
+  await page.keyboard.press("Enter");
 
   await expect(
     page.getByRole("heading", { name: `Giao dịch ${PAYMENT_PAID.txnRef}` }),
@@ -74,6 +61,59 @@ test("payment list links through to the transaction detail", async ({ page }) =>
     ),
   ).toBe(true);
   expect(consoleErrors).toEqual([]);
+});
+
+test("lọc kết hợp, sắp xếp và phân trang khoản thu", async ({ page }) => {
+  const payments = Array.from({ length: 25 }, (_, index) => ({
+    ...PAYMENT_PAID,
+    id: `pay-${index}`,
+    txnRef: `TXN-${String(index).padStart(2, "0")}`,
+    amount: String(100000 + index * 1000),
+    paidAmount: String(100000 + index * 1000),
+  }));
+  await stubApi(page, { payments });
+  await page.goto("/shop/payments");
+
+  await expect(page.locator("tbody tr")).toHaveCount(20);
+  await activate(page, "Trang sau");
+  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await page.getByLabel("Số dòng mỗi trang").selectOption("10");
+  await expect(page.locator("tbody tr")).toHaveCount(10);
+  await expect(page.getByText(/Hiện 1–10 trong/)).toBeVisible();
+
+  await activate(page, "Sắp xếp danh sách");
+  await page.getByRole("menuitem", { name: "Phải thu cao → thấp" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("tbody tr").first()).toContainText("TXN-24");
+
+  await activate(page, /^Bộ lọc/);
+  await activate(page, "Giá trị cho Hình thức");
+  await page.getByRole("option", { name: "Thu hộ khi giao (COD)" }).focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Không có khoản thu khớp" })).toBeVisible();
+  await activate(page, /^Bộ lọc/);
+  await activate(page, "Đặt lại");
+  await expect(page.locator("tbody tr")).toHaveCount(10);
+});
+
+test("xuất Excel khoản thu giữ bộ lọc, số tiền và độ rộng cột", async ({ page }) => {
+  await stubApi(page);
+  await page.goto("/shop/payments");
+  await page.getByLabel("Tìm giao dịch").fill(PAYMENT_UNDERPAID.txnRef);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    activate(page, /Xuất Excel/),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^thanh-toan-\d{8}-\d{4}\.xlsx$/);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile((await download.path())!);
+  const sheet = workbook.worksheets[0];
+  expect(sheet.rowCount).toBe(2);
+  expect(sheet.getRow(2).getCell(1).value).toBe(PAYMENT_UNDERPAID.txnRef);
+  expect(sheet.getRow(2).getCell(7).value).toBe(398000);
+  expect(sheet.getRow(2).getCell(8).value).toBe(100000);
+  expect(sheet.getColumn(1).width).toBeGreaterThan(PAYMENT_UNDERPAID.txnRef.length);
 });
 
 test("underpaid transfers are called out, not buried", async ({ page }) => {

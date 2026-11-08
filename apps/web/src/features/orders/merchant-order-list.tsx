@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
@@ -18,14 +18,13 @@ import {
   Filter,
   RefreshCw,
   Search,
-  Trash2,
   Wallet,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
-import { formatCountdown, formatMoney } from "@/lib/format";
+import { formatCountdown, formatDateTime, formatMoney } from "@/lib/format";
 import { ordersApi, type OrderDetail, type OrderListItem } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { useNow } from "@/lib/use-now";
@@ -42,21 +41,13 @@ import {
 } from "./order-filter-builder";
 import styles from "./merchant-order-list.module.css";
 import zebra from "@/styles/zebra-table.module.css";
-import { buildCsv, downloadCsv, tenTep } from "@/lib/export-csv";
+import { downloadXlsx } from "@/lib/export-xlsx";
 import {
   GIOI_HAN_IN,
   moHopThoaiIn,
   PrintableOrders,
   taiChiTiet,
 } from "./print-orders";
-
-const LUU_KEY = "liveorder.order-filters.v1";
-
-interface BoLocDaLuu {
-  ten: string;
-  mode: MatchMode;
-  rows: FilterRow[];
-}
 
 /**
  * Dãy số trang để hiển thị, rút gọn bằng dấu ba chấm.
@@ -119,7 +110,6 @@ export function MerchantOrderList() {
   // Mở sẵn bốn điều kiện hay dùng; chưa chọn giá trị nên chưa lọc gì.
   const [rows, setRows] = useState<FilterRow[]>(rowsMacDinh);
   const [mode, setMode] = useState<MatchMode>("ALL");
-  const [daLuu, setDaLuu] = useState<BoLocDaLuu[]>([]);
   const [trang, setTrang] = useState(1);
   const [soDong, setSoDong] = useState(20);
   const [moLoc, setMoLoc] = useState(false);
@@ -137,34 +127,6 @@ export function MerchantOrderList() {
   );
   const orders = useMemo(() => data ?? [], [data]);
   const now = useNow(orders.length > 0);
-
-  // Bộ lọc đã lưu nằm ở localStorage: chưa có đăng nhập nên không có
-  // chỗ nào trên server để gắn chúng vào một tài khoản.
-  useEffect(() => {
-    // Đọc trong setTimeout chứ không gọi thẳng trong thân effect: gọi
-    // thẳng kích hoạt một vòng render nối tiếp, và localStorage không
-    // tồn tại lúc render phía server nên cũng không khởi tạo sẵn được.
-    const id = setTimeout(() => {
-      try {
-        const raw = localStorage.getItem(LUU_KEY);
-        if (raw) setDaLuu(JSON.parse(raw) as BoLocDaLuu[]);
-      } catch {
-        // Trình duyệt chặn localStorage, hoặc dữ liệu cũ hỏng định
-        // dạng. Mất bộ lọc đã lưu thì phiền, nhưng không được làm vỡ
-        // cả trang.
-      }
-    }, 0);
-    return () => clearTimeout(id);
-  }, []);
-
-  function ghiLai(ds: BoLocDaLuu[]) {
-    setDaLuu(ds);
-    try {
-      localStorage.setItem(LUU_KEY, JSON.stringify(ds));
-    } catch {
-      /* xem lý do ở trên */
-    }
-  }
 
   // `now` bằng 0 ở lần render đầu (xem useNow). Truyền thẳng chứ không
   // lùi về Date.now(): gọi hàm không thuần khiết trong thân render thì
@@ -297,36 +259,41 @@ export function MerchantOrderList() {
     return r?.op === "is" && r.values.length === 1 && r.values[0] === status;
   }
 
-  /** Xuất đúng những đơn đang hiển thị, theo đúng thứ tự trên bảng. */
-  function xuatExcel() {
+  /** Export the filtered, sorted set, including rows on other pages. */
+  async function xuatExcel() {
     setLoiThaoTac(null);
-    const csv = buildCsv(filtered, [
-      { header: "Mã đơn", value: (o) => o.orderCode },
-      {
-        header: "Trạng thái",
-        value: (o) => orderStatuses[o.status]?.label ?? o.status,
-      },
-      { header: "Nguồn", value: (o) => orderSources[o.source] ?? o.source },
-      { header: "Người nhận", value: (o) => o.recipientName ?? "" },
-      // Để dạng chữ: số điện thoại bắt đầu bằng 0, Excel đọc là số thì
-      // mất luôn số 0 đầu và sai toàn bộ danh bạ.
-      { header: "Điện thoại", value: (o) => o.recipientPhone ?? "" },
-      { header: "Số dòng hàng", value: (o) => o.itemCount },
-      { header: "Tổng tiền", value: (o) => o.totalAmount },
-      {
-        header: "Thanh toán",
-        value: (o) =>
-          o.paymentStatus === "PAID"
-            ? "Đã thu"
-            : o.paymentStatus
-              ? "Chờ thu"
-              : "Chưa tạo",
-      },
-      { header: "Chặn COD", value: (o) => (o.codBlocked ? "Có" : "") },
-      { header: "Hạn giữ hàng", value: (o) => o.heldUntil ?? "" },
-      { header: "Tạo lúc", value: (o) => o.createdAt },
-    ]);
-    downloadCsv(tenTep("don-hang"), csv);
+    try {
+      await downloadXlsx("don-hang", "Đơn hàng", filtered, [
+        { header: "Mã đơn", value: (o) => o.orderCode },
+        {
+          header: "Trạng thái",
+          value: (o) => orderStatuses[o.status]?.label ?? o.status,
+        },
+        { header: "Nguồn", value: (o) => orderSources[o.source] ?? o.source },
+        { header: "Người nhận", value: (o) => o.recipientName ?? "" },
+        { header: "Điện thoại", value: (o) => o.recipientPhone ?? "", minWidth: 18 },
+        { header: "Số dòng hàng", value: (o) => o.itemCount, kind: "number" },
+        { header: "Tổng tiền (₫)", value: (o) => o.totalAmount, kind: "money" },
+        {
+          header: "Thanh toán",
+          value: (o) =>
+            o.paymentStatus === "PAID"
+              ? "Đã thu"
+              : o.paymentStatus
+                ? "Chờ thu"
+                : "Chưa tạo",
+        },
+        { header: "Chặn COD", value: (o) => (o.codBlocked ? "Có" : "") },
+        {
+          header: "Hạn giữ hàng",
+          value: (o) => o.heldUntil ? formatDateTime(o.heldUntil) : "",
+          minWidth: 20,
+        },
+        { header: "Tạo lúc", value: (o) => formatDateTime(o.createdAt), minWidth: 20 },
+      ]);
+    } catch {
+      setLoiThaoTac("Không tạo được tệp Excel. Vui lòng thử lại.");
+    }
   }
 
   /**
@@ -358,15 +325,6 @@ export function MerchantOrderList() {
     } finally {
       setDangIn(null);
     }
-  }
-
-  function luuBoLoc() {
-    const ten = window.prompt("Đặt tên cho bộ lọc này:");
-    if (!ten?.trim()) return;
-    ghiLai([
-      ...daLuu.filter((b) => b.ten !== ten.trim()),
-      { ten: ten.trim(), mode, rows },
-    ]);
   }
 
   return (
@@ -555,37 +513,8 @@ export function MerchantOrderList() {
                   setRows(rowsMacDinh());
                   setTrang(1);
                 }}
-                onSave={luuBoLoc}
                 ketQua={filtered.length}
               />
-
-              {daLuu.length > 0 && (
-                <div className={styles.saved}>
-                  <span className={styles.savedLabel}>Bộ lọc đã lưu:</span>
-                  {daLuu.map((b) => (
-                    <span key={b.ten} className={styles.savedChip}>
-                      <button
-                        type="button"
-                        className={styles.savedApply}
-                        onClick={() => {
-                          setMode(b.mode);
-                          setRows(b.rows);
-                        }}
-                      >
-                        {b.ten}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.savedDrop}
-                        aria-label={`Xoá bộ lọc ${b.ten}`}
-                        onClick={() => ghiLai(daLuu.filter((x) => x.ten !== b.ten))}
-                      >
-                        <Trash2 size={13} aria-hidden="true" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>

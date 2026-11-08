@@ -10,6 +10,7 @@ import {
   createCommentSchema,
   getCommentsQuerySchema,
 } from "../schemas/livestream-comment.schema.js";
+import { createCommentConfirmationReceipt } from "../../order/services/comment-confirmation-receipt.js";
 
 export class LivestreamCommentController {
   constructor(private readonly service: LivestreamCommentService) {}
@@ -91,6 +92,13 @@ export class LivestreamCommentController {
 
       res.status(201).json({
         data: comment,
+        ...(comment.role === "buyer" && {
+          confirmationReceipt: createCommentConfirmationReceipt(
+            comment.id,
+            comment.userId,
+            id
+          ),
+        }),
       });
     } catch (error) {
       if (error instanceof LivestreamNotFoundError) {

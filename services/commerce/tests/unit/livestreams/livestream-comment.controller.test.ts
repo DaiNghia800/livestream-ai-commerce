@@ -168,7 +168,12 @@ describe("LivestreamCommentController Unit Tests", () => {
       await controller.createComment(mockReq as Request, mockRes as Response);
 
       expect(statusSpy).toHaveBeenCalledWith(201);
-      expect(jsonSpy).toHaveBeenCalledWith({ data: createdComment });
+      // Bình luận của người mua đi kèm biên nhận ký (confirmationReceipt)
+      // để chính người đó mở được link xác nhận đơn sinh ra từ bình luận.
+      expect(jsonSpy).toHaveBeenCalledWith({
+        data: createdComment,
+        confirmationReceipt: expect.any(String),
+      });
     });
 
     it("trả về 404 khi service ném LivestreamNotFoundError", async () => {

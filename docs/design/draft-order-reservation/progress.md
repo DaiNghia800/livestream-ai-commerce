@@ -527,3 +527,131 @@ Checklist kiểm thử tay trên UI: [kiem-thu-tay.md](kiem-thu-tay.md).
 | `tasks.md` chưa có task cho backend thanh toán, nối frontend và màn hình hàng đợi duyệt | Khoảng 5 ngày công chưa ai tính |
 | Test chạy song song không được giả định mình chiếm trọn một lô | `publish-outbox` từng đỏ ngẫu nhiên vì lô 100 sự kiện bị file khác lấp đầy. Cách đúng: rút cạn trong vòng lặp, hoặc hỏi thẳng tầng repository |
 | Đồng hồ container Postgres lệch khỏi host 1–2 giây và trôi dần | WSL2 sau khi máy ngủ. Test **không được** so mốc thời gian do Postgres sinh với `Date.now()` của Node — đã làm đỏ ngẫu nhiên 2 ca của T10. Cách đúng: tính khoảng cách ngay trong SQL (`EXTRACT(EPOCH FROM (x - NOW()))`) |
+
+---
+
+## 2026-10-22 — Bỏ giữ tồn ở đơn nháp
+
+Yêu cầu nghiệp vụ: đơn chờ xác nhận không giữ tạm tồn và không có hạn
+15 phút; tồn chỉ bị trừ khi đơn thật sự sang **đã xác nhận**.
+
+| Thay đổi | Trước | Sau |
+|---|---|---|
+| Tạo nháp | `holdUpTo` + `reservations` HOLDING + `held_until` | Chỉ ghi dòng hàng; đọc tồn khả dụng để báo "hết hàng" ngay (ảnh chụp, không cam kết) |
+| Mở link | Nới hạn lên 15' | Chỉ ghi `confirm_opened_at` |
+| Xác nhận | Gỡ `held_until`, không đụng tồn | `holdStock` đủ-hoặc-không cho từng dòng → `reservations` HOLDING; thiếu → `409 OutOfStock`, ROLLBACK, đơn vẫn nháp |
+| Hết hạn | `ExpireOrdersJob` → `EXPIRED`, trả tồn | **Bỏ** job, bỏ `expireOrder`/`markExpired` |
+| Duyệt đề nghị | Chuyển chủ lượt giữ sang đơn (`transferHoldToOrderItem`/`mergeHoldInto`) | Ghi dòng hàng, `releaseStock` lý do `APPROVED` |
+| Guard BẪY-01 | `SUM(reservations HOLDING)` | `SUM(order_items)` của đơn còn sống + lượt giữ đề nghị |
+| Config | `HOLD_CONFIRM_SECONDS`, `HOLD_MAX_SECONDS`, `HOLD_RISKY_SECONDS` | Bỏ; `HOLD_SOFT_SECONDS` chỉ còn là TTL của đề nghị chờ duyệt |
+| Schema | `chk_orders_hold_until`, `idx_orders_pending_hold` | Migration 023 gỡ cả hai, trả tồn của đơn nháp đang có |
+| Trang khách | Đồng hồ đếm ngược + "đang giữ N sản phẩm" | Khung "giữ chỗ": link không hết hạn, hàng chỉ trừ lúc bấm; 409 hiện tên sản phẩm thiếu |
+
+**Đánh đổi đã chấp nhận:** nhiều khách cùng chốt món cuối đều có đơn
+nháp; ai xác nhận trước được, người sau nhận "hết hàng" ngay lúc bấm.
+Đổi lại "tồn ma" (BẪY-12) biến mất tận gốc và khách thật không bị cắt
+giữa lúc gõ địa chỉ.
+
+**Ca kiểm thử mới quan trọng:** "N KHÁCH CÙNG BẤM XÁC NHẬN món cuối:
+đúng một người thắng" (`order-lifecycle.integration.test.ts`) — tám
+request xác nhận song song trên tồn 1, đúng một 200 và bảy 409.
+
+---
+
+## 2026-10-22 — Sổ địa chỉ và hồ sơ khách (luồng kiểu sàn lớn)
+
+| Thành phần | Nội dung |
+|---|---|
+| Schema | `user_addresses` (022), `users.phone` + `user_addresses.label` HOME/OFFICE (024) |
+| API | `/api/me/addresses` CRUD + đặt mặc định; `/api/me/profile` xem/sửa tên, SĐT. Id lấy từ token, không từ URL |
+| Menu avatar | Thông tin cá nhân · Địa chỉ nhận hàng · Đăng xuất |
+| Trang xác nhận (đã đăng nhập) | MỘT dòng địa chỉ mặc định + "Thay đổi" mở popup radio chọn / Cập nhật / Thêm địa chỉ mới. Không còn ô gõ tay |
+| Trang xác nhận (khách vãng lai) | Form tay như cũ — link xác nhận không bắt đăng nhập |
+| Form địa chỉ | Họ tên, SĐT điền sẵn từ hồ sơ; tỉnh → phường chọn qua popup tìm kiếm (danh mục hai cấp); địa chỉ cụ thể; Nhà riêng/Văn phòng; mặc định |
+
+Khác Shopee ở một điểm cố ý: Shopee gộp "Tỉnh/TP, Quận/Huyện" vào một ô
+vì họ còn ba cấp; dữ liệu ở đây là hai cấp chính thức nên là hai bước.
+
+---
+
+## 2026-10-22 — Link xác nhận chỉ mở được bằng đúng tài khoản
+
+Đơn chỉ mang `customer_id` (UUID trang live sinh trong trình duyệt), nên
+trước đây ai cầm link cũng mở và xác nhận được.
+
+| Thành phần | Nội dung |
+|---|---|
+| Schema | `customer_identities(customer_id PK, user_id)` (025): mỗi mã khách thuộc đúng một tài khoản |
+| API | `POST /api/me/customer-ids` — trang live gọi khi khách đã đăng nhập; tài khoản khác đòi cùng mã → 409 |
+| `GET/POST /orders/confirm/:token` | Bearer tuỳ chọn. Đơn đã nối: thiếu token → 401 `LoginRequired`, sai tài khoản → 403 `NotYourOrder`. Đơn chưa nối (khách vãng lai, dữ liệu cũ) giữ hành vi cũ. Token hỏng/hết hạn = khách vãng lai |
+| Web | Trang confirm gửi Bearer, hiện màn "Đăng nhập để xem đơn này" / "Đơn này thuộc tài khoản khác"; trang live sinh lại UUID khi nhận 409 |
+
+Kiểm ở service (`requireViewer`) chứ không ở middleware để GET và POST
+không bao giờ lệch nhau — chặn xem mà quên chặn xác nhận hộ là lỗ hổng.
+
+---
+
+## 2026-10-22 — Màn "Đơn mua" của khách
+
+| Thành phần | Nội dung |
+|---|---|
+| API | `GET /api/me/orders?group=` — đơn của mọi mã khách thuộc tài khoản (JOIN `customer_identities`), kèm dòng hàng, thanh toán, vận đơn còn sống; trả cả `confirmToken` vì người gọi là chủ đơn |
+| Web | `/orders`: tab Tất cả / Chờ xác nhận / Đang xử lý / Đang giao / Hoàn thành / Đã huỷ; mỗi đơn một thẻ; nút "Xác nhận đơn" (nháp) / "Xem đơn" / "Theo dõi vận đơn" |
+| Menu avatar | thêm mục "Đơn mua" |
+
+Chiều `user_id → customer_id` là **một-nhiều**: mỗi trình duyệt khách
+từng đăng nhập là một UUID. Vì vậy mọi truy vấn "đơn của tài khoản"
+phải đi qua bảng nối, không so một mã.
+
+---
+
+## 2026-10-24 — Giỏ hàng trong phiên live
+
+**Giỏ hàng = đơn nháp đang mở của khách trong phiên.** Không có bảng giỏ
+riêng: bình luận AI chốt cộng dồn vào đơn nháp, nháp không giữ tồn và
+không hết hạn, nên xem/sửa giỏ không đụng kho; tồn chỉ được giữ khi
+khách bấm "Xác nhận đơn hàng" trong giỏ.
+
+| Thành phần | Nội dung |
+|---|---|
+| API | `GET /api/me/cart?livestreamId=` (không đánh dấu "đã mở link"), `PATCH/DELETE /api/me/cart/items/:itemId`; bỏ món cuối → huỷ đơn nháp |
+| Quy tắc gộp | Migration 026: index `uq_orders_open_draft` bao cả `PENDING_CONFIRMATION` — mở giỏ rồi chốt thêm mã vẫn vào cùng giỏ (trước đây đẻ đơn thứ hai) |
+| Trang live | Nút giỏ + huy hiệu số món ở đầu cột chat; AI xử lý xong → toast "Đã thêm 3 × Áo mmm vào giỏ hàng" (so giỏ trước/sau, không cần backend ghi món theo bình luận) + nút "Xem giỏ"; khách vãng lai giữ link mở form như cũ |
+| Ngăn kéo | Trượt từ phải, không rời trang. Bước 1 giỏ (−/+, Xoá, tạm tính) → bước 2 xác nhận (dòng địa chỉ + Thay đổi, ghi chú, COD/online) → bước 3 đã chốt (online: khối chọn cổng + QR ngay trong ngăn) |
+| Dùng chung | `checkout-parts.tsx`: dòng địa chỉ, thẻ chọn cách trả, câu lỗi hết hàng — trang /confirm và ngăn kéo cùng dùng |
+
+Giỏ cần đăng nhập (như các sàn). `source_comment_id` trên dòng hàng
+chưa được ghi ở luồng AI, nên toast tính món mới bằng cách so giỏ
+trước/sau thay vì hỏi máy chủ "bình luận này thêm gì".
+
+---
+
+## 2026-11-02 — Nút mua trên trang live và giữ tồn theo cách trả
+
+**Nút "Mua ngay" / "Mua hàng" trong giỏ cá nhân giờ tạo đơn thật**, theo
+nhịp TikTok Shop: sheet chọn phân loại → màn Thanh toán (sổ địa chỉ +
+Thay đổi, sản phẩm, vận chuyển, cách trả, lời nhắn, tổng, "Đặt hàng") →
+kết quả. `POST /api/me/cart/items` đưa SKU của phiên vào giỏ server
+(nguồn `BUTTON`, gộp vào giỏ đang mở như bình luận), rồi
+`POST /orders/confirm/:token` với địa chỉ trong sổ.
+
+**Luật giữ tồn theo cách trả** (quyết định của nhóm):
+
+| Cách trả | Lúc xác nhận | Khi tiền về | Khi hãng trả hàng |
+|---|---|---|---|
+| COD | giữ tồn ngay, `CONFIRMED` | (tiền về lúc giao) | `RETURNED` → trả tồn (đã có) |
+| Online / chuyển khoản | **không giữ**, đơn `AWAITING_PAYMENT`, tạo khoản thu | giữ tồn **trong transaction của khoản thu** → `CONFIRMED`; hết hàng → `CANCELLED` lý do `OUT_OF_STOCK_AT_PAYMENT`, khoản thu vẫn `PAID` để shop hoàn | như COD |
+
+- Migration 027 thêm trạng thái; `markAwaitingPayment`, `markPaidAndConfirmed`,
+  `OrderLifecycleService.giuHangSauThanhToan` (SAVEPOINT để trả lại dòng giữ
+  dở khi hết hàng); `PaymentService` gọi nó ở cả hai đường tiền về (IPN cổng
+  và webhook chuyển khoản).
+- Không có hạn giữ: đơn chờ thanh toán không chiếm tồn. `ExpireAwaitingPaymentJob`
+  huỷ đơn chưa trả quá `AWAITING_PAYMENT_TTL_HOURS` (mặc định 24, 0 = tắt)
+  chỉ để danh sách đơn sạch, lý do `PAYMENT_TIMEOUT`.
+- Màn khách (trang `/confirm` và màn Thanh toán trên live) chỉ nói "thành
+  công" khi đơn rời `AWAITING_PAYMENT`: poll trạng thái 5 giây/lần; hết hàng
+  lúc tiền về thì báo huỷ + hoàn tiền. Tab "Chờ thanh toán" trong Đơn mua.
+- Chưa làm: hoàn tiền tự động (shop đánh dấu tay ở trang Thanh toán), phí
+  vận chuyển lúc đặt, mã giảm giá.
+

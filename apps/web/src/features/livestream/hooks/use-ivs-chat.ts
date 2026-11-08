@@ -166,6 +166,18 @@ export function useIvsChat({
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const connectRef = useRef<(() => Promise<void>) | null>(null);
 
+  // Đổi phiên live thì nạp cache của phiên mới ngay trong lượt render này
+  // (mẫu "adjust state when a prop changes" của React) thay vì trong
+  // effect, để không có một lượt render chen vào với tin của phiên cũ.
+  const [livestreamIdTruoc, setLivestreamIdTruoc] = useState(livestreamId);
+  if (livestreamIdTruoc !== livestreamId) {
+    setLivestreamIdTruoc(livestreamId);
+    setChatMessages(getCachedChatMessages(livestreamId));
+  }
+  useEffect(() => {
+    recentSeenRef.current.clear();
+  }, [livestreamId]);
+
   useEffect(() => {
     connectionStateRef.current = connectionState;
   }, [connectionState]);

@@ -14,6 +14,7 @@
  */
 
 import type { Pool, PoolClient } from "pg";
+import { config } from "../../../config.js";
 import {
   InvalidOrderStateError,
   OrderNotFoundError,
@@ -24,7 +25,9 @@ import {
   UnknownTransferError,
 } from "../errors/payment.errors.js";
 import { appendOutboxEvent } from "../../order/repositories/order.repository.js";
+import { OrderLifecycleService } from "../../order/services/order-lifecycle.service.js";
 import {
+  findConfirmTokenByOrder,
   findOrderForPayment,
   findPaymentByOrder,
   findPaymentByTxnRefForUpdate,
@@ -45,7 +48,8 @@ import {
 } from "../gateways/index.js";
 
 /** Chỉ thu tiền cho đơn đã chốt địa chỉ và chưa bị huỷ. */
-const THU_DUOC = new Set(["CONFIRMED", "PROCESSING", "COMPLETED"]);
+// AWAITING_PAYMENT: đơn chọn online đang chờ tiền; khách chọn cổng ở đây.
+const THU_DUOC = new Set(["AWAITING_PAYMENT", "CONFIRMED", "PROCESSING", "COMPLETED"]);
 
 export interface CreatePaymentParams {
   orderId: string;
@@ -63,6 +67,13 @@ export interface CheckoutParams {
 export interface GatewayCallbackResult {
   outcome: AcknowledgeOutcome;
   payment: Payment | null;
+  /** Token trang xác nhận của đơn, để kênh RETURN đưa khách về đúng trang. */
+  confirmToken: string | null;
+}
+
+export interface PaymentServiceOptions {
+  /** Xem `config.paymentTrustSignedReturn`. */
+  trustSignedReturn: boolean;
 }
 
 export interface BankTransferParams {
@@ -72,10 +83,20 @@ export interface BankTransferParams {
   providerTxnId: string;
   amount: string;
   rawPayload?: unknown;
+  /** Only verified provider adapters set these merchant-scoping checks. */
+  expectedMerchantId?: string;
+  expectedPaymentProvider?: string;
 }
 
 export class PaymentService {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    // Giữ tồn cho đơn chờ thanh toán khi tiền về; mặc định dựng trên cùng pool.
+    private readonly lifecycle: OrderLifecycleService = new OrderLifecycleService(pool),
+    private readonly options: PaymentServiceOptions = {
+      trustSignedReturn: config.paymentTrustSignedReturn,
+    }
+  ) {}
 
   /**
    * Tạo khoản thu. Gọi lại nhiều lần trả về đúng khoản thu cũ.
@@ -172,6 +193,17 @@ export class PaymentService {
         throw new UnknownTransferError(params.txnRef, params.amount);
       }
 
+      if (params.expectedMerchantId) {
+        const owner = await client.query<{ merchant_id: string }>(
+          "SELECT merchant_id FROM orders WHERE id = $1",
+          [payment.orderId],
+        );
+        if (owner.rows[0]?.merchant_id !== params.expectedMerchantId ||
+            payment.provider && payment.provider !== params.expectedPaymentProvider) {
+          throw new UnknownTransferError(params.txnRef, params.amount);
+        }
+      }
+
       const laMoi = await insertTransaction(client, {
         paymentId: payment.id,
         provider: params.provider,
@@ -190,6 +222,13 @@ export class PaymentService {
       }
 
       const updated = await recalcPaidAmount(client, payment.id);
+
+      // Đơn chọn online chỉ giữ tồn khi tiền về: giữ NGAY trong transaction
+      // này. Hết hàng thì đơn bị huỷ (OUT_OF_STOCK_AT_PAYMENT), khoản thu
+      // vẫn PAID để shop hoàn tiền.
+      if (updated.status === "PAID") {
+        await this.lifecycle.giuHangSauThanhToan(client, payment.orderId);
+      }
 
       await appendOutboxEvent(client, {
         aggregateId: payment.orderId,
@@ -282,7 +321,9 @@ export class PaymentService {
    *
    * Kênh RETURN (trình duyệt khách quay về) KHÔNG được ghi nhận tiền:
    * nó đi qua máy khách nên ai cũng tự gõ được. Chỉ IPN mới là nguồn
-   * sự thật.
+   * sự thật. Ngoại lệ duy nhất là cờ dev `trustSignedReturn`: chạy ở
+   * localhost thì cổng không gọi IPN tới được, nên gói RETURN có chữ
+   * ký hợp lệ được xử lý y như IPN (vẫn chống trùng theo mã giao dịch).
    */
   async handleGatewayCallback(
     gatewayName: string,
@@ -293,8 +334,9 @@ export class PaymentService {
     const parsed = gateway.parseCallback(params, channel);
 
     if (!parsed.signatureValid) {
-      return { outcome: "INVALID_SIGNATURE", payment: null };
+      return { outcome: "INVALID_SIGNATURE", payment: null, confirmToken: null };
     }
+    const ghiNhanDuoc = channel === "IPN" || this.options.trustSignedReturn;
 
     const client = await this.pool.connect();
     try {
@@ -303,23 +345,25 @@ export class PaymentService {
       const payment = await findPaymentByTxnRefForUpdate(client, parsed.txnRef);
       if (!payment) {
         await client.query("ROLLBACK");
-        return { outcome: "ORDER_NOT_FOUND", payment: null };
+        return { outcome: "ORDER_NOT_FOUND", payment: null, confirmToken: null };
       }
+      const confirmToken = await findConfirmTokenByOrder(client, payment.orderId);
 
       // Khác hẳn chuyển khoản tay: cổng điện tử thu ĐÚNG số ta yêu
       // cầu, nên lệch một đồng nghĩa là gói tin bị sửa hoặc ta dựng
       // sai số tiền. Ghi nhận nó sẽ làm hỏng sổ sách.
       if (Number(parsed.amount) !== Number(payment.amount)) {
         await client.query("ROLLBACK");
-        return { outcome: "INVALID_AMOUNT", payment: null };
+        return { outcome: "INVALID_AMOUNT", payment: null, confirmToken };
       }
 
-      if (channel === "RETURN" || !parsed.succeeded) {
+      if (!ghiNhanDuoc || !parsed.succeeded) {
         const current = await loadPayment(client, payment.id);
         await client.query("COMMIT");
         return {
           outcome: parsed.succeeded ? "SUCCESS" : "ERROR",
           payment: current,
+          confirmToken,
         };
       }
 
@@ -336,10 +380,17 @@ export class PaymentService {
         // phải lỗi, nếu không họ bắn mãi.
         const current = await loadPayment(client, payment.id);
         await client.query("COMMIT");
-        return { outcome: "ALREADY_CONFIRMED", payment: current };
+        return { outcome: "ALREADY_CONFIRMED", payment: current, confirmToken };
       }
 
       const updated = await recalcPaidAmount(client, payment.id);
+
+      // Đơn chọn online chỉ giữ tồn khi tiền về: giữ NGAY trong transaction
+      // này. Hết hàng thì đơn bị huỷ (OUT_OF_STOCK_AT_PAYMENT), khoản thu
+      // vẫn PAID để shop hoàn tiền.
+      if (updated.status === "PAID") {
+        await this.lifecycle.giuHangSauThanhToan(client, payment.orderId);
+      }
 
       await appendOutboxEvent(client, {
         aggregateId: payment.orderId,
@@ -353,11 +404,11 @@ export class PaymentService {
       });
 
       await client.query("COMMIT");
-      return { outcome: "SUCCESS", payment: updated };
+      return { outcome: "SUCCESS", payment: updated, confirmToken };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
       console.error(`[PaymentService] Lỗi khi xử lý callback ${gatewayName}:`, err);
-      return { outcome: "ERROR", payment: null };
+      return { outcome: "ERROR", payment: null, confirmToken: null };
     } finally {
       client.release();
     }

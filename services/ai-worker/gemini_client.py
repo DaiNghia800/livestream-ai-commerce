@@ -21,7 +21,6 @@ from google.genai import errors as genai_errors
 from typing import Any
 import httpx
 import pydantic
-from pydantic import BaseModel, ConfigDict, Field
 
 from ai_errors import AIParsingError
 
@@ -58,49 +57,15 @@ def _wait_for_rate_limit():
     _last_request_time = time.time()
 
 
-# ── Schema ───────────────────────────────────────────────────
+# ── Schema & prompt (shared with every provider) ─────────────
 
-class PurchaseIntentSchema(BaseModel):
-    # Preserve JSON types: booleans, strings and floats must not become counts.
-    model_config = ConfigDict(strict=True)
-
-    has_intent: bool = Field(description="True if the comment expresses intent to buy")
-    product_code: str | None = Field(None, description="The product code if found, else null")
-    color: str | None = Field(None, description="The color if found, else null")
-    size: str | None = Field(None, description="The size if found, else null")
-    quantity: int | None = Field(None, description="The quantity if found, else null")
-
-# ── Prompt ───────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """\
-You are a purchase intent parser for a Vietnamese livestream commerce platform.
-
-Given a viewer's comment, extract the purchase intent and return ONLY valid JSON:
-{
-  "has_intent": true/false,
-  "product_code": "string or null",
-  "color": "string or null",
-  "size": "string or null",
-  "quantity": number or null
-}
-
-Rules:
-- Product codes look like: A12, SP-05, B7, SKU-123
-- Colors are in Vietnamese: đen, trắng, đỏ, xanh, hồng, vàng, etc.
-- Sizes: S, M, L, XL, XXL, etc.
-- Quantity: look for numbers with units like "cái", "chiếc", "bộ"
-- If the comment is just chatting (e.g. "Đẹp quá"), set has_intent to false
-- Quantity must be a JSON integer or null, never a string, boolean or decimal.
-- Never default quantity to 1. If no quantity is stated, return null.
-- Prices, product-code digits, sizes and phone numbers are not quantities.
-- Do not round quantities or remove a negative sign.
-- Return ONLY the JSON object, no explanation, no markdown
-"""
-
-
-def _build_user_prompt(content: str) -> str:
-    """Build the user message for Gemini."""
-    return f'Parse this Vietnamese livestream comment:\n"{content}"'
+# Giữ tên cũ để openai_client và test import được như trước.
+from ai_prompt import (  # noqa: E402
+    PurchaseIntentSchema,
+    SYSTEM_PROMPT,
+    build_user_prompt as _build_user_prompt,
+    to_result as _to_result,
+)
 
 
 # ── Client initialization ────────────────────────────────────
@@ -129,12 +94,14 @@ def _get_client() -> genai.Client:
 
 # ── Core function ────────────────────────────────────────────
 
-def parse_with_gemini(content: str) -> dict[str, Any]:
+def parse_with_gemini(content: str, catalogue: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """
     Send a comment to Gemini AI and parse the purchase intent.
 
     Args:
         content: The validated, stripped comment text.
+        catalogue: Products of the livestream (code, SKU, name, variant) so the
+                   AI can map names to codes. Empty when unavailable.
 
     Returns:
         A dict with has_intent, product_code, color, size, quantity.
@@ -144,7 +111,7 @@ def parse_with_gemini(content: str) -> dict[str, Any]:
                         or schema validation fails.
     """
     client = _get_client()
-    user_prompt = _build_user_prompt(content)
+    user_prompt = _build_user_prompt(content, catalogue)
 
     # Build local configuration outside the remote-error boundary.
     config = genai.types.GenerateContentConfig(
@@ -167,14 +134,7 @@ def parse_with_gemini(content: str) -> dict[str, Any]:
             if not isinstance(result, PurchaseIntentSchema):
                 raise AIParsingError("ai_invalid_response", "AI returned invalid structured output")
 
-            # Validate the response has expected fields
-            return {
-                "has_intent": result.has_intent,
-                "product_code": result.product_code,
-                "color": result.color,
-                "size": result.size,
-                "quantity": result.quantity,
-            }
+            return _to_result(result)
 
         except pydantic.ValidationError as e:
             raise AIParsingError("ai_invalid_response", "AI returned invalid schema") from e

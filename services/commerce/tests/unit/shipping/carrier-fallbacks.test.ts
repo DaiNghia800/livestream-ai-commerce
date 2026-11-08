@@ -500,6 +500,48 @@ describe("Goship — webhook thiếu trường", () => {
     ).toThrow();
   });
 
+  it("mã vận đơn nằm ở `id` — đọc mỗi `gcode` là KHÔNG khớp được gì", () => {
+    // Hình dạng gói tin Goship dùng thật: mã ở `id`, không có
+    // `gcode`, và `code` là MÃ HTTP. Trước khi sửa, hàm này trả
+    // "200" nên mọi webhook rơi vào UNKNOWN_SHIPMENT trong im lặng
+    // — vận đơn chỉ nhúc nhích nhờ job đồng bộ dự phòng.
+    const sk = guiVe({ status: "900", id: "GS8KKMOYV8", code: 200 });
+    expect(sk.trackingCode).toBe("GS8KKMOYV8");
+  });
+
+  it("KHÔNG bao giờ nhận mã HTTP làm mã vận đơn", () => {
+    // Phong bì nào của Goship cũng có `code`. Nhận bừa là đi tìm
+    // vận đơn mang mã "200" — không bao giờ thấy.
+    expect(guiVe({ status: "900", code: 200 }).trackingCode).toBeNull();
+    expect(guiVe({ status: "900", code: 404 }).trackingCode).toBeNull();
+    // Mã thật của hãng con vẫn phải nhận.
+    expect(guiVe({ status: "900", code: "JT-999" }).trackingCode).toBe("JT-999");
+  });
+
+  it("mã đối soát COD phải ỔN ĐỊNH, không lấy mã HTTP, không lấy giờ", () => {
+    // Mã đổi theo từng lần hãng gửi lại là chống trùng vô tác dụng,
+    // và tiền COD được cộng nhiều lần vào sổ.
+    const goi = { status: "911", id: "GS8KKMOYV8", code: 200, cod: 500000 };
+    const lan1 = guiVe(goi);
+    const lan2 = guiVe(goi);
+    expect(lan1.codTransferred?.reference).toBe("GS8KKMOYV8");
+    expect(lan2.codTransferred?.reference).toBe(lan1.codTransferred?.reference);
+  });
+
+  it("COD ghi tiền GỘP khách trả, không ghi tiền ròng hãng chuyển về", () => {
+    // Goship gửi cả ba con số. `amount_return_shop` là tiền thực
+    // chuyển sau khi cấn trừ cước; ghi số đó vào sổ thu là đơn hoá
+    // thiếu nợ đúng bằng tiền ship, dù khách đã trả đủ.
+    const sk = guiVe({
+      status: "911",
+      id: "GS1",
+      cod: 500000,
+      fee: 320200,
+      amount_return_shop: 179800,
+    });
+    expect(sk.codTransferred?.amount).toBe("500000");
+  });
+
   it("COD: tiền về là mốc RIÊNG, không phải mốc giao hàng", () => {
     const sk = guiVe({ status: "911", cod: 150000, gcode: "GS1" });
     expect(sk.mappedStatus).toBeNull();

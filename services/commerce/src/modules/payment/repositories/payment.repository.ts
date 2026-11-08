@@ -55,6 +55,18 @@ export async function findOrderForPayment(
   return result.rows[0] ?? null;
 }
 
+/** Token trang xác nhận của đơn, để trình duyệt quay về đúng trang sau khi trả. */
+export async function findConfirmTokenByOrder(
+  client: PoolClient,
+  orderId: string
+): Promise<string | null> {
+  const result = await client.query<{ confirmToken: string }>(
+    `SELECT confirm_token AS "confirmToken" FROM orders WHERE id = $1`,
+    [orderId]
+  );
+  return result.rows[0]?.confirmToken ?? null;
+}
+
 /**
  * Tạo khoản thu cho đơn.
  *

@@ -1,9 +1,12 @@
 import { createApp } from "./app.js";
+import { SQSClient } from "@aws-sdk/client-sqs";
 import { config } from "./config.js";
 import { createEventTransport } from "./modules/order/events/event-transport.js";
-import { ExpireOrdersJob } from "./modules/order/jobs/expire-orders.job.js";
+import { ExpireAwaitingPaymentJob } from "./modules/order/jobs/expire-awaiting-payment.job.js";
 import { ExpirePurchaseRequestsJob } from "./modules/order/jobs/expire-purchase-requests.job.js";
+import { OrderLifecycleService } from "./modules/order/services/order-lifecycle.service.js";
 import { PublishOutboxJob } from "./modules/order/jobs/publish-outbox.job.js";
+import { AiResultProcessor, ConsumeAiResultsJob } from "./modules/order/jobs/consume-ai-results.job.js";
 import { SyncShipmentsJob } from "./modules/shipping/jobs/sync-shipments.job.js";
 import { AiResultsConsumerJob } from "./modules/order/jobs/ai-results-consumer.job.js";
 import { createDraftOrderService } from "./modules/order/services/draft-order.factory.js";
@@ -14,6 +17,12 @@ import { pool, runMigrations } from "./shared/database/database.js";
 async function bootstrap() {
   console.log("[Commerce Service] Starting up...");
 
+  if (
+    config.aiWorkerResultQueueUrl &&
+    config.aiWorkerResultQueueUrl === config.sqsQueueUrl
+  ) {
+    throw new Error("AI_WORKER_RESULT_QUEUE_URL must differ from SQS_QUEUE_URL");
+  }
   try {
     console.log("[Commerce Service] Running database migrations...");
     await runMigrations();
@@ -30,13 +39,6 @@ async function bootstrap() {
     region: config.awsIvsRegion || "ap-northeast-1",
   });
 
-  // Job trả tồn cho đơn quá hạn. Bật sau khi migration xong để chắc
-  // chắn bảng orders đã tồn tại.
-  const expireOrdersJob = new ExpireOrdersJob(pool, {
-    intervalMs: config.expireJobIntervalMs,
-  });
-  expireOrdersJob.start();
-
   // Đẩy sự kiện outbox ra ngoài. Chưa cấu hình REALTIME_EVENTS_URL thì chỉ
   // ghi log — vẫn chạy để thấy được luồng sự kiện khi phát triển.
   const publishOutboxJob = new PublishOutboxJob(
@@ -46,8 +48,28 @@ async function bootstrap() {
   );
   publishOutboxJob.start();
 
+  const aiResultJob = config.aiWorkerResultQueueUrl
+    ? new ConsumeAiResultsJob(
+        new SQSClient({
+          region: config.awsRegion || "ap-southeast-1",
+          // Có khoá riêng cho queue kết quả thì dùng; không thì để SDK
+          // tự tìm (AWS_PROFILE / AWS_ACCESS_KEY_ID / IAM role khi deploy).
+          ...(config.aiWorkerResultCredentials
+            ? { credentials: config.aiWorkerResultCredentials }
+            : {}),
+        }),
+        config.aiWorkerResultQueueUrl,
+        new AiResultProcessor(
+          pool,
+          new PurchaseRequestService(pool, createDraftOrderService(pool))
+        )
+      )
+    : null;
+  aiResultJob?.start();
+
   // Trả tồn cho đề nghị nằm trong hàng đợi duyệt quá lâu. Không có
-  // job này thì một hàng đợi không ai ngó sẽ giam sạch kho.
+  // job này thì một hàng đợi không ai ngó sẽ giam sạch kho. (Đơn nháp
+  // không giữ tồn nên không có job quét tương ứng cho đơn.)
   const expireRequestsJob = new ExpirePurchaseRequestsJob(
     new PurchaseRequestService(
       pool,
@@ -56,6 +78,20 @@ async function bootstrap() {
     { intervalMs: config.expireJobIntervalMs }
   );
   expireRequestsJob.start();
+
+  // Đơn chọn trả online mà khách bỏ, không trả: không giữ tồn nên không
+  // gấp, chỉ dọn cho danh sách đơn của shop sạch (AWAITING_PAYMENT_TTL_MINUTES).
+  const expireAwaitingPaymentJob = new ExpireAwaitingPaymentJob(
+    pool,
+    new OrderLifecycleService(pool),
+    { ttlMinutes: config.awaitingPaymentTtlMinutes, intervalMs: Math.max(config.expireJobIntervalMs, 60_000) }
+  );
+  console.log(
+    config.awaitingPaymentTtlMinutes > 0
+      ? `[ExpireAwaitingPaymentJob] Huỷ đơn chờ thanh toán quá ${config.awaitingPaymentTtlMinutes} phút`
+      : "[ExpireAwaitingPaymentJob] Tắt (AWAITING_PAYMENT_TTL_MINUTES=0)"
+  );
+  expireAwaitingPaymentJob.start();
 
   // Lưới an toàn cho webhook vận chuyển.
   const syncShipmentsJob = new SyncShipmentsJob(pool);
@@ -73,7 +109,16 @@ async function bootstrap() {
       intervalMs: 3000,
     }
   );
-  aiResultsConsumerJob.start();
+  // Hai consumer cùng đọc một queue thì tranh message, mỗi bình luận chỉ
+  // được một bên xử lý. Consumer này chỉ chạy khi SQS_AI_RESULTS_QUEUE_URL
+  // trỏ queue KHÁC với AI_WORKER_RESULT_QUEUE_URL của ConsumeAiResultsJob.
+  if (config.sqsAiResultsQueueUrl && config.sqsAiResultsQueueUrl === config.aiWorkerResultQueueUrl) {
+    console.warn(
+      "[AiResultsConsumerJob] SQS_AI_RESULTS_QUEUE_URL trùng AI_WORKER_RESULT_QUEUE_URL; chỉ ConsumeAiResultsJob đọc queue này"
+    );
+  } else {
+    aiResultsConsumerJob.start();
+  }
 
   const server = app.listen(config.port, () => {
     console.log(`[Commerce Service] Listening on http://localhost:${config.port}`);
@@ -94,13 +139,16 @@ async function bootstrap() {
   // dở bị cắt ngang giữa transaction.
   const shutdown = (signal: string) => {
     console.log(`[Commerce Service] Nhận ${signal}, đang tắt...`);
-    expireOrdersJob.stop();
     publishOutboxJob.stop();
+    const aiResultStopped = aiResultJob?.stop();
     expireRequestsJob.stop();
+    expireAwaitingPaymentJob.stop();
     syncShipmentsJob.stop();
     aiResultsConsumerJob.stop();
     server.close(() => {
-      void pool.end().finally(() => process.exit(0));
+      void Promise.resolve(aiResultStopped)
+        .then(() => pool.end())
+        .finally(() => process.exit(0));
     });
   };
 

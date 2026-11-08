@@ -91,6 +91,8 @@ function safeParse(text: string): unknown {
 export type OrderStatus =
   | "DRAFT"
   | "PENDING_CONFIRMATION"
+  /** Chọn trả online, chưa giữ tồn; tiền về mới giữ và chuyển CONFIRMED. */
+  | "AWAITING_PAYMENT"
   | "CONFIRMED"
   | "PROCESSING"
   | "SHIPPING"
@@ -120,7 +122,12 @@ export interface OrderItemLine {
   id: string;
   skuId: string;
   skuCode: string;
+  /** Id sản phẩm cha để link sang trang sản phẩm. */
+  productId: string;
+  productCode: string;
   productName: string;
+  /** Ảnh biến thể, không có thì ảnh sản phẩm; null khi chưa có ảnh nào. */
+  imageUrl: string | null;
   variantName: string | null;
   quantity: number;
   requestedQty: number;
@@ -231,16 +238,25 @@ function queryString(params: Record<string, string | number | undefined>) {
 }
 
 export const ordersApi = {
+  // Gửi kèm token đăng nhập nếu có: đơn đã nối với tài khoản thì máy
+  // chủ đòi đúng tài khoản (401/403); đơn chưa nối thì bỏ qua header.
   confirmPreview: (token: string) =>
-    call<CustomerOrder>(`/orders/confirm/${encodeURIComponent(token)}`),
+    call<CustomerOrder>(`/orders/confirm/${encodeURIComponent(token)}`, {
+      headers: headerXacThuc(),
+    }),
 
   confirm: (token: string, details: {
     recipientName: string;
     recipientPhone: string;
-    shippingAddress: string;
+    provinceName: string;
+    wardCode: string;
+    streetLine: string;
     note?: string;
+    /** Bỏ trống = để module thanh toán tự lo như trước. */
+    paymentMethod?: "COD" | "ONLINE";
   }) => call<CustomerOrder>(`/orders/confirm/${encodeURIComponent(token)}`, {
     method: "POST",
+      headers: headerXacThuc(),
     body: details,
   }),
 
@@ -261,6 +277,30 @@ export const ordersApi = {
     call<OrderDetail>(`/orders/${orderId}/cancel`, {
       method: "POST",
       body: { reason, note: note ?? null },
+    }),
+
+  /**
+   * Shop sửa tay địa chỉ giao.
+   *
+   * Nhận trường RIÊNG LẺ chứ không phải một dòng để máy tách lại:
+   * người đang sửa là người biết chính xác địa chỉ, bắt họ gõ một
+   * dòng rồi đoán tiếp là quay về đúng chỗ vừa hỏng.
+   */
+  setAddress: (
+    orderId: string,
+    diaChi: {
+      recipientName: string;
+      recipientPhone: string;
+      provinceName: string;
+      /** Bỏ trống = địa chỉ hai cấp sau 01/07/2025. */
+      districtName?: string | null;
+      wardName: string;
+      streetLine: string;
+    },
+  ) =>
+    call<OrderDetail>(`/orders/${orderId}/address`, {
+      method: "POST",
+      body: diaChi,
     }),
 
   /**
@@ -304,11 +344,14 @@ export interface CustomerOrder {
   orderCode: string;
   status: OrderStatus;
   totalAmount: string;
-  heldUntil: string | null;
   recipientName: string | null;
   recipientPhone: string | null;
   shippingAddress: string | null;
   addressNormalized: boolean;
+  /** Tên phiên live đã chốt đơn này. */
+  livestreamTitle: string | null;
+  /** Lý do huỷ, ví dụ OUT_OF_STOCK_AT_PAYMENT (tiền về nhưng hết hàng). */
+  cancelReason?: string | null;
   items: Array<{
     id: string;
     skuId: string;
@@ -318,12 +361,267 @@ export interface CustomerOrder {
     requestedQty: number;
     isPartial: boolean;
     unitPrice: string;
+    /** Phân loại đã chốt, ví dụ "Trắng · M". */
+    variantName?: string | null;
+    imageUrl?: string | null;
+    /** Bình luận gốc đã sinh ra dòng này. */
+    sourceComment?: string | null;
   }>;
+}
+
+export interface CustomerBankTransfer {
+  available: boolean;
+  reason: "UNCONFIGURED" | "OTHER_PAYMENT_SELECTED" | "ORDER_CLOSED" | null;
+  status: "PENDING" | "PAID" | "FAILED" | "REFUNDED" | null;
+  amount: string | null;
+  paidAmount: string | null;
+  txnRef: string | null;
+  bankCode: string | null;
+  accountNumber: string | null;
+  accountName: string | null;
+  qrUrl: string | null;
+  sandbox: true;
 }
 
 // ── Thanh toán ──────────────────────────────────────────────────────
 
+/** Một cổng thanh toán trực tuyến, kèm lý do nếu chưa dùng được. */
+export interface GatewayOption {
+  name: string;
+  label: string;
+  /** false = shop chưa khai khoá; để mờ kèm lý do, đừng ẩn đi. */
+  ready: boolean;
+  missing: string[];
+}
+
+/** Một địa chỉ trong sổ của tài khoản đang đăng nhập. */
+/** Nhãn địa chỉ — chỉ để khách phân biệt nhanh, không tham gia nghiệp vụ. */
+export type AddressLabel = "HOME" | "OFFICE";
+
+export interface UserAddress {
+  id: string;
+  recipientName: string;
+  recipientPhone: string;
+  provinceName: string;
+  wardCode: string;
+  wardName: string;
+  streetLine: string;
+  label: AddressLabel | null;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface UserAddressInput {
+  recipientName: string;
+  recipientPhone: string;
+  provinceName: string;
+  wardCode: string;
+  streetLine: string;
+  label?: AddressLabel | null;
+  isDefault?: boolean;
+}
+
+/** Hồ sơ của chính người đang đăng nhập. */
+export interface Profile {
+  id: number;
+  email: string;
+  fullName: string;
+  phone: string | null;
+  role: string;
+}
+
+/**
+ * Token của khách lưu ở localStorage sau khi đăng nhập. Hàm này đọc
+ * NGAY LÚC GỌI chứ không lúc nạp module: đăng nhập xong mà không tải
+ * lại trang thì vẫn phải gửi được token mới.
+ *
+ * Không đăng nhập thì trả về rỗng — API đáp 401 và giao diện tự lùi
+ * về nhập tay, không cần nhánh riêng.
+ */
+export function layTokenKhach(): string | null {
+  try {
+    return typeof window === "undefined" ? null : localStorage.getItem("access_token");
+  } catch {
+    return null;
+  }
+}
+
+function headerXacThuc(): Record<string, string> {
+  const token = layTokenKhach();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Báo máy chủ "mã khách này là của tôi". Trang live gọi khi khách đã
+ * đăng nhập; từ đó link xác nhận các đơn mang mã này chỉ mở được bằng
+ * tài khoản này. 409 = mã đã thuộc tài khoản khác trên cùng máy.
+ */
+export const customerIdentityApi = {
+  link: (customerId: string) =>
+    call<void>("/me/customer-ids", {
+      method: "POST",
+      headers: headerXacThuc(),
+      body: { customerId },
+    }),
+};
+
+/** Một đơn trên màn "Đơn mua" của khách. */
+export interface MyOrder {
+  id: string;
+  orderCode: string;
+  status: OrderStatus;
+  totalAmount: string;
+  createdAt: string;
+  /** Có vì người xem chính là chủ đơn. */
+  confirmToken: string | null;
+  livestreamTitle: string | null;
+  recipientName: string | null;
+  shippingAddress: string | null;
+  items: Array<{
+    productName: string;
+    variantName: string | null;
+    skuCode: string;
+    quantity: number;
+    unitPrice: string;
+    imageUrl: string | null;
+  }>;
+  payment: { method: string; status: string } | null;
+  shipment: { status: string; trackingCode: string | null; trackingToken: string | null } | null;
+}
+
+/**
+ * Giỏ hàng = đơn nháp đang mở của tài khoản trong một phiên live.
+ * `confirmToken` có vì người xem là chủ đơn.
+ */
+export type CartOrder = CustomerOrder & { confirmToken: string | null };
+
+export const cartApi = {
+  get: (livestreamId: string) =>
+    call<{ cart: CartOrder | null }>(
+      `/me/cart?livestreamId=${encodeURIComponent(livestreamId)}`,
+      { headers: headerXacThuc() },
+    ).then((r) => r.cart),
+
+  /**
+   * Nút "mua ngay" / "thêm vào giỏ" trên trang live: thêm một SKU của
+   * phiên vào giỏ (đơn nháp nguồn BUTTON, gộp vào giỏ đang mở).
+   * 404 SkuNotFound · 409 OutOfStock / LivestreamClosed.
+   */
+  addItem: (input: { livestreamId: string; skuId?: string; skuCode?: string; quantity: number }) =>
+    call<{ cart: CartOrder; rejected: Array<{ skuId: string; requested: number; sellable: number }> }>(
+      "/me/cart/items",
+      { method: "POST", headers: headerXacThuc(), body: input },
+    ).then((r) => r.cart),
+
+  setQuantity: (itemId: string, quantity: number) =>
+    call<{ cart: CartOrder }>(`/me/cart/items/${encodeURIComponent(itemId)}`, {
+      method: "PATCH",
+      headers: headerXacThuc(),
+      body: { quantity },
+    }).then((r) => r.cart),
+
+  /** Bỏ món; món cuối thì giỏ về null (đơn nháp bị huỷ). */
+  remove: (itemId: string) =>
+    call<{ cart: CartOrder | null }>(`/me/cart/items/${encodeURIComponent(itemId)}`, {
+      method: "DELETE",
+      headers: headerXacThuc(),
+    }).then((r) => r.cart),
+};
+
+/** Đơn mua của chính người đang đăng nhập; `group` là tab trạng thái. */
+export const myOrdersApi = {
+  list: (group?: string) =>
+    call<{ items: MyOrder[] }>(
+      `/me/orders${group ? `?group=${encodeURIComponent(group)}` : ""}`,
+      { headers: headerXacThuc() },
+    ).then((r) => r.items),
+};
+
+/** Hồ sơ cá nhân: xem và sửa họ tên, số điện thoại của chính mình. */
+export const profileApi = {
+  get: () => call<Profile>("/me/profile", { headers: headerXacThuc() }),
+  update: (input: { fullName: string; phone: string | null }) =>
+    call<Profile>("/me/profile", {
+      method: "PATCH",
+      headers: headerXacThuc(),
+      body: input,
+    }),
+};
+
+/** Sổ địa chỉ: CHỈ của người đang đăng nhập, id lấy từ token. */
+export const addressBookApi = {
+  list: () =>
+    call<{ items: UserAddress[] }>("/me/addresses", {
+      headers: headerXacThuc(),
+    }).then((r) => r.items),
+
+  create: (input: UserAddressInput) =>
+    call<UserAddress>("/me/addresses", {
+      method: "POST",
+      headers: headerXacThuc(),
+      body: input,
+    }),
+
+  update: (id: string, input: UserAddressInput) =>
+    call<UserAddress>(`/me/addresses/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: headerXacThuc(),
+      body: input,
+    }),
+
+  remove: (id: string) =>
+    call<void>(`/me/addresses/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: headerXacThuc(),
+    }),
+
+  setDefault: (id: string) =>
+    call<{ items: UserAddress[] }>(
+      `/me/addresses/${encodeURIComponent(id)}/default`,
+      { method: "POST", headers: headerXacThuc() },
+    ).then((r) => r.items),
+};
+
 export const paymentsApi = {
+  /**
+   * Các cổng khách có thể chọn, kèm cổng chưa khai khoá.
+   *
+   * Ẩn cổng chưa sẵn sàng thì shop không biết mình thiếu gì để bật,
+   * còn khách không hiểu vì sao chỉ có mỗi một lựa chọn.
+   */
+  customerGateways: (token: string) =>
+    call<{ items: GatewayOption[] }>(
+      `/payments/customer/confirm/${encodeURIComponent(token)}/gateways`,
+    ).then((r) => r.items),
+
+  /** Mở phiên thanh toán ở cổng, trả về địa chỉ để chuyển khách sang. */
+  customerCheckout: (token: string, gateway: string) =>
+    call<{ payUrl: string; provider: string }>(
+      `/payments/customer/confirm/${encodeURIComponent(token)}/checkout`,
+      { method: "POST", body: { gateway } },
+    ),
+
+  /**
+   * Tình trạng thu tiền, đủ nhẹ để hỏi lại mỗi vài giây.
+   *
+   * Khách quét QR xong thì tiền về qua webhook của cổng, KHÔNG qua
+   * trình duyệt của họ. Không hỏi lại thì màn hình đứng yên ở "chờ
+   * thanh toán" dù tiền đã vào, và khách sẽ trả thêm lần nữa.
+   */
+  customerPaymentStatus: (token: string) =>
+    call<{
+      method: string | null;
+      status: string | null;
+      amount: string | null;
+      paidAmount: string | null;
+    }>(`/payments/customer/confirm/${encodeURIComponent(token)}/status`),
+
+  customerTransfer: (token: string) =>
+    call<CustomerBankTransfer>(`/payments/customer/confirm/${encodeURIComponent(token)}`),
+  createCustomerTransfer: (token: string) =>
+    call<CustomerBankTransfer>(`/payments/customer/confirm/${encodeURIComponent(token)}`, {
+      method: "POST",
+    }),
   byTxnRef: (txnRef: string) =>
     call<Payment>(`/payments/by-ref/${encodeURIComponent(txnRef)}`),
   list: (filter: { status?: string; limit?: number } = {}) =>
@@ -433,8 +731,45 @@ export interface ShipmentEvent {
   description: string;
 }
 
+/** Một đầu của hành trình: kho gửi hoặc nhà khách. */
+export interface BenGiaoNhan {
+  name: string | null;
+  phone: string | null;
+  streetLine: string | null;
+  wardName: string | null;
+  districtName: string | null;
+  provinceName: string | null;
+}
+
+/** Một mốc giả lập được, chỉ có ở môi trường thử. */
+export interface ChangGiaLap {
+  /** Mã sự kiện đúng như hãng dùng. */
+  code: string;
+  label: string;
+}
+
 export interface ShipmentDetail extends ShipmentListItem {
   events: ShipmentEvent[];
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+  insuranceValue: string | null;
+  note: string | null;
+  /** Hạn giao hãng tự tính, giữ NGUYÊN VĂN vì mỗi hãng một định dạng. */
+  expectedDeliveryText: string | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  nguoiGui: BenGiaoNhan;
+  nguoiNhan: BenGiaoNhan | null;
+  items: Array<{ skuCode: string; productName: string; quantity: number }>;
+  /**
+   * Rỗng ở production và với hãng không nhận webhook.
+   *
+   * Giao diện dựa vào đây để quyết định có vẽ bảng giả lập không,
+   * thay vì tự đoán theo tên hãng — nếu không thì bật/tắt ở backend
+   * mà màn hình vẫn hiện nút bấm vào là lỗi.
+   */
+  moPhong: ChangGiaLap[];
 }
 
 export interface CarrierOption {
@@ -458,6 +793,52 @@ export interface CreateShipmentInput {
 }
 
 export const shippingApi = {
+  /**
+   * 34 tỉnh/thành hiện hành, lấy từ backend.
+   *
+   * Không chép cứng danh sách sang đây: tới lần đổi địa giới sau,
+   * hai bên lệch nhau và shop chọn được một tỉnh mà API từ chối.
+   */
+  /**
+   * Đóng vai hãng bắn một mốc về. CHỈ có ở môi trường thử.
+   *
+   * Sandbox của hãng không tự chạy — GHN chỉ cấp cho token shop hai
+   * lệnh đổi trạng thái, và một trong hai còn báo thành công mà
+   * không đổi gì. Không có đường này thì vận đơn nằm ở "chờ lấy
+   * hàng" vĩnh viễn.
+   */
+  simulate: (shipmentId: string, code: string) =>
+    call<{ ketQua: string; chiTiet: ShipmentDetail }>(
+      `/shipments/${shipmentId}/simulate`,
+      { method: "POST", body: { code } },
+    ),
+
+  provinces: () =>
+    call<{ items: string[] }>("/shipments/provinces").then((r) => r.items),
+
+  currentWards: (province: string) =>
+    call<{ items: Array<{ code: string; name: string }> }>(
+      `/shipments/wards-current${queryString({ province })}`,
+    ).then((r) => r.items),
+
+  /**
+   * Quận/huyện và phường/xã theo danh mục của HÃNG, không phải của ta.
+   *
+   * Danh mục hãng vẫn theo 63 tỉnh cũ, nên backend tự gộp các tỉnh
+   * cũ đã nhập vào tỉnh mới — chọn "TP. Hồ Chí Minh" vẫn thấy Thủ
+   * Dầu Một. Trả mảng rỗng khi hãng chưa khai khoá; màn hình lùi về
+   * ô gõ tay chứ không chặn người dùng.
+   */
+  districts: (province: string) =>
+    call<{ items: string[] }>(
+      `/shipments/districts${queryString({ province })}`,
+    ).then((r) => r.items),
+
+  wards: (province: string, district: string) =>
+    call<{ items: string[] }>(
+      `/shipments/wards${queryString({ province, district })}`,
+    ).then((r) => r.items),
+
   list: (
     filter: {
       merchantId?: string;

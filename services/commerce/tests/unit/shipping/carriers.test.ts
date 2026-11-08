@@ -138,7 +138,8 @@ function thanGoi(goi: ReturnType<typeof vi.fn>, lan = 0) {
  * cho một lần hỏi. Giả lập theo thứ tự thì chỉ cần đổi thứ tự tra là
  * test vỡ, mà đó không phải hành vi đáng bảo vệ.
  */
-function giaLapGhn(fee = 20900) {
+/** `cuoi` ghi đè phản hồi cho lời gọi nghiệp vụ cuối cùng. */
+function giaLapGhn(fee = 20900, cuoi?: unknown) {
   const goi = vi.fn(async (url: string) => {
     const tra = (data: unknown) => ({
       ok: true,
@@ -179,7 +180,7 @@ function giaLapGhn(fee = 20900) {
       return tra(chung);
     }
     if (url.includes("shipping-order/fee")) return tra({ total: fee });
-    return tra({ order_code: "GHN123", total_fee: fee });
+    return tra(cuoi ?? { order_code: "GHN123", total_fee: fee });
   });
   vi.stubGlobal("fetch", goi);
   return goi;
@@ -405,14 +406,37 @@ describe("GhnCarrier", () => {
     }
   });
 
-  it("TẠO ĐƠN gửi theo TÊN: địa chỉ 2 cấp bỏ trống huyện và bật cờ", async () => {
+  it("TẠO ĐƠN địa chỉ 2 cấp: tự dò ra huyện rồi gửi ĐỦ BA CẤP", async () => {
+    // Danh mục của GHN vẫn ba cấp. Để trống huyện và bật cờ
+    // `is_new_to_address` là KHÔNG đủ — đo thật trên sandbox của họ,
+    // cùng một địa chỉ Khánh Hòa:
+    //
+    //   2 cấp + cờ true  -> 400 "ward not found"
+    //   3 cấp + cờ true  -> 400
+    //   3 cấp + cờ false -> 200, cấp mã L8MDM8
+    //
+    // Nên ta dò ngược phường→huyện (đã phải làm cho API tính cước)
+    // rồi gửi đủ ba cấp. Cờ mô tả GÓI TIN TA GỬI, không phải địa chỉ
+    // khách viết, nên luôn false.
     const goi = giaLapGhn();
     await new GhnCarrier(GHN).createShipment(yeuCau());
 
     const than = thanToi(goi, "shipping-order/create");
-    expect(than.is_new_to_address).toBe(true);
-    expect(than.to_district_name).toBe("");
+    expect(than.is_new_to_address).toBe(false);
+    expect(than.to_district_name).toBe("Quận 1");
     expect(than.to_ward_name).toBe("Phường Bến Thành");
+  });
+
+  it("TẠO ĐƠN gửi tên theo DANH MỤC của hãng, không theo chữ người gõ", async () => {
+    // Khách gõ "TP. Hồ Chí Minh"; danh mục GHN ghi "Hồ Chí Minh".
+    // Gửi nguyên chữ người gõ là hãng tra không ra, dù ta vừa tra
+    // đúng tỉnh đó xong.
+    const goi = giaLapGhn();
+    await new GhnCarrier(GHN).createShipment(yeuCau());
+
+    expect(thanToi(goi, "shipping-order/create").to_province_name).toBe(
+      "Hồ Chí Minh"
+    );
   });
 
   it("TẠO ĐƠN địa chỉ 3 cấp giữ tên huyện và tắt cờ", async () => {
@@ -484,15 +508,16 @@ describe("GhnCarrier", () => {
   });
 
   it("tạo vận đơn gửi kèm mã của ta để khớp webhook đến sớm", async () => {
-    const goi = giaLapFetch({
-      code: 200,
-      data: { order_code: "GHN123", total_fee: 22000 },
-    });
+    // Phải dùng mock ĐẦY ĐỦ: tạo đơn nay tra danh mục trước để dò
+    // ra quận/huyện, nên mock chỉ trả một gói tin là không đủ.
+    const goi = giaLapGhn(22000);
     const kq = await new GhnCarrier(GHN).createShipment(yeuCau());
 
     expect(kq.trackingCode).toBe("GHN123");
     expect(kq.fee).toBe("22000");
-    expect(thanGoi(goi).client_order_code).toBe("LIVE-TEST-0001");
+    expect(thanToi(goi, "shipping-order/create").client_order_code).toBe(
+      "LIVE-TEST-0001"
+    );
   });
 
   it("GHN trả HTTP 200 kèm code lỗi vẫn phải coi là từ chối", async () => {
@@ -503,7 +528,7 @@ describe("GhnCarrier", () => {
   });
 
   it("không trả mã vận đơn cũng là từ chối", async () => {
-    giaLapFetch({ code: 200, data: {} });
+    giaLapGhn(20900, {});
     await expect(
       new GhnCarrier(GHN).createShipment(yeuCau())
     ).rejects.toThrow(/không trả về mã vận đơn/);

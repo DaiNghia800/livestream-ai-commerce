@@ -15,15 +15,18 @@ API đăng ký công khai không chấp nhận trường `role`. Role do server 
 ## Tạo admin đầu tiên
 
 Tạo tài khoản admin lần đầu bằng lệnh có kiểm soát; không có endpoint đăng ký
-admin công khai. Trong PowerShell, đặt các biến môi trường trong phiên hiện tại
-rồi chạy:
+admin công khai. Đứng tại thư mục gốc của repo trong PowerShell, thay email
+bằng email muốn dùng để đăng nhập admin, rồi chạy:
 
 ```powershell
-$env:ADMIN_BOOTSTRAP_EMAIL = "admin@example.com"
+$env:ADMIN_BOOTSTRAP_EMAIL = "your-email@example.com"
 $env:ADMIN_BOOTSTRAP_FULL_NAME = "System Admin"
-$env:ADMIN_BOOTSTRAP_PASSWORD = "use-a-strong-private-password"
-cd C:\Project\livestream-ai-commerce\services\commerce
+$secureAdminPassword = Read-Host "Đặt mật khẩu admin riêng (8-128 ký tự)" -AsSecureString
+$env:ADMIN_BOOTSTRAP_PASSWORD = [System.Net.NetworkCredential]::new("", $secureAdminPassword).Password
+cd .\services\commerce
 npm run bootstrap:admin
+Remove-Item Env:ADMIN_BOOTSTRAP_PASSWORD
+Remove-Variable secureAdminPassword
 ```
 
 Lệnh chỉ chạy khi chưa có admin đang hoạt động. Nó có thể nâng tài khoản trùng

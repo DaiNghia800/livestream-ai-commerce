@@ -9,7 +9,7 @@
  * Điều kiện trạng thái nằm NGAY TRONG câu UPDATE, không kiểm bằng `if`
  * ở tầng JavaScript. Hai lý do:
  *
- *   1. Chống đua. Khách bấm xác nhận đúng lúc job quét đang huỷ đơn thì
+ *   1. Chống đua. Khách bấm xác nhận đúng lúc shop đang huỷ đơn thì
  *      chỉ một bên đổi được trạng thái; bên kia nhận rowCount = 0 và
  *      biết mình thua, thay vì cả hai cùng tưởng mình thắng.
  *
@@ -24,19 +24,24 @@
  * trong một giao dịch duy nhất.
  */
 
+import {
+  SQL_DIA_CHI_GIAO,
+  SQL_SDT_NGUOI_NHAN,
+  SQL_TEN_NGUOI_NHAN,
+} from "../../shipping/repositories/shipment.repository.js";
 import type { PoolClient } from "pg";
 import type { OrderStatus } from "../types/order.types.js";
-
-/** Hai trạng thái còn đang giữ tồn kho. */
-export const HOLDING_STATUSES = ["DRAFT", "PENDING_CONFIRMATION"] as const;
 
 export interface OrderRow {
   id: string;
   orderCode: string;
   status: OrderStatus;
   customerId: string;
+  merchantId: string;
   heldUntil: string | null;
   confirmOpenedAt: string | null;
+  /** Khách rủi ro: bị chặn COD ngay từ lúc tạo nháp. */
+  codBlocked: boolean;
   createdAt: string;
 }
 
@@ -45,8 +50,10 @@ const ORDER_COLUMNS = `
   order_code        AS "orderCode",
   status,
   customer_id       AS "customerId",
+  merchant_id       AS "merchantId",
   held_until        AS "heldUntil",
   confirm_opened_at AS "confirmOpenedAt",
+  cod_blocked       AS "codBlocked",
   created_at        AS "createdAt"
 `;
 
@@ -91,6 +98,29 @@ export async function findHoldingReservationIds(
   return result.rows.map((row) => row.id);
 }
 
+/**
+ * Dòng hàng của đơn, theo thứ tự sku_id — để giữ tồn lúc xác nhận.
+ *
+ * ORDER BY sku_id cùng lý do với hàm trên: hai đơn cùng mua A và B
+ * phải khoá tồn theo cùng một thứ tự, nếu không chúng ôm nhau chết.
+ */
+export async function findOrderItemsForHold(
+  client: PoolClient,
+  orderId: string
+): Promise<Array<{ id: string; skuId: string; quantity: number }>> {
+  const result = await client.query<{ id: string; sku_id: string; quantity: number }>(
+    `SELECT id, sku_id, quantity FROM order_items
+      WHERE order_id = $1
+      ORDER BY sku_id`,
+    [orderId]
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    skuId: row.sku_id,
+    quantity: Number(row.quantity),
+  }));
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Các bước chuyển trạng thái. Mỗi hàm trả về true nếu đổi được.
 // ─────────────────────────────────────────────────────────────────────
@@ -98,42 +128,31 @@ export async function findHoldingReservationIds(
 /**
  * Khách mở link xác nhận: DRAFT → PENDING_CONFIRMATION.
  *
- * Đây là tầng hai của TTL (QĐ-1). Mở link là bằng chứng khách có thật và
- * đang thao tác, nên mới nới hạn giữ từ 5 phút lên 15 phút. Nới ngay từ
- * đầu cho mọi đơn thì bình luận rác cũng giam tồn 15 phút.
- *
- * `confirm_opened_at` chỉ ghi lần đầu (COALESCE) để biết khách mở lúc
- * nào, còn `held_until` thì mỗi lần mở lại đều được nới thêm.
+ * Không còn gì để gia hạn — đơn nháp không có hạn. Chỉ ghi dấu khách
+ * đã mở link (`confirm_opened_at`, giữ lần đầu nhờ COALESCE) để biết
+ * họ có thật và mở lúc nào. Trả về true khi đơn còn đang mở.
  */
 export async function markConfirmLinkOpened(
   client: PoolClient,
-  params: { orderId: string; extendSeconds: number; maxSeconds: number }
-): Promise<string | null> {
-  const result = await client.query<{ held_until: string }>(
+  orderId: string
+): Promise<boolean> {
+  const result = await client.query(
     `UPDATE orders
         SET status            = 'PENDING_CONFIRMATION',
-            confirm_opened_at = COALESCE(confirm_opened_at, NOW()),
-            held_until        = LEAST(
-                NOW() + make_interval(secs => $2),
-                created_at + make_interval(secs => $3)
-            )
+            confirm_opened_at = COALESCE(confirm_opened_at, NOW())
       WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
-        AND held_until > NOW()
-      RETURNING held_until`,
-    [params.orderId, params.extendSeconds, params.maxSeconds]
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')`,
+    [orderId]
   );
-  return result.rows[0]?.held_until ?? null;
+  return result.rowCount === 1;
 }
 
 /**
  * Khách xác nhận đơn: DRAFT | PENDING_CONFIRMATION → CONFIRMED.
  *
- * KHÔNG đụng tới tồn kho. Lượt giữ vẫn ở trạng thái HOLDING — hàng vẫn
- * đang được giữ cho khách này. Chỉ gỡ `held_until` về NULL để job quét
- * hết hạn bỏ qua đơn, tức là gỡ đồng hồ đếm ngược chứ không trả hàng.
- *
- * Tồn thật chỉ bị trừ ở bước COMPLETED, khi hàng rời kho.
+ * Đây là cái VÉ: chỉ transaction nào đổi được trạng thái mới đi tiếp
+ * giữ tồn (holdStock ở service). Không có điều kiện thời gian — đơn
+ * nháp không có hạn, khách để link bao lâu cũng xác nhận được.
  */
 export async function markConfirmed(
   client: PoolClient,
@@ -142,21 +161,80 @@ export async function markConfirmed(
   const result = await client.query(
     `UPDATE orders
         SET status       = 'CONFIRMED',
-            confirmed_at = NOW(),
-            held_until   = NULL
+            confirmed_at = NOW()
       WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
-        AND held_until > NOW()`,
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')`,
     [orderId]
   );
   return result.rowCount === 1;
 }
 
 /**
+ * Khách xác nhận nhưng chọn trả online: đơn chờ tiền về, CHƯA giữ tồn.
+ * confirmed_at để trống tới khi thật sự chuyển CONFIRMED.
+ */
+export async function markAwaitingPayment(
+  client: PoolClient,
+  orderId: string
+): Promise<boolean> {
+  const result = await client.query(
+    `UPDATE orders
+        SET status = 'AWAITING_PAYMENT'
+      WHERE id = $1
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')`,
+    [orderId]
+  );
+  return result.rowCount === 1;
+}
+
+/** Tiền về và đã giữ được tồn: AWAITING_PAYMENT → CONFIRMED. */
+export async function markPaidAndConfirmed(
+  client: PoolClient,
+  orderId: string
+): Promise<boolean> {
+  const result = await client.query(
+    `UPDATE orders
+        SET status       = 'CONFIRMED',
+            confirmed_at = NOW()
+      WHERE id = $1
+        AND status = 'AWAITING_PAYMENT'`,
+    [orderId]
+  );
+  return result.rowCount === 1;
+}
+
+/**
+ * Đơn chờ thanh toán đã quá hạn (tính từ lúc vào AWAITING_PAYMENT, theo
+ * lịch sử trạng thái). Job dọn gọi hàm này; giới hạn mỗi lượt để không
+ * khoá bảng lâu.
+ */
+export async function findAwaitingPaymentOlderThan(
+  client: PoolClient,
+  minutes: number,
+  limit = 100
+): Promise<string[]> {
+  const result = await client.query<{ id: string }>(
+    `SELECT o.id
+       FROM orders o
+      WHERE o.status = 'AWAITING_PAYMENT'
+        AND COALESCE(
+              (SELECT max(h.created_at) FROM order_status_history h
+                WHERE h.order_id = o.id AND h.to_status = 'AWAITING_PAYMENT'),
+              o.created_at
+            ) < NOW() - make_interval(mins => $1)
+      ORDER BY o.created_at
+      LIMIT $2`,
+    [minutes, limit]
+  );
+  return result.rows.map((r) => r.id);
+}
+
+/**
  * Huỷ đơn. Cho phép từ mọi trạng thái chưa kết thúc.
  *
- * Người gọi phải trả tồn (releaseStock) TRONG CÙNG transaction. Đổi
- * trạng thái mà quên trả tồn là rò rỉ vĩnh viễn, không ai phát hiện.
+ * Người gọi phải trả tồn (releaseStock) TRONG CÙNG transaction nếu
+ * đơn đã xác nhận. Đổi trạng thái mà quên trả tồn là rò rỉ vĩnh viễn,
+ * không ai phát hiện. Đơn nháp thì không có gì để trả.
  */
 export async function markCancelled(
   client: PoolClient,
@@ -166,43 +244,14 @@ export async function markCancelled(
     `UPDATE orders
         SET status        = 'CANCELLED',
             cancelled_at  = NOW(),
-            cancel_reason = $2,
-            held_until    = NULL
+            cancel_reason = $2
       WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'PROCESSING')
+        AND status IN ('DRAFT', 'PENDING_CONFIRMATION', 'AWAITING_PAYMENT', 'CONFIRMED', 'PROCESSING')
         AND NOT EXISTS (
           SELECT 1 FROM shipments s WHERE s.order_id = orders.id
             AND s.status NOT IN ('CANCELLED', 'RETURNED', 'REJECTED')
         )`,
     [params.orderId, params.reason]
-  );
-  return result.rowCount === 1;
-}
-
-/**
- * Hết hạn giữ hàng: DRAFT | PENDING_CONFIRMATION → EXPIRED.
- *
- * Tách riêng khỏi markCancelled dù hệ quả giống nhau, vì hai việc này
- * khác nhau về nghiệp vụ: huỷ là có người quyết định, hết hạn là khách
- * im lặng. Báo cáo cuối phiên cần phân biệt được.
- *
- * Điều kiện `held_until < NOW()` nằm trong câu UPDATE để đơn vừa được
- * gia hạn ở mili-giây trước không bị job huỷ oan.
- */
-export async function markExpired(
-  client: PoolClient,
-  orderId: string
-): Promise<boolean> {
-  const result = await client.query(
-    `UPDATE orders
-        SET status        = 'EXPIRED',
-            cancelled_at  = NOW(),
-            cancel_reason = 'TTL_EXPIRED',
-            held_until    = NULL
-      WHERE id = $1
-        AND status IN ('DRAFT', 'PENDING_CONFIRMATION')
-        AND held_until < NOW()`,
-    [orderId]
   );
   return result.rowCount === 1;
 }
@@ -326,8 +375,8 @@ export async function listOrders(
             o.source,
             o.total_amount     AS "totalAmount",
             o.held_until       AS "heldUntil",
-            o.recipient_name   AS "recipientName",
-            o.recipient_phone  AS "recipientPhone",
+            ${SQL_TEN_NGUOI_NHAN}  AS "recipientName",
+            ${SQL_SDT_NGUOI_NHAN}  AS "recipientPhone",
             o.livestream_id    AS "livestreamId",
             o.cod_blocked      AS "codBlocked",
             o.created_at       AS "createdAt",
@@ -336,7 +385,8 @@ export async function listOrders(
             p.status           AS "paymentStatus",
             p.method           AS "paymentMethod"
        FROM orders o
-       LEFT JOIN payments p ON p.order_id = o.id
+       LEFT JOIN payments p  ON p.order_id = o.id
+       LEFT JOIN addresses a ON a.id = o.address_id
       WHERE ($1::uuid    IS NULL OR o.merchant_id = $1)
         AND ($2::varchar IS NULL OR o.status      = $2)
         AND ($3::varchar IS NULL OR o.source      = $3)
@@ -370,9 +420,9 @@ export async function findOrderDetailByCode(
             o.merchant_id     AS "merchantId",
             o.total_amount    AS "totalAmount",
             o.held_until      AS "heldUntil",
-            o.recipient_name  AS "recipientName",
-            o.recipient_phone AS "recipientPhone",
-            o.shipping_address AS "shippingAddress",
+            ${SQL_TEN_NGUOI_NHAN}  AS "recipientName",
+            ${SQL_SDT_NGUOI_NHAN}  AS "recipientPhone",
+            ${SQL_DIA_CHI_GIAO}    AS "shippingAddress",
             o.note,
             o.cod_blocked     AS "codBlocked",
             o.livestream_id   AS "livestreamId",
@@ -386,12 +436,21 @@ export async function findOrderDetailByCode(
                            'id', oi.id,
                            'skuId', oi.sku_id::text,
                            'skuCode', s.sku_code,
+                           'productId', pr.id::text,
+                           'productCode', pr.code,
                            'productName', pr.name,
                            'variantName', s.variant_name,
                            'quantity', oi.quantity,
                            'requestedQty', oi.requested_qty,
                            'isPartial', oi.is_partial,
-                           'unitPrice', oi.unit_price
+                           'unitPrice', oi.unit_price,
+                           -- Ảnh của đúng biến thể nếu có, không thì ảnh sản phẩm;
+                           -- cùng cách chọn với màn khách (loadOrder).
+                           'imageUrl', (SELECT img.url FROM product_images img
+                                         WHERE img.sku_id = s.id OR img.product_id = pr.id
+                                         ORDER BY (img.sku_id = s.id) DESC, img.is_primary DESC,
+                                                  img.sort_order
+                                         LIMIT 1)
                        ) ORDER BY oi.created_at)
                   FROM order_items oi
                   JOIN product_skus s ON s.id = oi.sku_id

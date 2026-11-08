@@ -14,6 +14,7 @@
  * đường dẫn giữa các phiên bản API.
  */
 
+import { tinhCuCua, type TenTinh } from "../address/vietnam-provinces.js";
 import {
   CarrierNotConfiguredError,
   CarrierRejectedError,
@@ -75,6 +76,23 @@ const ANH_XA: Record<string, ShipmentStatus> = {
 const DICH_VU_NHE = 2;
 const DICH_VU_NANG = 5;
 const NGUONG_NANG_GRAM = 20000;
+
+/**
+ * Một địa danh đã tra xong trong danh mục GHN.
+ *
+ * Giữ cả mã lẫn tên vì HAI API CỦA GHN NHẬN HAI KIỂU KHÁC NHAU:
+ * tính cước nhận mã số, tạo đơn nhận tên. Và tên phải là tên trong
+ * danh mục của họ, không phải chữ người dùng gõ — "Khánh Hoà" với
+ * "Khánh Hòa" là hai chuỗi khác nhau dưới mắt máy chủ.
+ */
+interface MaDiaDanh {
+  provinceId: number;
+  districtId: number;
+  wardCode: string | null;
+  provinceNameChuan: string;
+  districtNameChuan: string;
+  wardNameChuan: string | null;
+}
 
 export class GhnCarrier implements ShippingCarrier {
   readonly name = "ghn";
@@ -139,16 +157,43 @@ export class GhnCarrier implements ShippingCarrier {
    * nhầm kiểu là hãng từ chối với lý do "địa chỉ không hợp lệ" mà
    * không nói rõ sai ở đâu.
    */
-  private diaChiNhan(req: QuoteRequest) {
+  /**
+   * Phần địa chỉ người nhận cho API TẠO ĐƠN (nhận tên, không nhận mã).
+   *
+   * Luôn gửi ĐỦ BA CẤP, kể cả với địa chỉ hai cấp sau 01/07/2025.
+   *
+   * Trước đây chỗ này để trống quận/huyện và trông cậy vào cờ
+   * `is_new_to_address`. Cờ đó KHÔNG đủ: GHN trả
+   * "ward not found: Phường Lộc Thọ in province Khánh Hòa", trong khi
+   * danh mục của chính họ có phường đó — nằm dưới "Thành phố Nha
+   * Trang". Danh mục của họ vẫn ba cấp, nên thiếu cấp giữa là họ
+   * không tra ra.
+   *
+   * Ta đã phải dò ngược phường→quận cho API tính cước rồi, nên dùng
+   * lại đúng kết quả đó ở đây: gửi tên lấy từ danh mục của GHN, thay
+   * vì chữ người dùng gõ.
+   */
+  private async diaChiNhan(req: QuoteRequest) {
     const to = req.to;
+    const ma = await this.traMa(to.provinceName, to.districtName, to.wardName);
     return {
       to_name: to.recipientName,
       to_phone: to.recipientPhone,
       to_address: formatAddressLine(to),
-      to_ward_name: to.wardName,
-      to_district_name: to.isNewFormat ? "" : (to.districtName ?? ""),
-      to_province_name: to.provinceName,
-      is_new_to_address: to.isNewFormat,
+      to_ward_name: ma.wardNameChuan ?? to.wardName,
+      to_district_name: ma.districtNameChuan,
+      to_province_name: ma.provinceNameChuan,
+      // LUÔN false, kể cả khi khách viết địa chỉ hai cấp.
+      //
+      // Cờ này mô tả GÓI TIN TA GỬI, không phải địa chỉ khách viết.
+      // Tới đây ta đã dò ra quận/huyện và đang gửi đủ ba cấp, nên
+      // khai "địa chỉ kiểu mới" là tự mâu thuẫn.
+      //
+      // Đo thật trên sandbox GHN, cùng một địa chỉ Khánh Hòa:
+      //   2 cấp + cờ true  -> 400
+      //   3 cấp + cờ true  -> 400
+      //   3 cấp + cờ false -> 200, cấp mã L8MDM8
+      is_new_to_address: false,
     };
   }
 
@@ -255,16 +300,76 @@ export class GhnCarrier implements ShippingCarrier {
     return ds ?? [];
   }
 
-  private readonly cacheMa = new Map<
-    string,
-    { provinceId: number; districtId: number; wardCode: string | null }
-  >();
+  /**
+   * Kết quả tra địa danh, giữ cả MÃ (cho API tính cước) lẫn TÊN CHUẨN
+   * (cho API tạo đơn). Hai API của GHN nhận hai kiểu khác nhau nên
+   * tra một lần rồi dùng cho cả hai.
+   */
+  private readonly cacheMa = new Map<string, MaDiaDanh>();
+
+  // ── Danh mục cho màn CHỌN địa chỉ ────────────────────────────────
+
+  /** Các tỉnh GHN đang liệt kê, giữ nguyên tên của họ. */
+  private async tinhCuaHang(): Promise<
+    Array<{ ProvinceID: number; ProvinceName: string }>
+  > {
+    return this.goiGet<Array<{ ProvinceID: number; ProvinceName: string }>>(
+      "/shiip/public-api/master-data/province"
+    );
+  }
+
+  /**
+   * Quận/huyện của một tỉnh HIỆN HÀNH, gộp từ mọi tỉnh cũ nhập vào nó.
+   *
+   * Hỏi thẳng GHN tỉnh "TP. Hồ Chí Minh" chỉ được 25 quận, không có
+   * Thủ Dầu Một — vì bên GHN, Bình Dương vẫn là tỉnh riêng. Người ở
+   * đó sẽ không chọn nổi địa chỉ của mình.
+   */
+  async listDistricts(tinhMoi: TenTinh): Promise<string[]> {
+    const canTim = new Set(tinhCuCua(tinhMoi));
+    const tinhs = await this.tinhCuaHang();
+    const ten: string[] = [];
+
+    for (const t of tinhs) {
+      if (!canTim.has(GhnCarrier.chuanBo(t.ProvinceName))) continue;
+      const quans = await this.goi<
+        Array<{ DistrictID: number; DistrictName: string }>
+      >("/shiip/public-api/master-data/district", { province_id: t.ProvinceID });
+      for (const q of quans ?? []) ten.push(q.DistrictName);
+    }
+
+    return [...new Set(ten)].sort((a, b) => a.localeCompare(b, "vi"));
+  }
+
+  /** Phường/xã của một quận, tìm trong phạm vi tỉnh hiện hành. */
+  async listWards(tinhMoi: TenTinh, districtName: string): Promise<string[]> {
+    const canTim = new Set(tinhCuCua(tinhMoi));
+    const tinhs = await this.tinhCuaHang();
+    const can = GhnCarrier.chuanBo(districtName);
+
+    for (const t of tinhs) {
+      if (!canTim.has(GhnCarrier.chuanBo(t.ProvinceName))) continue;
+      const quans = await this.goi<
+        Array<{ DistrictID: number; DistrictName: string }>
+      >("/shiip/public-api/master-data/district", { province_id: t.ProvinceID });
+      const quan = (quans ?? []).find(
+        (q) => GhnCarrier.chuanBo(q.DistrictName) === can
+      );
+      if (quan) {
+        return (await this.phuongCua(quan.DistrictID))
+          .map((x) => x.WardName)
+          .sort((a, b) => a.localeCompare(b, "vi"));
+      }
+    }
+
+    return [];
+  }
 
   private async traMa(
     provinceName: string,
     districtName: string | null,
     wardName: string | null
-  ): Promise<{ provinceId: number; districtId: number; wardCode: string | null }> {
+  ): Promise<MaDiaDanh> {
     const khoa = `${provinceName}|${districtName ?? ""}|${wardName ?? ""}`;
     const san = this.cacheMa.get(khoa);
     if (san) return san;
@@ -363,6 +468,13 @@ export class GhnCarrier implements ShippingCarrier {
       provinceId: tinh.ProvinceID,
       districtId: quan.DistrictID,
       wardCode,
+      provinceNameChuan: tinh.ProvinceName,
+      districtNameChuan: quan.DistrictName,
+      wardNameChuan: wardCode
+        ? ((await this.phuongCua(quan.DistrictID)).find(
+            (x) => x.WardCode === wardCode
+          )?.WardName ?? wardName)
+        : wardName,
     };
     this.cacheMa.set(khoa, kq);
     return kq;
@@ -423,7 +535,7 @@ export class GhnCarrier implements ShippingCarrier {
       // kịp lưu mã của hãng.
       client_order_code: request.clientOrderCode,
 
-      ...this.diaChiNhan(request),
+      ...(await this.diaChiNhan(request)),
 
       from_ward_name: this.cfg.fromWardName,
       from_district_name: this.cfg.fromDistrictName,

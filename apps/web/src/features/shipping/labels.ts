@@ -94,3 +94,38 @@ export function tenHang(carrier: string, serviceCode?: string | null): string {
   if (carrier !== "goship" || !serviceCode) return goc;
   return `Goship · ${goshipCarrierLabels[serviceCode] ?? serviceCode}`;
 }
+
+/**
+ * Năm chặng của một đơn giao THUẬN LỢI, để vẽ thanh tiến trình.
+ *
+ * Cố ý chỉ mô tả đường đi thuận. Nhồi cả hoàn hàng và giao hỏng vào
+ * một thanh ngang thì nó dài gấp đôi mà vẫn không kể đúng chuyện —
+ * các nhánh đó đã có dòng thời gian bên dưới lo.
+ */
+export const CHANG_THUAN = [
+  { status: "CREATED", label: "Tạo đơn" },
+  { status: "PICKED_UP", label: "Đã lấy hàng" },
+  { status: "IN_TRANSIT", label: "Đang vận chuyển" },
+  { status: "OUT_FOR_DELIVERY", label: "Đang giao" },
+  { status: "DELIVERED", label: "Giao xong" },
+] as const;
+
+/** Trạng thái không nằm trên đường thuận: thanh tiến trình dừng lại. */
+export const LECH_DUONG = new Set([
+  "REQUESTED",
+  "REJECTED",
+  "FAILED",
+  "RETURNING",
+  "RETURNED",
+  "CANCELLED",
+]);
+
+/**
+ * Vận đơn đang ở chặng thứ mấy. -1 = không nằm trên đường thuận.
+ *
+ * Dùng thứ tự trong `CHANG_THUAN` chứ không so chuỗi: thêm một chặng
+ * vào giữa thì mọi chỗ khác tự đúng theo.
+ */
+export function changHienTai(status: string): number {
+  return CHANG_THUAN.findIndex((c) => c.status === status);
+}

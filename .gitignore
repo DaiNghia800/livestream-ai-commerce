@@ -11,6 +11,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Ghi chú việc còn lại của từng người, không đưa lên repo
+notes-local/
 *.log
 coverage/
 htmlcov/
@@ -32,6 +35,7 @@ Thumbs.db
 next-env.d.ts
 
 docs/design/draft-order-reservation/templates/
+docs/test
 
 # Editor
 .vscode/

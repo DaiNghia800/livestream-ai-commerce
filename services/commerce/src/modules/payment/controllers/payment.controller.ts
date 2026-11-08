@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { chuanHoaIp } from "../gateways/index.js";
 import crypto from "crypto";
 import { ZodError } from "zod";
 import { config } from "../../../config.js";
@@ -195,11 +196,20 @@ export class PaymentController {
   gatewayReturn = async (req: Request, res: Response): Promise<void> => {
     const name = req.params.gateway;
     try {
-      const { outcome, payment } = await this.service.handleGatewayCallback(
+      const { outcome, payment, confirmToken } = await this.service.handleGatewayCallback(
         name,
         { ...req.query, ...req.body },
         "RETURN"
       );
+      // Trình duyệt khách: đưa về trang xác nhận của đơn trên web, trang
+      // đó tự hỏi trạng thái thật. Chỉ trả JSON khi người gọi xin rõ
+      // (Postman/test đặt Accept: application/json) hoặc không tìm ra đơn.
+      const muonJson = (req.get("accept") ?? "").includes("application/json");
+      if (confirmToken && !muonJson) {
+        const ketQua = outcome === "SUCCESS" || outcome === "ALREADY_CONFIRMED" ? "ok" : "loi";
+        res.redirect(302, `${config.webBaseUrl}/confirm/${confirmToken}?thanhToan=${ketQua}`);
+        return;
+      }
       res.json({
         outcome,
         // Trạng thái thật lấy từ database, không lấy từ tham số trên
@@ -268,9 +278,9 @@ export class PaymentController {
   private clientIp(req: Request): string {
     const forwarded = req.header("x-forwarded-for");
     if (forwarded) {
-      return forwarded.split(",")[0].trim();
+      return chuanHoaIp(forwarded.split(",")[0]);
     }
-    return req.ip || req.socket?.remoteAddress || "127.0.0.1";
+    return chuanHoaIp(req.ip || req.socket?.remoteAddress);
   }
 
   /**
