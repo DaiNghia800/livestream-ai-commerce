@@ -572,9 +572,16 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
     return result;
   }, [isUuid, fallbackContext, products]);
 
+  const activeProducts = useMemo(() => {
+    if (!isUuid && fallbackContext) {
+      return fallbackContext.products;
+    }
+    return products;
+  }, [isUuid, fallbackContext, products]);
+
   const pinnedProduct = useMemo(() => {
-    return products.find((p) => p.isPinned) || null;
-  }, [products]);
+    return activeProducts.find((p) => p.isPinned) || null;
+  }, [activeProducts]);
 
   // Reset right column scroll to top whenever the session changes
   useEffect(() => {
@@ -714,7 +721,7 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
           <Package className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Sản phẩm</span>
           <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.2 rounded-full border border-slate-200">
-            {products.length}
+            {activeProducts.length}
           </span>
         </button>
 
@@ -744,7 +751,7 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
           {/* Left Column (3 cols): Products Panel */}
           <div className="col-span-3 h-full min-h-0 min-w-0">
             <MonitoringProductsPanel
-              products={products}
+              products={activeProducts}
               pinnedProduct={pinnedProduct}
             />
           </div>
@@ -776,7 +783,7 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
           {mobileTab === "products" && (
             <div className="h-full min-h-0 min-w-0">
               <MonitoringProductsPanel
-                products={products}
+                products={activeProducts}
                 pinnedProduct={pinnedProduct}
               />
             </div>
