@@ -42,3 +42,6 @@ docs/design/draft-order-reservation/61_*/
 
 # Editor
 .vscode/
+# Local agent skills and workflow docs - keep local only
+agents/
+workflows/
