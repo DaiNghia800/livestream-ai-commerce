@@ -81,4 +81,17 @@ export class AuthService {
     await this.repository.createSession(user.id, session);
     return createAuthResponse(user, session.refreshToken);
   }
+
+  acceptShopInvitation(
+    tokenHash: string,
+    passwordHash: string
+  ): Promise<"accepted" | "invalid" | "expired" | "email_exists"> {
+    return this.repository.acceptShopInvitation(tokenHash, passwordHash);
+  }
+
+  checkShopInvitationToken(
+    tokenHash: string
+  ): Promise<"valid" | "invalid" | "expired"> {
+    return this.repository.checkShopInvitationToken(tokenHash);
+  }
 }

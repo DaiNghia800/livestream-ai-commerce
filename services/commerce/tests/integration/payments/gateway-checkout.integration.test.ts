@@ -16,9 +16,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { config } from "../../../src/config.js";
 import { MockGateway } from "../../../src/modules/payment/gateways/index.js";
+import { PaymentService } from "../../../src/modules/payment/services/payment.service.js";
 import { createSkuWithStock } from "../../helpers/catalog.helper.js";
 
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
+// `.env` của máy dev có thể bật PAYMENT_TRUST_SIGNED_RETURN; test luật
+// mặc định nên tắt hẳn trước khi app dựng PaymentService.
+config.paymentTrustSignedReturn = false;
 const app = createApp();
 
 const mockGateway = new MockGateway({
@@ -44,7 +48,7 @@ function kyVnpay(params: Record<string, string>): string {
 }
 
 /** Đơn đã xác nhận + khoản thu ONLINE đang chờ. */
-async function orderWithPayment(quantity = 2) {
+async function orderWithPayment(quantity = 2, method: "ONLINE" | "COD" = "ONLINE") {
   const sku = await createSkuWithStock(pool, 20);
   const draft = await request(app)
     .post("/api/orders/draft")
@@ -64,7 +68,7 @@ async function orderWithPayment(quantity = 2) {
 
   const payment = await request(app)
     .post(`/api/payments/orders/${draft.body.id}`)
-    .send({ method: "ONLINE" });
+    .send({ method });
   expect(payment.status).toBe(201);
 
   return { orderId: draft.body.id, payment: payment.body };
@@ -79,6 +83,23 @@ async function readStatus(orderId: string) {
 }
 
 describe("Xin đường dẫn thanh toán", () => {
+  it("không mở cổng cho khoản COD", async () => {
+    const { orderId } = await orderWithPayment(2, "COD");
+    const res = await request(app).post(`/api/payments/orders/${orderId}/checkout`).send({});
+    expect(res.status).toBe(409);
+  });
+
+  it("không thu lại toàn bộ qua cổng khi ngân hàng đã nhận một phần", async () => {
+    const { orderId, payment } = await orderWithPayment();
+    config.bankWebhookSecret = "integration-bank-webhook-secret";
+    await request(app).post("/api/payments/bank-webhook")
+      .set("x-bank-webhook-secret", config.bankWebhookSecret)
+      .send({ txnRef: payment.txnRef, provider: "vcb", providerTxnId: crypto.randomUUID(), amount: "1000.00" });
+    const res = await request(app).post(`/api/payments/orders/${orderId}/checkout`).send({});
+    expect(res.status).toBe(409);
+    expect((await readStatus(orderId)).paid_amount).toBe("1000.00");
+  });
+
   it("cổng mặc định là cổng giả chạy trong máy", async () => {
     const { orderId } = await orderWithPayment();
 
@@ -140,7 +161,9 @@ describe("Xin đường dẫn thanh toán", () => {
 
   it("đã thu xong thì KHÔNG dựng đường dẫn mới", async () => {
     const { orderId, payment } = await orderWithPayment();
-    await request(app).post("/api/payments/bank-webhook").send({
+    config.bankWebhookSecret = "integration-bank-webhook-secret";
+    await request(app).post("/api/payments/bank-webhook")
+      .set("x-bank-webhook-secret", config.bankWebhookSecret).send({
       txnRef: payment.txnRef,
       provider: "vcb",
       providerTxnId: `FT${crypto.randomUUID()}`,
@@ -275,21 +298,48 @@ describe("VNPay báo kết quả về", () => {
     expect((await readStatus(orderId)).status).toBe("PENDING");
   });
 
-  it("KÊNH RETURN không bao giờ ghi nhận tiền", async () => {
+  it("KÊNH RETURN không ghi nhận tiền, chỉ đưa trình duyệt về trang xác nhận trên web", async () => {
     const { orderId, payment } = await orderWithPayment();
+    const { confirmToken } = (await pool.query<{ confirmToken: string }>(
+      `SELECT confirm_token AS "confirmToken" FROM orders WHERE id = $1`, [orderId])).rows[0];
 
     const res = await request(app)
       .get("/api/payments/vnpay/return")
       .query(ipnParams(payment.txnRef, payment.amount));
 
-    expect(res.status).toBe(200);
+    // Trình duyệt không được thấy JSON thô: về đúng trang đơn trên web
+    // (cổng 3000), mang theo kết quả cổng báo để trang hiện banner.
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(
+      `${config.webBaseUrl}/confirm/${confirmToken}?thanhToan=ok`
+    );
     // Khách có thể tự gõ tay đường dẫn này. Tin nó để ghi nhận đã thu
     // tiền là mở cửa cho người ta tự tạo đơn đã thanh toán.
     expect((await readStatus(orderId)).status).toBe("PENDING");
-    expect(res.body.note).toContain("IPN");
   });
 
-  it("trang quay về trả trạng thái lấy từ database, không từ URL", async () => {
+  it("RETURN báo khách huỷ thì về trang xác nhận với thanhToan=loi", async () => {
+    const { orderId, payment } = await orderWithPayment();
+    const res = await request(app)
+      .get("/api/payments/vnpay/return")
+      .query(ipnParams(payment.txnRef, payment.amount, {
+        vnp_ResponseCode: "24", vnp_TransactionStatus: "02",
+      }));
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/\/confirm\/[^?]+\?thanhToan=loi$/);
+    expect((await readStatus(orderId)).status).toBe("PENDING");
+  });
+
+  it("RETURN sai chữ ký không tìm ra đơn nên trả JSON, không redirect", async () => {
+    const { payment } = await orderWithPayment();
+    const res = await request(app)
+      .get("/api/payments/vnpay/return")
+      .query({ ...ipnParams(payment.txnRef, payment.amount), vnp_SecureHash: "0".repeat(128) });
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("INVALID_SIGNATURE");
+  });
+
+  it("trang quay về (xin JSON) trả trạng thái lấy từ database, không từ URL", async () => {
     const { orderId, payment } = await orderWithPayment();
     await request(app)
       .get("/api/payments/vnpay/ipn")
@@ -297,10 +347,34 @@ describe("VNPay báo kết quả về", () => {
 
     const res = await request(app)
       .get("/api/payments/vnpay/return")
+      .set("Accept", "application/json")
       .query(ipnParams(payment.txnRef, payment.amount));
 
+    expect(res.status).toBe(200);
     expect(res.body.payment.status).toBe("PAID");
+    expect(res.body.note).toContain("IPN");
     expect((await readStatus(orderId)).status).toBe("PAID");
+  });
+
+  it("cờ dev trustSignedReturn: RETURN ký đúng được ghi nhận như IPN, bắn lại không ghi đôi", async () => {
+    const { orderId, payment } = await orderWithPayment();
+    const tinReturn = new PaymentService(pool, undefined, { trustSignedReturn: true });
+    const goi = ipnParams(payment.txnRef, payment.amount);
+
+    const lan1 = await tinReturn.handleGatewayCallback("vnpay", goi, "RETURN");
+    expect(lan1.outcome).toBe("SUCCESS");
+    expect(lan1.confirmToken).toBeTruthy();
+    expect((await readStatus(orderId)).status).toBe("PAID");
+
+    // IPN tới sau (qua tunnel) mang cùng mã giao dịch: đã có rồi.
+    const lan2 = await tinReturn.handleGatewayCallback("vnpay", goi, "IPN");
+    expect(lan2.outcome).toBe("ALREADY_CONFIRMED");
+    expect((await readStatus(orderId)).paid_amount).toBe(payment.amount);
+
+    // Sai chữ ký vẫn bị chặn dù có cờ.
+    const gia = await tinReturn.handleGatewayCallback(
+      "vnpay", { ...goi, vnp_SecureHash: "0".repeat(128) }, "RETURN");
+    expect(gia.outcome).toBe("INVALID_SIGNATURE");
   });
 
   it("cổng lạ trên đường dẫn trả 404", async () => {

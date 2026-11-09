@@ -147,65 +147,173 @@ async function seed() {
 
     console.log(`✅ Đã nạp thành công ${insertedProducts.length} sản phẩm và ${insertedProducts.reduce((acc, p) => acc + p.skus.length, 0)} biến thể SKU.`);
 
-    // 3. Livestreams
+    // 3. Livestreams đa trạng thái
     const sampleLivestreams = [
       {
-        title: "🔥 ĐẠI TIỆC LIVE CHỐT ĐƠN - XẢ KHO ĐỒNG GIÁ TỪ 99K",
-        description: "Livestream giới thiệu bộ sưu tập thời trang mùa mới. Ưu đãi độc quyền chỉ có trên phiên live hôm nay!",
+        title: "🔥 [LIVE] Xả Kho Siêu Sale Thời Trang - Chốt Đơn Trực Tiếp",
+        description: "Livestream xả kho giữa năm, freeship toàn quốc. Cú pháp chốt: Tên sản phẩm + Size + Số lượng.",
         status: "live",
         coverImageKey: "covers/summer-sale.jpg",
-        startedAt: new Date(),
+        channelArn: "arn:aws:ivs:ap-northeast-1:553288148257:channel/O9Z5OzX9XByZ",
+        playbackUrl: "https://abbfdcdd72ba.ap-northeast-1.playback.live-video.net/api/video/v1/ap-northeast-1.553288148257.channel.O9Z5OzX9XByZ.m3u8",
+        chatRoomArn: "arn:aws:ivschat:ap-northeast-1:553288148257:room/0frP2pEdvsIt",
+        chatRoomId: "0frP2pEdvsIt",
+        replayUrl: null,
+        startedAt: new Date(Date.now() - 30 * 60 * 1000), // đã live 30 phút
+        endedAt: null,
         scheduledAt: new Date(Date.now() - 3600000),
+        productsCount: 5,
+        featuredIndex: 0,
       },
       {
-        title: "✨ RA MẮT BỘ SƯU TẬP XUÂN HÈ 2026",
-        description: "Khám phá các thiết kế mới nhất với chất liệu lụa tơ tằm và linen cao cấp.",
+        title: "✨ [SẮP LIVE] Ra Mắt Bộ Sưu Tập Thời Trang Xuân Hè 2026",
+        description: "Khám phá các thiết kế mới nhất với chất liệu lụa tơ tằm và linen cao cấp. Săn voucher giảm 30%.",
         status: "scheduled",
         coverImageKey: "covers/collection-2026.jpg",
+        channelArn: null,
+        playbackUrl: null,
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: null,
         startedAt: null,
-        scheduledAt: new Date(Date.now() + 86400000), // ngày mai
+        endedAt: null,
+        scheduledAt: new Date(Date.now() + 2 * 3600 * 1000), // 2 tiếng nữa
+        productsCount: 3,
+        featuredIndex: -1,
       },
       {
-        title: "⚡ FLASH SALE GIỜ VÀNG - TRI ÂN KHÁCH HÀNG THÂN THIẾT",
-        description: "Dành riêng cho khách hàng VIP. Voucher giảm 50% khi xem trọn vẹn phiên live.",
+        title: "🎬 [ĐÃ KẾT THÚC] Livestream Xả Kho Đón Hè & Tri Ân Khách Hàng",
+        description: "Phiên live tri ân khách hàng thân thiết. Đã phát lại toàn bộ video có bản ghi trên S3.",
+        status: "ended",
+        coverImageKey: "covers/flash-sale.jpg",
+        channelArn: "arn:aws:ivs:ap-northeast-1:553288148257:channel/O9Z5OzX9XByZ",
+        playbackUrl: "https://abbfdcdd72ba.ap-northeast-1.playback.live-video.net/api/video/v1/ap-northeast-1.553288148257.channel.O9Z5OzX9XByZ.m3u8",
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: "https://liveorder-dev-realtime-media.s3.ap-northeast-1.amazonaws.com/recordings/91ed0fd4-b0dd-4cce-a619-b776f732f102/master.m3u8",
+        startedAt: new Date(Date.now() - 3 * 3600 * 1000),
+        endedAt: new Date(Date.now() - 1 * 3600 * 1000),
+        scheduledAt: new Date(Date.now() - 4 * 3600 * 1000),
+        productsCount: 4,
+        featuredIndex: -1,
+      },
+      {
+        title: "📝 [BẢN NHÁP] Flash Sale Đồ Bộ Mặc Nhà Cao Cấp",
+        description: "Phiên bản nháp chuẩn bị kịch bản và sản phẩm trước giờ phát sóng.",
         status: "draft",
         coverImageKey: "covers/flash-sale.jpg",
+        channelArn: null,
+        playbackUrl: null,
+        chatRoomArn: null,
+        chatRoomId: null,
+        replayUrl: null,
         startedAt: null,
-        scheduledAt: null,
+        endedAt: null,
+        scheduledAt: new Date(Date.now() + 24 * 3600 * 1000), // ngày mai
+        productsCount: 0,
+        featuredIndex: -1,
       },
     ];
 
-    const insertedLivestreams: Array<{ id: string; title: string }> = [];
+    // Dọn dẹp các phiên mẫu trùng tiêu đề cũ để chạy lại an toàn (idempotent)
+    const titles = sampleLivestreams.map((s) => s.title);
+    await client.query(
+      `DELETE FROM livestreams WHERE merchant_id = $1 AND title = ANY($2::text[])`,
+      [MERCHANT_ID, titles]
+    );
+
+    const insertedLivestreams: Array<{
+      id: string;
+      title: string;
+      status: string;
+      productsCount: number;
+    }> = [];
 
     for (const l of sampleLivestreams) {
       const liveRes = await client.query<{ id: string }>(
-        `INSERT INTO livestreams (merchant_id, title, description, status, cover_image_key, started_at, scheduled_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO livestreams (
+           merchant_id, title, description, status, cover_image_key,
+           channel_arn, playback_url, chat_room_arn, chat_room_id, replay_url,
+           started_at, ended_at, scheduled_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id`,
-        [MERCHANT_ID, l.title, l.description, l.status, l.coverImageKey, l.startedAt, l.scheduledAt]
+        [
+          MERCHANT_ID,
+          l.title,
+          l.description,
+          l.status,
+          l.coverImageKey,
+          l.channelArn,
+          l.playbackUrl,
+          l.chatRoomArn,
+          l.chatRoomId,
+          l.replayUrl,
+          l.startedAt,
+          l.endedAt,
+          l.scheduledAt,
+        ]
       );
-      insertedLivestreams.push({ id: liveRes.rows[0].id, title: l.title });
+      const livestreamId = liveRes.rows[0].id;
+
+      // Gắn sản phẩm tương ứng vào phiên live
+      if (l.productsCount > 0) {
+        let order = 1;
+        for (const prod of insertedProducts.slice(0, l.productsCount)) {
+          const firstSku = prod.skus[0];
+          await client.query(
+            `INSERT INTO livestream_products (livestream_id, product_id, variant_id, display_order, is_featured)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [
+              livestreamId,
+              String(prod.id),
+              String(firstSku.id),
+              order,
+              order - 1 === l.featuredIndex,
+            ]
+          );
+          order++;
+        }
+      }
+
+      insertedLivestreams.push({
+        id: livestreamId,
+        title: l.title,
+        status: l.status.toUpperCase(),
+        productsCount: l.productsCount,
+      });
     }
-
-    console.log(`✅ Đã tạo thành công ${insertedLivestreams.length} phiên Livestream.`);
-
-    // 4. Gắn sản phẩm vào phiên Livestream đang Live (Livestream đầu tiên)
-    const mainLiveId = insertedLivestreams[0].id;
-    let order = 1;
-    for (const prod of insertedProducts.slice(0, 4)) {
-      const firstSku = prod.skus[0];
-      await client.query(
-        `INSERT INTO livestream_products (livestream_id, product_id, variant_id, display_order, is_featured)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [mainLiveId, String(prod.id), String(firstSku.id), order, order === 1]
-      );
-      order++;
-    }
-
-    console.log(`✅ Đã gắn 4 sản phẩm mẫu vào phiên Livestream "${insertedLivestreams[0].title}".`);
 
     await client.query("COMMIT");
-    console.log("🎉 Hoàn tất nạp dữ liệu thành công 100%!");
+    console.log(`\n🎉 Hoàn tất nạp dữ liệu mẫu thành công 100%!`);
+    console.log("================================================================================");
+    console.log("📋 DANH SÁCH CÁC PHIÊN LIVESTREAM MẪU ĐÃ TẠO:");
+    console.log("================================================================================");
+    for (const item of insertedLivestreams) {
+      console.log(`\n• [${item.status}] ${item.title}`);
+      console.log(`  - ID: ${item.id}`);
+      console.log(`  - Số sản phẩm gắn: ${item.productsCount} sản phẩm`);
+      console.log(`  - Đường dẫn Studio: http://localhost:3000/shop/livestream/${item.id}/studio`);
+      console.log(`  - Chi tiết phiên:   http://localhost:3000/shop/livestream/${item.id}`);
+    }
+    console.log("\n================================================================================");
+    console.log("💡 MẪU TEST COMMENT / CHỐT ĐƠN CHO POSTMAN (Chọn phiên LIVE ở trên):");
+    console.log("--------------------------------------------------------------------------------");
+    console.log(`POST http://localhost:8000/api/livestreams/${insertedLivestreams[0].id}/comments`);
+    console.log("Header: Content-Type: application/json");
+    console.log(
+      JSON.stringify(
+        {
+          userId: "buyer-vip-01",
+          username: "Khách VIP Hải Đăng",
+          content: "Chốt 2 áo sơ mi lụa trắng size S nha shop!",
+          role: "buyer",
+        },
+        null,
+        2
+      )
+    );
+    console.log("================================================================================\n");
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("❌ Lỗi khi nạp dữ liệu:", err);

@@ -36,6 +36,7 @@ export interface InventoryPage {
   page: number;
   pageSize: number;
   total: number;
+  filteredTotalHeld: number;
   summary: InventorySummary;
 }
 
@@ -69,6 +70,27 @@ export interface InventoryAdjustmentPage {
   pageSize: number;
   total: number;
   summary: InventoryAdjustmentSummary;
+}
+
+export interface InventoryAdjustmentDocumentItem {
+  skuId: string;
+  delta: number;
+  reason: string;
+  note: string | null;
+}
+
+export interface InventoryAdjustmentDocument {
+  id: string;
+  code: string;
+  productId: string;
+  status: "draft" | "confirmed";
+  channel: string;
+  syncLive: boolean;
+  createdBy: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+  items: InventoryAdjustmentDocumentItem[];
 }
 
 export interface InventoryChangeResult {

@@ -1,5 +1,8 @@
 import type { Request, Response } from "express";
+import { chuanHoaIp } from "../gateways/index.js";
+import crypto from "crypto";
 import { ZodError } from "zod";
+import { config } from "../../../config.js";
 import {
   InvalidOrderStateError,
   OrderNotFoundError,
@@ -49,6 +52,22 @@ export class PaymentController {
    * lại mãi, mà giao dịch thì vốn đã ghi nhận xong rồi.
    */
   bankWebhook = async (req: Request, res: Response): Promise<void> => {
+    // Endpoint này có thể ghi PAID. Thiếu bí mật thì khoá hẳn, không
+    // cho người lạ tự gửi một JSON giả làm thông báo tiền về.
+    if (!config.bankWebhookSecret) {
+      res.status(503).json({ error: "BankWebhookNotConfigured" });
+      return;
+    }
+    const received = req.header("x-bank-webhook-secret") ?? "";
+    const expectedBytes = Buffer.from(config.bankWebhookSecret);
+    const receivedBytes = Buffer.from(received);
+    if (
+      receivedBytes.length !== expectedBytes.length ||
+      !crypto.timingSafeEqual(receivedBytes, expectedBytes)
+    ) {
+      res.status(401).json({ error: "InvalidWebhookSecret" });
+      return;
+    }
     try {
       const input = BankTransferWebhookSchema.parse(req.body);
       const payment = await this.service.recordBankTransfer(input);
@@ -64,6 +83,14 @@ export class PaymentController {
       res.json(this.present(await this.service.getByOrder(req.params.orderId)));
     } catch (err) {
       this.handle(err, res, "load payment");
+    }
+  };
+
+  getByTxnRef = async (req: Request, res: Response): Promise<void> => {
+    try {
+      res.json(this.present(await this.service.getByTxnRef(req.params.txnRef)));
+    } catch (err) {
+      this.handle(err, res, "load payment by reference");
     }
   };
 
@@ -169,11 +196,20 @@ export class PaymentController {
   gatewayReturn = async (req: Request, res: Response): Promise<void> => {
     const name = req.params.gateway;
     try {
-      const { outcome, payment } = await this.service.handleGatewayCallback(
+      const { outcome, payment, confirmToken } = await this.service.handleGatewayCallback(
         name,
         { ...req.query, ...req.body },
         "RETURN"
       );
+      // Trình duyệt khách: đưa về trang xác nhận của đơn trên web, trang
+      // đó tự hỏi trạng thái thật. Chỉ trả JSON khi người gọi xin rõ
+      // (Postman/test đặt Accept: application/json) hoặc không tìm ra đơn.
+      const muonJson = (req.get("accept") ?? "").includes("application/json");
+      if (confirmToken && !muonJson) {
+        const ketQua = outcome === "SUCCESS" || outcome === "ALREADY_CONFIRMED" ? "ok" : "loi";
+        res.redirect(302, `${config.webBaseUrl}/confirm/${confirmToken}?thanhToan=${ketQua}`);
+        return;
+      }
       res.json({
         outcome,
         // Trạng thái thật lấy từ database, không lấy từ tham số trên
@@ -199,7 +235,13 @@ export class PaymentController {
    * code mà cổng thật đi qua.
    */
   mockCheckoutPage = async (req: Request, res: Response): Promise<void> => {
-    const gateway = getGateway("mock") as MockGateway;
+    let gateway: MockGateway;
+    try {
+      gateway = getGateway("mock") as MockGateway;
+    } catch (err) {
+      this.handle(err, res, "load mock checkout");
+      return;
+    }
     const txnRef = String(req.query.txnRef ?? "");
     const amount = String(req.query.amount ?? "0");
     const orderCode = String(req.query.orderCode ?? "");
@@ -236,9 +278,9 @@ export class PaymentController {
   private clientIp(req: Request): string {
     const forwarded = req.header("x-forwarded-for");
     if (forwarded) {
-      return forwarded.split(",")[0].trim();
+      return chuanHoaIp(forwarded.split(",")[0]);
     }
-    return req.ip || req.socket?.remoteAddress || "127.0.0.1";
+    return chuanHoaIp(req.ip || req.socket?.remoteAddress);
   }
 
   /**

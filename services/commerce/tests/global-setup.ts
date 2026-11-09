@@ -14,6 +14,8 @@ import pg from "pg";
 import { config } from "../src/config.js";
 
 const TABLES = [
+  "user_addresses",
+  "customer_identities",
   "outbox_events",
   "payment_transactions",
   "payments",
@@ -28,11 +30,19 @@ const TABLES = [
   "inventory",
   "product_skus",
   "products",
+  "livestream_comments",
   "livestream_products",
   "livestreams",
 ].join(", ");
 
-export default function setup() {
+export default async function setup() {
+  try {
+    const { runMigrations } = await import("../src/shared/database/database.js");
+    await runMigrations();
+  } catch (err) {
+    console.warn("[test] Could not run migrations in global-setup:", err);
+  }
+
   return async function teardown() {
     if (process.env.KEEP_TEST_DATA) {
       console.log("[test] KEEP_TEST_DATA được bật, giữ nguyên dữ liệu");
@@ -40,10 +50,9 @@ export default function setup() {
     }
 
     const targetDb =
-      process.env.COMMERCE_DATABASE_URL ||
-      process.env.DATABASE_URL ||
+      process.env.COMMERCE_TEST_DATABASE_URL ||
       (process.env.CI
-        ? "postgresql://postgres:postgres@localhost:5432/commerce_db"
+        ? (process.env.COMMERCE_DATABASE_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/commerce_db")
         : "postgresql://postgres:postgres@localhost:5432/commerce_test_db");
 
     // Bảo vệ database dev: nếu không ở môi trường CI và không phải database test riêng thì KHÔNG xoá
@@ -56,6 +65,8 @@ export default function setup() {
     try {
       await pool.query(`TRUNCATE ${TABLES} RESTART IDENTITY CASCADE`);
       console.log("[test] Đã dọn dẹp sạch sẽ database test (commerce_test_db).");
+    } catch (err) {
+      console.warn("[test] Could not truncate tables in teardown (database might be offline):", (err as Error).message);
     } finally {
       await pool.end();
     }

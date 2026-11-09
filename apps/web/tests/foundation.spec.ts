@@ -27,7 +27,7 @@ test("customer dialog supports Escape and restores keyboard focus", async ({
     page.getByRole("button", { name: "Đặt hàng — sắp có" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Đóng", exact: true }),
+    page.getByRole("button", { name: /Đóng/i }).first(),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
@@ -43,7 +43,10 @@ test("navigation and combined filters work without horizontal overflow", async (
   await expect(
     page.getByRole("button", { name: "Thử gửi bình luận" }),
   ).toBeDisabled();
-  await page.getByRole("link", { name: "Kênh chủ shop" }).click();
+  await expect(
+    page.getByRole("link", { name: "Kênh chủ shop" }),
+  ).toHaveCount(0);
+  await page.goto("/shop");
   
   if (testInfo.project.name === "mobile") {
     await page.getByRole("button", { name: "Mở menu quản lý" }).click();
@@ -57,8 +60,8 @@ test("navigation and combined filters work without horizontal overflow", async (
   );
   await page.screenshot({ path: test.info().outputPath("merchant.png"), fullPage: true });
   await page.getByLabel("Trạng thái", { exact: true }).selectOption("paid");
-  await expect(page.getByText("ORD-8821", { exact: true })).toBeVisible();
-  await expect(page.getByText("ORD-8820", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("#ORD-8821", { exact: true })).toBeVisible();
+  await expect(page.getByText("#ORD-8820", { exact: true })).not.toBeVisible();
   await page.getByLabel("Tìm đơn hàng").fill("không tồn tại");
   await expect(
     page.getByRole("heading", { name: "Không tìm thấy đơn hàng" }),

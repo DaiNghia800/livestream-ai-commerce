@@ -19,7 +19,9 @@ import { useEffect } from "react";
 import {
   getLivestreamDetail,
   mapBackendLivestreamToFrontend,
+  updateLivestream,
 } from "../../api/get-livestreams";
+import { formatScheduledAt } from "../../api/create-livestream";
 import {
   addLivestreamProduct,
   removeLivestreamProduct,
@@ -136,8 +138,6 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
   const initialCoverImage = session.thumbnail || null;
   const initialStartDate = getInitialStartDate();
   const initialStartTime = session.startTime || "19:30";
-  const initialEndDate = session.endDate || getInitialStartDate();
-  const initialEndTime = session.endTime || "22:00";
   const initialProducts = getInitialProducts();
 
   const [title, setTitle] = useState(initialTitle);
@@ -145,14 +145,13 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
   const [coverImage, setCoverImage] = useState<string | null>(initialCoverImage);
   const [startDate, setStartDate] = useState(initialStartDate);
   const [startTime, setStartTime] = useState(initialStartTime);
-  const [endDate, setEndDate] = useState(initialEndDate);
-  const [endTime, setEndTime] = useState(initialEndTime);
   const [products, setProducts] = useState<LiveProductItem[]>(initialProducts);
 
   // UI state
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<{
     title?: string;
     dates?: string;
@@ -166,8 +165,6 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     if (coverImage !== initialCoverImage) return true;
     if (startDate !== initialStartDate) return true;
     if (startTime !== initialStartTime) return true;
-    if (endDate !== initialEndDate) return true;
-    if (endTime !== initialEndTime) return true;
     if (products.length !== initialProducts.length) return true;
     const initialSkus = initialProducts.map((p) => p.sku).join(",");
     const currentSkus = products.map((p) => p.sku).join(",");
@@ -183,10 +180,6 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     initialStartDate,
     startTime,
     initialStartTime,
-    endDate,
-    initialEndDate,
-    endTime,
-    initialEndTime,
     products,
     initialProducts,
   ]);
@@ -206,14 +199,15 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     setProducts((prev) => prev.filter((p) => p.sku !== sku));
   };
 
-  // Date sequence check
-  const checkDatesValidity = (sDate: string, sTime: string, eDate: string, eTime: string) => {
-    if (sDate && eDate) {
+  // Date check
+  const checkDatesValidity = (sDate: string, sTime: string) => {
+    if (sDate) {
       const startDateTime = new Date(`${sDate}T${sTime || "00:00"}`);
-      const endDateTime = new Date(`${eDate}T${eTime || "23:59"}`);
-      if (!isNaN(startDateTime.getTime()) && !isNaN(endDateTime.getTime())) {
-        if (endDateTime <= startDateTime) {
-          return "Thời gian kết thúc dự kiến phải sau thời gian bắt đầu.";
+      if (!isNaN(startDateTime.getTime())) {
+        // Dung sai 5 phút cho thao tác nhập liệu form
+        const nowWithBuffer = Date.now() - 5 * 60 * 1000;
+        if (startDateTime.getTime() < nowWithBuffer) {
+          return "Thời gian bắt đầu dự kiến không thể trong quá khứ.";
         }
       }
     }
@@ -228,7 +222,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
       newErrors.title = "Vui lòng nhập tên phiên Livestream.";
     }
 
-    const dateErr = checkDatesValidity(startDate, startTime, endDate, endTime);
+    const dateErr = checkDatesValidity(startDate, startTime);
     if (dateErr) {
       newErrors.dates = dateErr;
     }
@@ -261,6 +255,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
       return;
     }
 
+    setErrorMessage(null);
     setIsSubmitting(true);
 
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -268,11 +263,22 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
 
     if (isBackendSession) {
       try {
+        const scheduledAt = formatScheduledAt(startDate, startTime);
+
+        // 1. Update livestream metadata on backend
+        await updateLivestream(session.id, {
+          title: title.trim(),
+          description: description.trim() || null,
+          coverImageKey: coverImage || null,
+          scheduledAt,
+        });
+
+        // 2. Synchronize products
         const existingProducts = session.products || [];
         const existingIds = new Set(existingProducts.map((p) => p.id));
         const currentIds = new Set(products.map((p) => p.id));
 
-        // 1. Remove deleted products
+        // Remove deleted products
         for (const oldP of existingProducts) {
           if (!currentIds.has(oldP.id)) {
             try {
@@ -283,7 +289,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
           }
         }
 
-        // 2. Add newly added products
+        // Add newly added products
         for (let i = 0; i < products.length; i++) {
           const p = products[i];
           if (!existingIds.has(p.id)) {
@@ -298,8 +304,18 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
             }
           }
         }
-      } catch (err) {
-        console.warn("[LivestreamEditForm] Lỗi đồng bộ sản phẩm với backend:", err);
+      } catch (err: unknown) {
+        console.error("[LivestreamEditForm] Lỗi lưu phiên livestream:", err);
+        const errMsg =
+          err instanceof Error
+            ? err.message
+            : "Có lỗi xảy ra khi lưu thông tin phiên livestream.";
+        setErrorMessage(errMsg);
+        if (errMsg.includes("lên lịch") || errMsg.includes("cách nhau")) {
+          setErrors((prev) => ({ ...prev, dates: errMsg }));
+        }
+        setIsSubmitting(false);
+        return;
       }
     }
 
@@ -313,9 +329,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
         thumbnail: coverImage || undefined,
         startDate,
         startTime,
-        endDate,
-        endTime,
-        timeDisplay: `${startTime || "19:00"} - ${endTime || "22:00"}`,
+        timeDisplay: `${startTime || "19:00"}`,
         subTimeDisplay: `Lịch phát: ${startDate}`,
         productCount: products.length,
         products: [...products],
@@ -358,6 +372,14 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
         </div>
       )}
 
+      {/* Error Notification Banner */}
+      {errorMessage && (
+        <div className="mb-6 flex items-center gap-2.5 rounded-lg border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-800 shadow-xs">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
       {/* Success Notification Banner */}
       {successMessage && (
         <div className="mb-6 flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs font-semibold text-emerald-800 shadow-xs">
@@ -386,25 +408,13 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
             startDate={startDate}
             onStartDateChange={(v) => {
               setStartDate(v);
-              const dateErr = checkDatesValidity(v, startTime, endDate, endTime);
+              const dateErr = checkDatesValidity(v, startTime);
               setErrors((prev) => ({ ...prev, dates: dateErr }));
             }}
             startTime={startTime}
             onStartTimeChange={(v) => {
               setStartTime(v);
-              const dateErr = checkDatesValidity(startDate, v, endDate, endTime);
-              setErrors((prev) => ({ ...prev, dates: dateErr }));
-            }}
-            endDate={endDate}
-            onEndDateChange={(v) => {
-              setEndDate(v);
-              const dateErr = checkDatesValidity(startDate, startTime, v, endTime);
-              setErrors((prev) => ({ ...prev, dates: dateErr }));
-            }}
-            endTime={endTime}
-            onEndTimeChange={(v) => {
-              setEndTime(v);
-              const dateErr = checkDatesValidity(startDate, startTime, endDate, v);
+              const dateErr = checkDatesValidity(startDate, v);
               setErrors((prev) => ({ ...prev, dates: dateErr }));
             }}
             errors={errors}
@@ -426,8 +436,6 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
             title={title}
             startDate={startDate}
             startTime={startTime}
-            endDate={endDate}
-            endTime={endTime}
             products={products}
           />
         </div>

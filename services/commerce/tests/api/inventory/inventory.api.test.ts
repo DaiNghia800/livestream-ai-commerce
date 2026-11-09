@@ -13,6 +13,8 @@ describe("Inventory API", () => {
 
   beforeEach(() => {
     repository = {
+      getAdjustmentDraft: vi.fn().mockResolvedValue(null),
+      saveAdjustmentDraft: vi.fn().mockResolvedValue({ id: "1" }),
       list: vi.fn().mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 }),
       getSummary: vi.fn().mockResolvedValue({ skuCount: 0 }),
       findBySku: vi.fn().mockResolvedValue(null),
@@ -51,6 +53,28 @@ describe("Inventory API", () => {
       page: 2,
       pageSize: 5,
     });
+  });
+
+  it("validates and forwards adjustment drafts", async () => {
+    const bad = await request(app)
+      .put("/api/inventory/adjustments/documents/draft")
+      .set("X-Shop-Id", "7")
+      .send({ productId: "3", items: [{ skuId: "9", delta: 0, reason: "x" }] });
+    expect(bad.status).toBe(400);
+
+    const body = { productId: "3", syncLive: false, items: [{ skuId: "9", delta: 2, reason: "x" }] };
+    const saved = await request(app)
+      .put("/api/inventory/adjustments/documents/draft")
+      .set({ "X-Shop-Id": "7", "X-User-Id": "3" })
+      .send(body);
+    expect(saved.status).toBe(200);
+    expect(repository.saveAdjustmentDraft).toHaveBeenCalledWith(7, body, 3);
+
+    const read = await request(app)
+      .get("/api/inventory/adjustments/documents/draft?productId=3")
+      .set("X-Shop-Id", "7");
+    expect(read.body).toEqual({ data: null });
+    expect(repository.getAdjustmentDraft).toHaveBeenCalledWith(7, "3");
   });
 
   it("returns 404 for an unknown SKU", async () => {

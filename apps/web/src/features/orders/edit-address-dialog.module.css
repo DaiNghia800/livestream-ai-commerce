@@ -1,0 +1,47 @@
+/*
+ * Hộp thoại sửa địa chỉ giao.
+ *
+ * CSS module nên mọi lớp ở đây được đổi tên lúc build; không có cách
+ * nào rò sang màn hình của người khác. Các lớp dùng chung (`field`,
+ * `muted`, `dialog-footer`) giữ nguyên, không ghi đè.
+ */
+
+/* Chuỗi khách đã gõ, để người sửa đối chiếu chứ không phải nhớ lại. */
+.goc {
+  margin-bottom: 1rem;
+  padding: 0.625rem 0.75rem;
+  border-left: 3px solid var(--border-strong, #cbd5e1);
+  background: var(--surface-muted, #f8fafc);
+  border-radius: 0 6px 6px 0;
+}
+
+.gocNhan {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted, #64748b);
+}
+
+.gocNoiDung {
+  margin: 0.25rem 0 0;
+  /* Địa chỉ gốc hay dài và gõ liền một mạch; cho xuống dòng tự do
+     thay vì tràn ngang làm hộp thoại có thanh cuộn. */
+  overflow-wrap: anywhere;
+  color: var(--text-primary, #0f172a);
+}
+
+/*
+ * Lỗi từ backend. Giữ xuống dòng của câu gốc: khi tỉnh sai, câu đó
+ * kèm gợi ý tên đúng và đó là phần giúp được shop nhiều nhất.
+ */
+.loi {
+  margin: 0.75rem 0 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: 6px;
+  background: var(--danger-surface, #fef2f2);
+  color: var(--danger-text, #b91c1c);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}

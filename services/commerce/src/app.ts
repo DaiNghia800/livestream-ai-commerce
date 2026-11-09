@@ -1,8 +1,17 @@
 import cors from "cors";
 import express, { Express } from "express";
 import { config } from "./config.js";
-import { IAuthRepository } from "./modules/login/repositories/auth.repository.js";
+import {
+  IAuthRepository,
+  PostgresAuthRepository,
+} from "./modules/login/repositories/auth.repository.js";
 import { createAuthRouter } from "./modules/login/routes/auth.routes.js";
+import { createAdminUserRouter } from "./modules/login/routes/admin-user.routes.js";
+import { createAddressBookRouter } from "./modules/address-book/routes/address-book.routes.js";
+import { createProfileRouter } from "./modules/profile/routes/profile.routes.js";
+import { createCustomerIdentityRouter } from "./modules/profile/routes/customer-identity.routes.js";
+import { createMyOrdersRouter } from "./modules/order/routes/my-orders.routes.js";
+import { createCartRouter } from "./modules/order/routes/cart.routes.js";
 import { ILivestreamRepository } from "./modules/livestream/repositories/livestream.repository.js";
 import { ILivestreamProductRepository } from "./modules/livestream/repositories/livestream-product.repository.js";
 import { createLivestreamRouter } from "./modules/livestream/routes/livestream.routes.js";
@@ -10,6 +19,9 @@ import { createUploadRouter } from "./modules/livestream/routes/upload.routes.js
 import { createOrderRouter } from "./modules/order/routes/order.routes.js";
 import { createPurchaseRequestRouter } from "./modules/order/routes/purchase-request.routes.js";
 import { createPaymentRouter } from "./modules/payment/routes/payment.routes.js";
+import { createShipmentRouter } from "./modules/shipping/routes/shipment.routes.js";
+import { createShippingWebhookRouter } from "./modules/shipping/routes/shipping-webhook.routes.js";
+import { createTrackingRouter } from "./modules/shipping/routes/tracking.routes.js";
 import {
   IProductRepository,
 } from "./modules/product/repositories/product.repository.js";
@@ -19,6 +31,10 @@ import { createInventoryRouter } from "./modules/inventory/routes/inventory.rout
 import { S3StorageService } from "./shared/storage/s3-storage.service.js";
 import { LocalProductImageStorageService } from "./shared/storage/local-product-image-storage.service.js";
 import { IIvsService } from "./shared/ivs/ivs.service.js";
+import { IIvsChatService } from "./shared/ivs/ivs-chat.service.js";
+import { ILivestreamCommentRepository } from "./modules/livestream/repositories/livestream-comment.repository.js";
+import { ISqsService } from "./shared/queue/sqs.service.js";
+import { IRedisService } from "./shared/redis/redis.service.js";
 
 export function createApp(
   customRepository?: ILivestreamRepository,
@@ -28,7 +44,11 @@ export function createApp(
   customAuthRepository?: IAuthRepository,
   customLocalProductImageStorage?: LocalProductImageStorageService,
   customInventoryRepository?: IInventoryRepository,
-  customIvsService?: IIvsService
+  customIvsService?: IIvsService,
+  customIvsChatService?: IIvsChatService,
+  customCommentRepository?: ILivestreamCommentRepository,
+  customSqsService?: ISqsService,
+  customRedisService?: IRedisService
 ): Express {
 
   const app = express();
@@ -40,7 +60,23 @@ export function createApp(
     );
 
   app.use(cors());
-  app.use(express.json());
+  app.use(
+    express.json({
+      /*
+       * Giữ lại thân gói tin NGUYÊN BẢN cho việc xác thực chữ ký.
+       *
+       * Hãng vận chuyển ký trên đúng chuỗi byte họ gửi đi. Ký lại từ
+       * object đã parse thì sai, vì mỗi ngôn ngữ serialize một kiểu:
+       * json_encode của PHP escape tiếng Việt thành \uXXXX, còn
+       * JSON.stringify của Node giữ nguyên UTF-8. Hai chuỗi byte khác
+       * nhau cho ra hai chữ ký khác nhau, và mọi webhook bị từ chối
+       * 401 dù khoá hoàn toàn đúng.
+       */
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    })
+  );
 
   // Handle malformed JSON body from clients gracefully without dumping unhandled stack traces
   app.use(
@@ -82,18 +118,33 @@ export function createApp(
 
   // Mount API routers
   const apiRouter = express.Router();
-  apiRouter.use("/auth", createAuthRouter(customAuthRepository));
+  const authRepository = customAuthRepository ?? new PostgresAuthRepository();
+  apiRouter.use("/auth", createAuthRouter(authRepository));
+  apiRouter.use("/admin", createAdminUserRouter(authRepository));
+  // Sổ địa chỉ của chính người đăng nhập; id lấy từ token, không từ URL.
+  apiRouter.use("/me/addresses", createAddressBookRouter(authRepository));
+  apiRouter.use("/me/profile", createProfileRouter(authRepository));
+  apiRouter.use("/me/customer-ids", createCustomerIdentityRouter(authRepository));
+  apiRouter.use("/me/orders", createMyOrdersRouter(authRepository));
+  apiRouter.use("/me/cart", createCartRouter(authRepository));
   apiRouter.use(
     "/livestreams",
     createLivestreamRouter(
       customRepository,
       customLivestreamProductRepository,
-      customIvsService
+      customIvsService,
+      customIvsChatService,
+      customCommentRepository,
+      customSqsService,
+      customRedisService
     )
   );
   apiRouter.use("/orders", createOrderRouter());
   apiRouter.use("/purchase-requests", createPurchaseRequestRouter());
   apiRouter.use("/payments", createPaymentRouter());
+  apiRouter.use("/shipments", createShipmentRouter());
+  apiRouter.use("/webhooks/shipping", createShippingWebhookRouter());
+  apiRouter.use("/tracking", createTrackingRouter());
   apiRouter.use(
     "/uploads",
     createUploadRouter(customS3Service, localProductImageStorage)

@@ -10,6 +10,7 @@ import { config } from "../../../config.js";
 import { MockGateway } from "./mock.gateway.js";
 import { MomoGateway } from "./momo.gateway.js";
 import type { PaymentGateway } from "./payment-gateway.js";
+import { GatewayNotConfiguredError } from "./payment-gateway.js";
 import { VnpayGateway } from "./vnpay.gateway.js";
 import { ZalopayGateway } from "./zalopay.gateway.js";
 
@@ -41,6 +42,9 @@ export function getGateway(name: string = config.defaultGateway): PaymentGateway
   let gateway: PaymentGateway;
   switch (name) {
     case "mock":
+      if (!config.allowMockPayment) {
+        throw new GatewayNotConfiguredError("mock", ["ENABLE_MOCK_PAYMENT=true"]);
+      }
       gateway = new MockGateway({
         baseUrl: config.publicBaseUrl,
         secret: config.mockGatewaySecret,
@@ -61,6 +65,40 @@ export function getGateway(name: string = config.defaultGateway): PaymentGateway
 
   cache.set(name, gateway);
   return gateway;
+}
+
+/** Tên hiển thị, để giao diện không phải tự ghép bảng. */
+export const GATEWAY_LABELS: Record<GatewayName, string> = {
+  mock: "Cổng giả (môi trường thử)",
+  vnpay: "VNPay — QR / Thẻ ATM / Visa, Master",
+  momo: "Ví MoMo",
+  zalopay: "ZaloPay",
+};
+
+/**
+ * Cổng nào đang dùng được.
+ *
+ * Màn thanh toán của KHÁCH chỉ bày ra lựa chọn thật sự bấm được;
+ * cổng chưa khai khoá thì để mờ kèm lý do, chứ không ẩn đi. Khách
+ * bấm vào một cổng rồi nhận lỗi là cách nhanh nhất làm họ bỏ đơn —
+ * và họ sẽ không quay lại như shop quay lại.
+ */
+export function availableGateways(): Array<{
+  name: GatewayName;
+  label: string;
+  ready: boolean;
+  missing: string[];
+}> {
+  return SUPPORTED_GATEWAYS.map((name) => {
+    try {
+      getGateway(name);
+      return { name, label: GATEWAY_LABELS[name], ready: true, missing: [] };
+    } catch (err) {
+      const missing =
+        err instanceof GatewayNotConfiguredError ? err.missing : [];
+      return { name, label: GATEWAY_LABELS[name], ready: false, missing };
+    }
+  });
 }
 
 /** Test đổi cấu hình giữa chừng cần xoá bộ nhớ đệm này. */

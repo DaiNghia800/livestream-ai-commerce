@@ -60,6 +60,7 @@ async function mockApi(page: Page) {
         page: 1,
         pageSize: 20,
         total: 1,
+        filteredTotalHeld: 5,
         summary: {
           skuCount: 1,
           totalOnHand: 30,
@@ -84,6 +85,8 @@ test("inventory dashboard renders real API rows", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("Áo thun kiểm thử").first()).toBeVisible();
   await expect(page.getByText("SKU-TEST-1").first()).toBeVisible();
+  await page.getByLabel("Trạng thái tồn").selectOption("high_hold");
+  await expect(page.getByText(/Đang giữ chỗ 5 sản phẩm/)).toBeVisible();
 });
 
 test("inventory adjustment loads variants from the API", async ({ page }) => {

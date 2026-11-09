@@ -16,6 +16,9 @@ export interface Livestream {
   status: LivestreamStatus;
   channelArn: string | null;
   playbackUrl: string | null;
+  chatRoomArn?: string | null;
+  chatRoomId?: string | null;
+  replayUrl?: string | null;
   scheduledAt: string | null;
   startedAt: string | null;
   endedAt: string | null;

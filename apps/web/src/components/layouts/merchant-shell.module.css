@@ -55,18 +55,6 @@
   color: #ffffff;
 }
 
-.sidebarProduct .navLink,
-.sidebarProduct .navUnavailable {
-  min-height: 34px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  line-height: 18px;
-}
-
-.sidebarProduct .support > span {
-  display: none;
-}
-
 .brandLink {
   color: inherit;
   display: block;

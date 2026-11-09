@@ -2,17 +2,18 @@
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
-  MessageSquare,
   Sparkles,
   Clock,
   HelpCircle,
-  Info,
   AlertTriangle,
-  Inbox,
+  MessageSquare,
   Maximize2,
   Minimize2,
   AlignJustify,
   List,
+  Send,
+  Loader2,
+  X,
 } from "lucide-react";
 import type { StudioChatMessage } from "../../types/studio";
 import { mockStudioChatMessages } from "../../mocks/studio.mock";
@@ -26,6 +27,11 @@ export interface StudioChatPanelProps {
   onToggleExpandMode?: () => void;
   activeFilter?: ChatFilter;
   onFilterChange?: (filter: ChatFilter) => void;
+  connectionState?: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "ERROR";
+  onSendMessage?: (content: string) => Promise<void> | void;
+  isLoadingEarlier?: boolean;
+  hasMoreEarlier?: boolean;
+  onLoadEarlier?: () => void;
 }
 
 export function StudioChatPanel({
@@ -34,11 +40,36 @@ export function StudioChatPanel({
   onToggleExpandMode,
   activeFilter,
   onFilterChange,
+  connectionState = "CONNECTED",
+  onSendMessage,
+  isLoadingEarlier = false,
+  hasMoreEarlier = true,
+  onLoadEarlier,
 }: StudioChatPanelProps) {
   const [internalFilter, setInternalFilter] = useState<ChatFilter>("ALL");
   const currentFilter = activeFilter !== undefined ? activeFilter : internalFilter;
   const [density, setDensity] = useState<ChatDensity>("compact");
+  const [inputText, setInputText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleReplyCustomer = (targetUser: string, cannedText?: string) => {
+    let cleanName = targetUser.replace(/^[🤖\s]+/, "").trim();
+    if (!cleanName || cleanName === "Trợ lý AI" || cleanName === "Hệ thống") {
+      cleanName = "bạn";
+    }
+    const prefix = cleanName.startsWith("@") ? `${cleanName} ` : `@${cleanName} `;
+    if (cannedText) {
+      setInputText(`${prefix}${cannedText}`);
+    } else {
+      setInputText(prefix);
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
 
   const handleFilterSelect = (newFilter: ChatFilter) => {
     if (activeFilter === undefined) {
@@ -46,71 +77,169 @@ export function StudioChatPanel({
     }
     onFilterChange?.(newFilter);
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    // Kiểm tra xem người dùng có đang ở gần đáy (trong vòng 80px) không
+    const isNearBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+    shouldAutoScrollRef.current = isNearBottom;
+
+    // Khi cuộn lên đỉnh (gần đầu danh sách), tải thêm tin nhắn cũ hơn
+    if (target.scrollTop < 40 && hasMoreEarlier && !isLoadingEarlier) {
+      onLoadEarlier?.();
     }
   };
 
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
+    if (scrollContainerRef.current && shouldAutoScrollRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  }, [currentFilter]);
+  }, [messages, currentFilter]);
 
   const counts = useMemo(() => {
+    const customerReviewCount = messages.filter(
+      (m) => m.status === "NEEDS_REVIEW" && m.userId !== "ai-system",
+    ).length;
+    const allReviewCount = messages.filter(
+      (m) => m.status === "NEEDS_REVIEW",
+    ).length;
+
+    const customerAiOrdersCount = messages.filter(
+      (m) =>
+        (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+        m.status !== "NEEDS_REVIEW" &&
+        m.userId !== "ai-system",
+    ).length;
+    const allAiOrdersCount = messages.filter(
+      (m) =>
+        (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+        m.status !== "NEEDS_REVIEW",
+    ).length;
+
     return {
-      all: messages.length,
-      aiOrders: messages.filter(
-        (m) => m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated),
-      ).length,
-      needsReview: messages.filter((m) => m.status === "NEEDS_REVIEW").length,
+      all: messages.filter((m) => m.userId !== "ai-system").length,
+      aiOrders: customerAiOrdersCount || allAiOrdersCount,
+      needsReview: customerReviewCount || allReviewCount,
     };
   }, [messages]);
 
   const filteredMessages = useMemo(() => {
     if (currentFilter === "AI_ORDERS") {
+      const hasCustomerOrders = messages.some(
+        (m) =>
+          (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+          m.status !== "NEEDS_REVIEW" &&
+          m.userId !== "ai-system",
+      );
+      if (hasCustomerOrders) {
+        return messages.filter(
+          (m) =>
+            (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+            m.status !== "NEEDS_REVIEW" &&
+            m.userId !== "ai-system",
+        );
+      }
       return messages.filter(
-        (m) => m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated),
+        (m) =>
+          (m.status === "PENDING_CONFIRMATION" || Boolean(m.orderCreated)) &&
+          m.status !== "NEEDS_REVIEW",
       );
     }
     if (currentFilter === "NEEDS_REVIEW") {
+      // Ưu tiên hiển thị chính bình luận của khách hàng cần can thiệp
+      const hasCustomerReviews = messages.some(
+        (m) => m.status === "NEEDS_REVIEW" && m.userId !== "ai-system",
+      );
+      if (hasCustomerReviews) {
+        return messages.filter(
+          (m) => m.status === "NEEDS_REVIEW" && m.userId !== "ai-system",
+        );
+      }
       return messages.filter((m) => m.status === "NEEDS_REVIEW");
     }
-    return messages;
+    // Tab "Tất cả": Ẩn toàn bộ bình luận bot tự động để giữ luồng chat của chủ shop sạch sẽ, dễ tương tác với khách
+    return messages.filter((m) => m.userId !== "ai-system");
   }, [messages, currentFilter]);
 
   return (
-    <div className="flex flex-col h-full select-none min-h-0 text-slate-200">
-      {/* 1. Header & Controls */}
-      <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 shrink-0">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <MessageSquare className="h-3.5 w-3.5 text-cyan-400 shrink-0" aria-hidden="true" />
-          <span className="text-xs font-bold text-white truncate">
-            Tin Nhắn Mua Hàng
-          </span>
-          <span className="text-[10px] bg-cyan-950/80 text-cyan-300 border border-cyan-800/50 px-1 py-0.2 rounded font-bold hidden sm:inline-flex items-center gap-0.5 shrink-0">
-            <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
-            <span>AI Intent</span>
-          </span>
+    <div className="flex flex-col h-full select-none min-h-0 text-on-surface">
+      {/* 1. Filter Tabs & Stream Controls (Unified Single Bar - Không lặp tiêu đề) */}
+      <div className="flex items-center justify-between pb-1.5 border-b border-outline-variant/30 shrink-0 gap-1.5 text-[11px]">
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1 flex-wrap min-w-0">
+          <button
+            type="button"
+            onClick={() => handleFilterSelect("ALL")}
+            className={`px-2.5 py-0.5 rounded-lg font-bold transition cursor-pointer shadow-2xs ${currentFilter === "ALL"
+              ? "bg-primary text-white"
+              : "bg-surface-container-low text-on-surface-variant hover:text-primary border border-outline-variant/40"
+              }`}
+          >
+            Tất cả ({counts.all})
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFilterSelect("AI_ORDERS")}
+            className={`px-2.5 py-0.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs ${currentFilter === "AI_ORDERS"
+              ? "bg-primary text-white"
+              : "bg-surface-container-low text-on-surface-variant hover:text-primary border border-outline-variant/40"
+              }`}
+          >
+            <Clock className="h-2.5 w-2.5" aria-hidden="true" />
+            <span>Đơn AI ({counts.aiOrders})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFilterSelect("NEEDS_REVIEW")}
+            className={`px-2.5 py-0.5 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs ${currentFilter === "NEEDS_REVIEW"
+              ? "bg-primary text-white"
+              : "bg-surface-container-low text-on-surface-variant hover:text-primary border border-outline-variant/40"
+              }`}
+          >
+            <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
+            <span>Cần xử lý ({counts.needsReview})</span>
+          </button>
         </div>
 
+        {/* Right: IVS Live indicator + Density / Expand Controls */}
         <div className="flex items-center gap-1 shrink-0">
-          {/* Toggle Mật độ: Gọn (Compact stream) vs Chuẩn (Normal) */}
+          {/* IVS WebSocket Live Indicator - Compact */}
+          <span
+            className={`text-[9px] px-2 py-0.5 rounded-md font-bold inline-flex items-center gap-1 shrink-0 shadow-2xs ${connectionState === "CONNECTED"
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              : connectionState === "CONNECTING"
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-surface-container text-outline border border-outline-variant/40"
+              }`}
+            title={`Trạng thái WebSocket IVS Chat: ${connectionState}`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${connectionState === "CONNECTED"
+                ? "bg-emerald-600"
+                : connectionState === "CONNECTING"
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-outline"
+                }`}
+            />
+            <span>{connectionState === "CONNECTED" ? "LIVE" : connectionState}</span>
+          </span>
+
+          {/* Toggle Mật độ: Gọn vs Chuẩn */}
           <button
             type="button"
             onClick={() => setDensity((d) => (d === "compact" ? "normal" : "compact"))}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition active:scale-95"
-            title={density === "compact" ? "Đổi sang chế độ xem chuẩn" : "Đổi sang chế độ xem siêu gọn"}
+            className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition active:scale-95 cursor-pointer"
+            title={density === "compact" ? "Chuyển sang chế độ xem chuẩn" : "Chuyển sang chế độ xem gọn"}
+            aria-label="Thay đổi mật độ hiển thị tin nhắn"
           >
             {density === "compact" ? (
-              <>
-                <List className="h-3 w-3 text-cyan-400" />
-                <span>Gọn (12+ tin)</span>
-              </>
+              <List className="h-3.5 w-3.5" />
             ) : (
-              <>
-                <AlignJustify className="h-3 w-3 text-cyan-400" />
-                <span>Chuẩn</span>
-              </>
+              <AlignJustify className="h-3.5 w-3.5" />
             )}
           </button>
 
@@ -118,119 +247,119 @@ export function StudioChatPanel({
             <button
               type="button"
               onClick={onToggleExpandMode}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition cursor-pointer active:scale-95"
+              className="p-1 rounded-md text-outline hover:text-on-surface hover:bg-surface-container transition cursor-pointer active:scale-95"
               title={isExpandedMode ? "Thu gọn về bố cục mặc định (Esc)" : "Mở rộng vùng điều hành tin nhắn"}
+              aria-label="Mở rộng hoặc thu gọn khung tin nhắn"
             >
               {isExpandedMode ? (
-                <Minimize2 className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+                <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
               ) : (
-                <Maximize2 className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+                <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
               )}
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. Filter Tabs mỏng gọn */}
-      <div className="flex items-center gap-1 py-1.5 shrink-0 flex-wrap text-[11px]">
-        <button
-          type="button"
-          onClick={() => handleFilterSelect("ALL")}
-          className={`px-2 py-0.5 rounded-full font-semibold transition cursor-pointer ${
-            currentFilter === "ALL"
-              ? "bg-cyan-600 text-white shadow-xs"
-              : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-          }`}
-        >
-          Tất cả ({counts.all})
-        </button>
-        <button
-          type="button"
-          onClick={() => handleFilterSelect("AI_ORDERS")}
-          className={`px-2 py-0.5 rounded-full font-semibold transition flex items-center gap-1 cursor-pointer ${
-            currentFilter === "AI_ORDERS"
-              ? "bg-amber-600 text-white shadow-xs"
-              : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-          }`}
-        >
-          <Clock className="h-2.5 w-2.5" aria-hidden="true" />
-          <span>Đơn AI ({counts.aiOrders})</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleFilterSelect("NEEDS_REVIEW")}
-          className={`px-2 py-0.5 rounded-full font-semibold transition flex items-center gap-1 cursor-pointer ${
-            currentFilter === "NEEDS_REVIEW"
-              ? "bg-[#FE2C55] text-white shadow-xs"
-              : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
-          }`}
-        >
-          <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
-          <span>Cần xử lý ({counts.needsReview})</span>
-        </button>
-      </div>
-
       {/* 3. Messages Stream - Với custom dark scrollbar */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 min-h-0 overflow-y-auto pr-1 studio-scrollbar ${
-          density === "compact" ? "space-y-1 py-1" : "space-y-2 py-1.5"
-        }`}
+        onScroll={handleScroll}
+        className={`flex-1 min-h-0 overflow-y-auto pr-1 studio-scrollbar ${density === "compact" ? "space-y-1 py-1" : "space-y-2 py-1.5"
+          }`}
       >
         {filteredMessages.length === 0 ? (
-          <div className="py-8 text-center text-slate-500">
-            <Inbox className="h-6 w-6 mx-auto mb-1.5 opacity-50" aria-hidden="true" />
-            <p className="text-xs font-medium">Không có tin nhắn nào trong mục này</p>
+          <div className="py-12 px-4 text-center flex flex-col items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-3 text-primary shadow-2xs">
+              <MessageSquare className="h-6 w-6 stroke-[2.2]" aria-hidden="true" />
+            </div>
+            <p className="text-xs font-extrabold text-on-surface">
+              {messages.length === 0
+                ? "Phòng chat & Chốt đơn AI sẵn sàng"
+                : "Không có tin nhắn nào trong mục này"}
+            </p>
+            <p className="text-[11px] text-outline mt-1.5 max-w-[240px] leading-relaxed">
+              {messages.length === 0
+                ? "Bình luận và cú pháp chốt đơn của khán giả sẽ xuất hiện tại đây theo thời gian thực khi bắt đầu phát sóng."
+                : "Hãy chuyển sang tab bộ lọc khác để xem thêm bình luận."}
+            </p>
+            {messages.length === 0 && (
+              <div className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-low border border-outline-variant/50 text-[10px] text-on-surface-variant font-medium shadow-2xs">
+                <Sparkles className="h-3 w-3 text-primary shrink-0" />
+                <span>AI tự động nhận diện SKU &amp; cú pháp</span>
+              </div>
+            )}
           </div>
         ) : (
           filteredMessages.map((msg) => {
-            const isOrder = msg.status === "PENDING_CONFIRMATION" || msg.orderCreated;
+            const isOrder =
+              (msg.status === "PENDING_CONFIRMATION" || Boolean(msg.orderCreated)) &&
+              msg.status !== "NEEDS_REVIEW";
             const isReview = msg.status === "NEEDS_REVIEW";
             const isAiParsed = msg.isAiParsed;
 
-            // CHẾ ĐỘ GỌN (INLINE STREAM CHAT KIỂU TIKTOK LIVE): Chiều cao ~32px, hiển thị 12-14 tin
+            const targetCustomerName =
+              msg.userId !== "ai-system"
+                ? msg.userName
+                : msg.targetUserName ||
+                  (msg.content.match(/@([^,\s]+)/)?.[1]?.replace(/[.,;!?]+$/, "")) ||
+                  "bạn";
+
+            // CHẾ ĐỘ GỌN: Nền trung tính cho mọi tin nhắn, dùng nhãn trạng thái nhỏ gọn
             if (density === "compact") {
               return (
                 <div
                   key={msg.id}
-                  className={`px-2 py-1.5 rounded-lg border text-xs leading-snug flex items-start justify-between gap-1.5 transition ${
-                    isOrder
-                      ? "bg-amber-950/40 border-amber-800/60 hover:bg-amber-950/60"
-                      : isReview
-                        ? "bg-rose-950/40 border-rose-800/60 hover:bg-rose-950/60"
-                        : "bg-[#141A28] border-slate-800/80 hover:border-slate-700"
-                  }`}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs leading-snug flex items-center justify-between gap-1.5 transition ${isReview
+                    ? "bg-rose-50/70 border-rose-300 hover:border-rose-400"
+                    : "bg-surface-container-low/40 border-outline-variant/40 hover:bg-surface-container-low"
+                    }`}
                 >
                   <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
-                    {/* Compact Badge */}
+                    {/* Compact Subdued Badge */}
                     {isOrder ? (
-                      <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-[9px] shrink-0">
-                        ⚡ ĐƠN AI
+                      <span className="px-1.5 py-0.2 rounded bg-amber-100/80 text-amber-900 border border-amber-300 font-extrabold text-[9px] shrink-0">
+                        ĐƠN AI
                       </span>
                     ) : isReview ? (
-                      <span className="px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold text-[9px] shrink-0">
-                        ⚠ CẦN DUYỆT
+                      <span className="px-1.5 py-0.2 rounded bg-rose-100/80 text-rose-800 border border-rose-300 font-extrabold text-[9px] shrink-0">
+                        CẦN DUYỆT
                       </span>
                     ) : isAiParsed ? (
-                      <span className="px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-[9px] shrink-0">
+                      <span className="px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/25 font-extrabold text-[9px] shrink-0">
                         SKU
                       </span>
                     ) : null}
 
                     {/* Tên khách in đậm */}
-                    <span className="font-bold text-white text-[11px] shrink-0">
+                    <span className="font-bold text-on-surface text-[11px] shrink-0">
                       {msg.userName}:
                     </span>
 
                     {/* Nội dung tin nhắn inline */}
-                    <span className="text-slate-200 text-[11px] truncate" title={msg.content}>
+                    <span className="text-on-surface-variant text-[11px] truncate" title={msg.content}>
                       &quot;{msg.content}&quot;
                     </span>
                   </div>
 
-                  <span className="text-[9px] text-slate-500 font-mono shrink-0 pl-1">
-                    {msg.timestamp}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[9px] text-outline font-mono pl-1">
+                      {msg.timestamp}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleReplyCustomer(targetCustomerName)}
+                      className={`p-1 rounded transition cursor-pointer active:scale-95 ${
+                        isReview
+                          ? "bg-rose-100 text-rose-800 hover:bg-rose-200"
+                          : "text-outline hover:text-primary hover:bg-surface-container"
+                      }`}
+                      title={`Nhắn cho @${targetCustomerName}`}
+                      aria-label={`Trả lời @${targetCustomerName}`}
+                    >
+                      <MessageSquare className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               );
             }
@@ -239,55 +368,252 @@ export function StudioChatPanel({
             return (
               <div
                 key={msg.id}
-                className="p-2 sm:p-2.5 rounded-xl bg-[#161C2A] border border-slate-800/90 space-y-1 hover:border-slate-700 transition"
+                className={`p-2.5 sm:p-3 rounded-xl border space-y-1.5 transition shadow-2xs ${isReview
+                  ? "bg-rose-50/50 border-rose-200 hover:border-rose-300"
+                  : "bg-surface-container-lowest border-outline-variant/50 hover:border-primary/40"
+                  }`}
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-bold text-white text-xs sm:text-[13px] truncate">
+                    <span className="font-bold text-on-surface text-xs sm:text-[13px] truncate">
                       {msg.userName}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-[10px] text-outline font-mono">
                       {msg.timestamp}
                     </span>
                   </div>
 
                   {isOrder ? (
-                    <span className="bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <Clock className="h-3 w-3 text-amber-400" aria-hidden="true" />
+                    <span className="bg-amber-100/80 text-amber-900 border border-amber-300 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <Clock className="h-3 w-3 text-amber-700" aria-hidden="true" />
                       <span>Chờ xác nhận · {msg.orderId || "Pending"}</span>
                     </span>
                   ) : isReview ? (
-                    <span className="bg-rose-950/80 text-rose-300 border border-rose-800/80 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <AlertTriangle className="h-3 w-3 text-rose-400" aria-hidden="true" />
+                    <span className="bg-rose-100/80 text-rose-800 border border-rose-300 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <AlertTriangle className="h-3 w-3 text-rose-600" aria-hidden="true" />
                       <span>Cần xử lý{msg.reviewReason ? ` · ${msg.reviewReason}` : ""}</span>
                     </span>
                   ) : isAiParsed ? (
-                    <span className="bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <Sparkles className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+                    <span className="bg-primary/10 text-primary border border-primary/25 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
                       <span>Nhận diện: {msg.extractedSku} (x{msg.extractedQuantity || 1})</span>
                     </span>
                   ) : (
-                    <span className="bg-slate-900 text-slate-400 border border-slate-800 text-[10px] sm:text-[11px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                      <HelpCircle className="h-3 w-3 text-slate-500" aria-hidden="true" />
+                    <span className="bg-surface-container text-outline border border-outline-variant/40 text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                      <HelpCircle className="h-3 w-3 text-outline" aria-hidden="true" />
                       <span>Tư vấn</span>
                     </span>
                   )}
                 </div>
 
-                <p className="text-slate-300 text-xs sm:text-[13px] leading-relaxed break-words pl-0.5">
+                <p className="text-on-surface text-xs sm:text-[13px] leading-relaxed break-words pl-0.5">
                   &quot;{msg.content}&quot;
                 </p>
+
+                {/* Action Buttons: Dành cho tin Cần Xử Lý hoặc tương tác nhanh */}
+                {isReview ? (
+                  <div className="pt-2 mt-1.5 border-t border-rose-200/60 flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleReplyCustomer(targetCustomerName)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                      title={`Soạn tin nhắn gửi cho @${targetCustomerName}`}
+                    >
+                      <MessageSquare className="h-3 w-3" />
+                      <span>Nhắn @{targetCustomerName}</span>
+                    </button>
+
+                    {/* Nút phản hồi nhanh: Nhắc chọn lại mã */}
+                    {(msg.reviewReason?.includes("không có trong giỏ") ||
+                      msg.reviewReason?.includes("mã") ||
+                      msg.content.toLowerCase().includes("mã")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Sản phẩm bạn chọn hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã trên màn hình giúp shop nha!",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200/80 text-rose-900 border border-rose-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu nhắc chọn lại mã sản phẩm vào ô chat"
+                      >
+                        <span>⚡ Nhắc chọn lại mã</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Nhắc chọn lại size/màu */}
+                    {(msg.reviewReason?.includes("hết hàng") ||
+                      msg.reviewReason?.includes("phân loại") ||
+                      msg.reviewReason?.includes("size") ||
+                      msg.reviewReason?.includes("màu")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Phân loại bạn chọn hiện không có hoặc đã hết hàng rồi ạ! Bạn chọn phân loại khác giúp shop nha!",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200/80 text-amber-900 border border-amber-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu nhắc chọn lại size/màu vào ô chat"
+                      >
+                        <span>⚡ Nhắc chọn lại size/màu</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Hỏi số lượng */}
+                    {(msg.reviewReason?.includes("số lượng") ||
+                      !msg.extractedQuantity ||
+                      msg.content.toLowerCase().includes("chốt mã")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Bạn ơi, bạn muốn chốt số lượng mấy cái ạ?",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200/80 text-rose-900 border border-rose-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu hỏi số lượng vào ô chat"
+                      >
+                        <span>⚡ Hỏi số lượng</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Nhắc thêm từ Chốt/Lấy */}
+                    {(msg.reviewReason?.includes("từ khóa") ||
+                      msg.reviewReason?.includes("Chốt") ||
+                      msg.reviewReason?.includes("chốt đơn")) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReplyCustomer(
+                            targetCustomerName,
+                            "Bạn ơi, bạn bình luận thêm từ 'Chốt' hoặc 'Lấy' (VD: 'Chốt Mã 1 1 cái') để hệ thống giữ hàng nhé!",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200/80 text-amber-900 border border-amber-300 text-[10px] font-semibold transition cursor-pointer active:scale-95"
+                        title="Điền câu nhắc thêm từ Chốt vào ô chat"
+                      >
+                        <span>⚡ Nhắc thêm từ Chốt</span>
+                      </button>
+                    )}
+
+                    {/* Nút phản hồi nhanh: Hướng dẫn cú pháp */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleReplyCustomer(
+                          targetCustomerName,
+                          "Bạn bình luận cú pháp: Chốt [Mã] [Số lượng] (VD: Chốt Mã 1 1 cái hoặc Lấy Mã 1 x1) để hệ thống giữ hàng nhé!",
+                        )
+                      }
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface-variant border border-outline-variant/60 text-[10px] font-medium transition cursor-pointer active:scale-95"
+                      title="Điền hướng dẫn cú pháp chuẩn vào ô chat"
+                    >
+                      <span>⚡ Hướng dẫn cú pháp</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pt-1 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleReplyCustomer(targetCustomerName)}
+                      className="inline-flex items-center gap-1 text-[10px] font-medium text-outline hover:text-primary transition cursor-pointer"
+                      title={`Trả lời ${targetCustomerName}`}
+                    >
+                      <MessageSquare className="h-2.5 w-2.5" />
+                      <span>Trả lời</span>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
         )}
+
+        {/* Loading Spinner khi cuộn xem thêm tin cũ */}
+        {isLoadingEarlier && (
+          <div className="py-2 text-center text-xs text-outline flex items-center justify-center gap-1.5 animate-pulse bg-surface-container-low rounded-lg border border-outline-variant/40">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+            <span className="text-[11px]">Đang tải thêm bình luận cũ...</span>
+          </div>
+        )}
       </div>
 
-      {/* Note indicator mỏng */}
-      <div className="pt-1 border-t border-slate-800/80 flex items-center gap-1.5 text-[10px] text-slate-500 shrink-0">
-        <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
-        <span className="truncate">Tự động nhận diện ý định mua và chốt đơn theo thời gian thực.</span>
-      </div>
+      {/* 4. Khung nhập tin nhắn / ghim thông báo từ Host */}
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!inputText.trim() || isSubmitting) return;
+          try {
+            setIsSubmitting(true);
+            const content = inputText.trim();
+            // Khống chế timeout tối đa 4 giây để isSubmitting không bao giờ bị kẹt
+            const sendPromise = Promise.resolve(onSendMessage?.(content));
+            const timeoutPromise = new Promise((resolve) =>
+              setTimeout(resolve, 4000)
+            );
+            await Promise.race([sendPromise, timeoutPromise]);
+            setInputText("");
+          } catch (err) {
+            console.warn("[StudioChatPanel] Lỗi gửi tin nhắn:", err);
+          } finally {
+            setIsSubmitting(false);
+          }
+        }}
+        className="pt-2 border-t border-outline-variant/30 shrink-0 space-y-1.5"
+      >
+        {/* Banner chỉ báo đang soạn tin nhắn phản hồi người xem */}
+        {inputText.startsWith("@") && (
+          <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/25 text-[11px] text-primary font-bold">
+            <span className="truncate">
+              Đang soạn tin gửi tới {inputText.split(" ")[0] || "khách hàng"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setInputText("")}
+              className="text-primary/70 hover:text-rose-600 transition p-0.5 cursor-pointer ml-1"
+              title="Hủy câu đang soạn"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 bg-surface-container-low border border-outline-variant/60 focus-within:border-primary focus-within:bg-surface-container-lowest rounded-xl px-3 py-1.5 transition shadow-2xs">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder="Nhập tin nhắn..."
+            className="studio-chat-input flex-1 min-w-0 text-xs sm:text-sm text-on-surface placeholder:text-outline outline-none"
+            style={{
+              background: "transparent",
+              minHeight: "unset",
+              height: "auto",
+              boxShadow: "none",
+              border: "none",
+              color: "var(--color-on-surface, #131b2e)",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!inputText.trim() || isSubmitting}
+            className="w-8 h-8 rounded-lg bg-primary hover:bg-primary-container text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+            title="Gửi tin nhắn (Enter)"
+            aria-label="Gửi tin nhắn"
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

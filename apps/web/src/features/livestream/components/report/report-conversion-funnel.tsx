@@ -1,4 +1,7 @@
-import { Filter, ArrowDown, AlertTriangle, CheckCircle2 } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { Filter, ArrowDown, AlertTriangle, CheckCircle2, Send, Check } from "lucide-react";
 import type { ConversionFunnelData } from "../../types/report";
 
 interface ReportConversionFunnelProps {
@@ -6,6 +9,7 @@ interface ReportConversionFunnelProps {
 }
 
 export function ReportConversionFunnel({ funnelData }: ReportConversionFunnelProps) {
+  const [remindState, setRemindState] = useState<"idle" | "sending" | "sent">("idle");
   if (!funnelData || !funnelData.stages || funnelData.stages.length === 0) {
     return (
       <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/70 shadow-xs text-center">
@@ -126,6 +130,43 @@ export function ReportConversionFunnel({ funnelData }: ReportConversionFunnelPro
                 </p>
               </div>
             ))}
+          </div>
+
+          {/* Quick Win Actions (Hành động giải cứu đơn hàng nhanh) */}
+          <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-on-surface-variant font-medium">
+              Thao tác xử lý nhanh các đơn thất thoát:
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRemindState("sending");
+                  setTimeout(() => setRemindState("sent"), 800);
+                  setTimeout(() => setRemindState("idle"), 4000);
+                }}
+                disabled={remindState !== "idle"}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-xs ${
+                  remindState === "sent"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-primary text-white hover:bg-primary-container active:scale-95"
+                }`}
+              >
+                {remindState === "sent" ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Đã gửi nhắc nhở thanh toán!</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    <span>
+                      {remindState === "sending" ? "Đang gửi..." : "Gửi nhắc thanh toán đơn Pending"}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

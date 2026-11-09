@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import { CancelOrderDialog } from "./cancel-order-dialog";
+import { CreateShipmentDialog } from "@/features/shipping/create-shipment-dialog";
+import { EditAddressDialog } from "./edit-address-dialog";
 import { formatCountdown, formatDateTime, formatMoney } from "@/lib/format";
 import { ordersApi, paymentsApi, type OrderDetail } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -31,6 +33,7 @@ import {
   paymentMethods,
   paymentStatuses,
 } from "./labels";
+import styles from "./merchant-order-detail.module.css";
 
 const HOLDING = ["DRAFT", "PENDING_CONFIRMATION"];
 
@@ -70,6 +73,8 @@ function OrderDetailView({
   onChanged: () => void;
 }) {
   const [moTay, setMoTay] = useState(false);
+  const [moVanDon, setMoVanDon] = useState(false);
+  const [moDiaChi, setMoDiaChi] = useState(false);
 
   /*
    * Mở hộp thoại huỷ khi địa chỉ kết thúc bằng #huy-don.
@@ -103,10 +108,18 @@ function OrderDetailView({
       ? null
       : Math.max(0, Math.round((new Date(order.heldUntil).getTime() - now) / 1000));
 
-  const cancellable = !KHONG_HUY_DUOC.includes(order.status);
+  const cancellable = !KHONG_HUY_DUOC.includes(order.status) && !order.activeShipmentId;
   // Đơn huỷ và đơn hết hạn đều đã trả hàng về kho, nên cùng một
   // cảnh: muốn mua lại thì phải giữ hàng lại từ đầu.
   const taoLaiDuoc = order.status === "CANCELLED" || order.status === "EXPIRED";
+
+  // Chỉ đơn đã xác nhận mới đẩy sang hãng được: đơn nháp khách còn
+  // huỷ được, đơn hết hạn thì tồn đã trả về kho.
+  const taoVanDonDuoc = order.status === "CONFIRMED" && !order.activeShipmentId;
+  const conPhaiThu = Math.max(
+    0,
+    Number(order.totalAmount) - Number(order.payment?.paidAmount ?? 0),
+  );
   const cancelOpen = moTay || (hash === "#huy-don" && cancellable);
 
   function dongHuy() {
@@ -143,7 +156,7 @@ function OrderDetailView({
   }
 
   return (
-    <>
+    <div className={styles.chiTiet}>
       <div className="page-head">
         <div>
           <nav className="breadcrumb" aria-label="Đường dẫn trang">
@@ -170,13 +183,17 @@ function OrderDetailView({
               {busy === "processing" ? "Đang lưu…" : "Bắt đầu đóng gói"}
             </Button>
           )}
-          {order.status === "PROCESSING" && (
+          {order.status === "PROCESSING" && !order.activeShipmentId && (
             <Button
               disabled={busy !== null}
               onClick={() => run("complete", () => ordersApi.complete(order.id))}
             >
               <Truck size={17} aria-hidden="true" />{" "}
-              {busy === "complete" ? "Đang lưu…" : "Xác nhận đã giao"}
+              {busy === "complete"
+                ? "Đang lưu…"
+                : order.payment?.method === "COD"
+                  ? "Đã giao và đã nhận tiền"
+                  : "Xác nhận đã giao"}
             </Button>
           )}
           {/* Ẩn hẳn thay vì làm mờ: đơn đã giao, đã huỷ hoặc đã hết hạn
@@ -210,6 +227,14 @@ function OrderDetailView({
               {busy === "reorder" ? "Đang tạo…" : "Tạo lại đơn"}
             </Button>
           )}
+          {taoVanDonDuoc && (
+            <Button
+              disabled={busy !== null}
+              onClick={() => setMoVanDon(true)}
+            >
+              <Truck size={17} aria-hidden="true" /> Tạo vận đơn
+            </Button>
+          )}
           <Button variant="secondary" onClick={moHopThoaiIn}>
             <Printer size={17} aria-hidden="true" /> In phiếu giao
           </Button>
@@ -239,6 +264,16 @@ function OrderDetailView({
             Không khôi phục lại được — hàng có thể đã bán cho khách khác.
             Bấm <strong>Tạo lại đơn</strong> để giữ hàng lại từ đầu; mã nào
             hết sẽ được báo ngay.
+          </p>
+        </div>
+      )}
+
+      {order.status === "AWAITING_PAYMENT" && (
+        <div className="notice notice-warning" role="status">
+          <h3>Đơn chờ thanh toán online</h3>
+          <p>
+            Khách chọn trả online nhưng tiền chưa về. Hàng <strong>chưa được giữ</strong>;
+            hệ thống sẽ giữ và chuyển đơn sang đã xác nhận ngay khi cổng báo đã thu.
           </p>
         </div>
       )}
@@ -280,11 +315,56 @@ function OrderDetailView({
 
       {order.codBlocked && (
         <div className="notice notice-warning">
-          <h3>Khách này không được thanh toán khi nhận hàng</h3>
+          <h3>Đơn này không được thu hộ khi giao</h3>
           <p>
-            Hệ thống đánh dấu dựa trên lịch sử chốt đơn rồi bỏ. Đơn cần được
-            chuyển khoản trước hoặc đặt cọc.
+            Cờ này được ghi lúc tạo đơn dựa trên lịch sử đơn hết hạn và các lần
+            shop hủy vì nghi gian lận.
           </p>
+          {conPhaiThu > 0 ? (
+            <p>
+              Cần thu đủ {formatMoney(conPhaiThu)} trước khi tạo vận đơn; đặt
+              cọc một phần vẫn chưa đủ. {order.payment?.txnRef ? (
+                <Link
+                  className="link-inline"
+                  href={`/shop/payments/${order.payment.txnRef}`}
+                >
+                  Mở khoản thu hiện có
+                </Link>
+              ) : (
+                <a className="link-inline" href="#order-payment">
+                  Đến phần Thanh toán
+                </a>
+              )} để thu tiền trước khi giao.
+            </p>
+          ) : (
+            <p>Đã thu đủ tiền. Bạn có thể tạo vận đơn với số tiền thu hộ bằng 0.</p>
+          )}
+        </div>
+      )}
+
+      {order.activeShipmentId && (
+        <div className="notice notice-info">
+          <h3>Đơn đang có vận đơn</h3>
+          <p>
+            Trạng thái giao hàng được cập nhật qua vận đơn. Muốn huỷ đơn,
+            hãy huỷ vận đơn trước khi hãng lấy hàng. {" "}
+            <Link className="link-inline" href={`/shop/shipping/${order.activeShipmentId}`}>
+              Xem vận đơn
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {order.status === "CONFIRMED" && !order.addressNormalized && (
+        <div className="notice notice-warning" role="status">
+          <h3>Địa chỉ giao hàng chưa chuẩn hoá</h3>
+          <p>
+            Chưa tách được tỉnh và phường/xã từ địa chỉ khách gõ, nên chưa
+            đẩy sang hãng được. Sửa lại rồi mới tạo vận đơn.
+          </p>
+          <Button variant="secondary" onClick={() => setMoDiaChi(true)}>
+            Sửa địa chỉ giao
+          </Button>
         </div>
       )}
 
@@ -314,7 +394,26 @@ function OrderDetailView({
                   {order.items.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <strong>{item.productName}</strong>
+                        <div className={styles.oSanPham}>
+                          {/* Ảnh để nhận ra món ngay, như bảng sản phẩm.
+                              Chưa có ảnh thì ô trống có biểu tượng, không
+                              để lỗ hổng làm hàng lệch. */}
+                          <span className={styles.khungAnh} aria-hidden="true">
+                            {item.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img className={styles.anh} src={item.imageUrl} alt="" />
+                            ) : (
+                              <Package size={20} />
+                            )}
+                          </span>
+                          <div className={styles.tenSanPham}>
+                            {/* Trang sản phẩm duy nhất hiện có là trang sửa. */}
+                            <Link href={`/shop/products/${item.productId}/edit`}>
+                              {item.productName}
+                            </Link>
+                            <p className={styles.maSanPham}>{item.productCode}</p>
+                          </div>
+                        </div>
                         {/* Giữ được ít hơn khách muốn — BẪY-06. Shop cần
                             thấy ngay để còn nhắn lại khách. */}
                         {item.isPartial && (
@@ -407,7 +506,7 @@ function OrderDetailView({
             )}
           </Card>
 
-          <Card>
+          <Card id="order-payment">
             <h2 className="title-icon">
               <CreditCard size={18} aria-hidden="true" /> Thanh toán
             </h2>
@@ -468,6 +567,22 @@ function OrderDetailView({
           cần gọi thêm API nào. Ẩn trên màn hình, chỉ hiện khi in. */}
       <PrintableOrders orders={[order]} />
 
+      <CreateShipmentDialog
+        orderId={order.id}
+        orderCode={order.orderCode}
+        open={moVanDon}
+        onClose={() => setMoVanDon(false)}
+        onCreated={(vanDon) => router.push(`/shop/shipping/${vanDon.id}`)}
+      />
+
+      {moDiaChi && (
+        <EditAddressDialog
+          order={order}
+          onClose={() => setMoDiaChi(false)}
+          onSaved={onChanged}
+        />
+      )}
+
       <CancelOrderDialog
         orderCode={order.orderCode}
         open={cancelOpen}
@@ -478,7 +593,7 @@ function OrderDetailView({
           onChanged();
         }}
       />
-    </>
+    </div>
   );
 }
 

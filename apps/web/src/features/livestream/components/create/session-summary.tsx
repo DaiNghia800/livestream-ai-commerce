@@ -5,8 +5,8 @@ interface SessionSummaryProps {
   title: string;
   startDate: string;
   startTime: string;
-  endDate: string;
-  endTime: string;
+  endDate?: string;
+  endTime?: string;
   products: LiveProductItem[];
 }
 
@@ -62,10 +62,12 @@ export function SessionSummary({
               <span className="block font-medium text-outline">Bắt đầu dự kiến</span>
               <span className="font-semibold text-on-surface">{getStartSummary()}</span>
             </div>
-            <div>
-              <span className="block font-medium text-outline">Kết thúc dự kiến</span>
-              <span className="font-semibold text-on-surface">{getEndSummary()}</span>
-            </div>
+            {Boolean(endDate || endTime) && (
+              <div>
+                <span className="block font-medium text-outline">Kết thúc dự kiến</span>
+                <span className="font-semibold text-on-surface">{getEndSummary()}</span>
+              </div>
+            )}
           </div>
         </div>
 
