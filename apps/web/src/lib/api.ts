@@ -280,6 +280,24 @@ export const ordersApi = {
     { method: "POST", headers: headerXacThuc(), body: diaChi },
   ),
 
+  /**
+   * Bảng giá cho giỏ CHƯA thành đơn (màn Thanh toán trên trang live: món
+   * chỉ vào giỏ server lúc bấm Đặt hàng). Server ước khối lượng từ số món
+   * và tiền thu hộ từ tiền hàng, cùng công thức với lúc xác nhận.
+   */
+  shippingOptionsForCart: (input: {
+    provinceName: string;
+    wardCode: string;
+    streetLine: string;
+    paymentMethod?: "COD" | "ONLINE";
+    itemCount: number;
+    /** Tiền hàng (chưa ship), đồng, dạng chuỗi. */
+    goodsAmount: string;
+  }) => call<{ weightGram: number; items: ShippingOption[] }>(
+    "/orders/shipping-options",
+    { method: "POST", headers: headerXacThuc(), body: input },
+  ),
+
   list: (filter: {
     merchantId?: string;
     status?: string;

@@ -153,6 +153,15 @@ export function ChonVanChuyen({
   );
 }
 
+/** 409 ShippingQuoteChanged: phí hãng vừa đổi, cần nạp lại bảng giá. */
+export function laLoiDoiGia(cause: unknown): boolean {
+  return (
+    cause instanceof ApiError &&
+    cause.status === 409 &&
+    (cause.body as { error?: string } | undefined)?.error === "ShippingQuoteChanged"
+  );
+}
+
 export function loiXacNhan(cause: unknown, items: CustomerOrder["items"]): string {
   if (cause instanceof ApiError && cause.status === 409) {
     const body = cause.body as

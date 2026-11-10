@@ -24,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import {
   addressBookApi,
-  ApiError,
   layTokenKhach,
   ordersApi,
   paymentsApi,
@@ -37,14 +36,8 @@ import { useApi } from "@/lib/use-api";
 import styles from "./customer-order-confirmation.module.css";
 import { AddressFormDialog, ChonDiaChiDialog } from "./address-book-dialog";
 import { AddressPicker } from "./address-picker";
-import {
-  ChonCachTra,
-  ChonVanChuyen,
-  DiaChiNhanHang,
-  khoaVanChuyen,
-  loiXacNhan,
-  type PhuongThuc,
-} from "./checkout-parts";
+import { ChonCachTra, DiaChiNhanHang, laLoiDoiGia, loiXacNhan, type PhuongThuc } from "./checkout-parts";
+import { KhoiChonVanChuyen, chuPhiShip, useChonVanChuyen } from "./chon-van-chuyen";
 import { CustomerBankTransfer } from "./customer-bank-transfer";
 import { CustomerOnlinePayment } from "./customer-online-payment";
 
@@ -128,18 +121,13 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
         ? { provinceName, wardCode, streetLine: streetLineTre }
         : null
     : null;
-  const baoGia = useApi(
-    () => diaChiBaoGia
-      ? ordersApi.shippingOptions(token, { ...diaChiBaoGia, paymentMethod: payment })
-      : Promise.resolve(null),
+  const ship = useChonVanChuyen(
+    diaChiBaoGia
+      ? () => ordersApi.shippingOptions(token, { ...diaChiBaoGia, paymentMethod: payment })
+      : null,
     [token, diaChiBaoGia?.provinceName, diaChiBaoGia?.wardCode, diaChiBaoGia?.streetLine, payment],
   );
-  // Khách chọn dòng nào; chưa chọn (hay bảng giá vừa đổi) thì lấy dòng rẻ
-  // nhất — suy ra lúc render, không cần effect để đồng bộ.
-  const [chonShip, setChonShip] = useState<string | null>(null);
-  const phuongAnShip = baoGia.data?.items ?? [];
-  const phuongAnChon = phuongAnShip.find((o) => khoaVanChuyen(o) === chonShip) ?? phuongAnShip[0] ?? null;
-  const dangLayPhi = Boolean(diaChiBaoGia) && (baoGia.loading || baoGia.refreshing);
+  const { phuongAnChon, dangLayPhi } = ship;
 
   if (loading) return <LoadingState />;
   if (error) {
@@ -209,18 +197,13 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
         note: note.trim(),
         paymentMethod: payment,
         // Gửi đúng giá khách đang thấy; server báo giá lại và từ chối nếu lệch.
-        shippingOption: phuongAnChon
-          ? { carrier: phuongAnChon.carrier, serviceCode: phuongAnChon.serviceCode, fee: phuongAnChon.fee }
-          : undefined,
+        shippingOption: ship.luaChon,
       });
       reload();
     } catch (cause) {
       setSubmitError(loiXacNhan(cause, data?.items ?? []));
       // Phí đổi giữa chừng: lấy bảng giá mới để khách chọn lại.
-      if (cause instanceof ApiError && cause.status === 409
-        && (cause.body as { error?: string } | undefined)?.error === "ShippingQuoteChanged") {
-        baoGia.reload();
-      }
+      if (laLoiDoiGia(cause)) ship.reload();
       // Tải lại để trang phản ánh đúng trạng thái thật — form giữ
       // nguyên những gì khách đã gõ.
       reload();
@@ -414,23 +397,7 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
           {canConfirm && (
             <Card>
               <h2>Phương thức vận chuyển</h2>
-              {!diaChiBaoGia ? (
-                <p className="muted">Chọn địa chỉ nhận hàng để xem phí vận chuyển.</p>
-              ) : dangLayPhi && phuongAnShip.length === 0 ? (
-                <p className="muted" role="status">Đang lấy bảng giá từ các hãng…</p>
-              ) : baoGia.error ? (
-                <div className="notice notice-warning" role="status">
-                  Chưa lấy được bảng giá vận chuyển. Bạn vẫn có thể xác nhận, shop sẽ báo phí sau.
-                </div>
-              ) : phuongAnShip.length === 0 ? (
-                <p className="muted">Shop chưa mở dịch vụ vận chuyển nào. Shop sẽ báo phí sau khi chốt.</p>
-              ) : (
-                <ChonVanChuyen
-                  items={phuongAnShip}
-                  chon={phuongAnChon ? khoaVanChuyen(phuongAnChon) : null}
-                  onChon={setChonShip}
-                />
-              )}
+              <KhoiChonVanChuyen ship={ship} />
             </Card>
           )}
 
@@ -467,9 +434,7 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
                 <span>Phí vận chuyển</span>
                 <span>
                   {canConfirm
-                    ? phuongAnChon
-                      ? phiShip > 0 ? formatMoney(phiShip) : "Miễn phí"
-                      : diaChiBaoGia ? (dangLayPhi ? "đang tính…" : "shop báo sau") : "chọn địa chỉ để tính"
+                    ? chuPhiShip(ship, formatMoney)
                     : data.shippingCarrier
                       ? phiDaGhi > 0 ? formatMoney(phiDaGhi) : "Miễn phí"
                       : "shop báo sau khi chốt địa chỉ"}

@@ -84,6 +84,11 @@ async function dungTrang(page: Page, daDangNhap: boolean, trangThai: { gio: Gio;
     }
     if (p === "/api/me/addresses") return route.fulfill({ json: { items: DIA_CHI } });
     if (p === "/api/me/profile") return route.fulfill({ json: { id: 7, email: "tien@example.com", fullName: "Lê Trần Tiến", phone: "0989541246", role: "customer" } });
+    if (p === `/api/orders/confirm/${TOKEN}/shipping-options` && m === "POST") {
+      return route.fulfill({ json: { weightGram: 1500, items: [
+        { carrier: "self", carrierLabel: "Shop tự giao", serviceCode: "self", fee: "0", etaText: "Shop liên hệ hẹn giao" },
+      ] } });
+    }
     if (p === `/api/orders/confirm/${TOKEN}` && m === "POST") {
       trangThai.gio = null;
       return route.fulfill({ json: { ...GIO_CO_AO, ...req.postDataJSON(), status: "CONFIRMED" } });
