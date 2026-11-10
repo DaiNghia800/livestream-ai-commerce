@@ -209,6 +209,18 @@ def _try_openai(content: str, catalogue: list[dict] | None = None) -> dict:
     return _ai_result(ai_response, "openai", content)
 
 
+def _try_gemini(content: str, catalogue: list[dict] | None = None) -> dict:
+    """Call Gemini and return a result dict.
+
+    Import is lazy so a Gemini-only setup doesn't load Gemini until needed.
+    Raises AIParsingError on failure.
+    """
+    from gemini_client import parse_with_gemini
+
+    ai_response = parse_with_gemini(content) if catalogue is None else parse_with_gemini(content, catalogue)
+    return _ai_result(ai_response, "gemini", content)
+
+
 def _ai_result(ai_response: dict, source: str, content: str) -> dict:
     """Shape a provider answer into the worker's result dict."""
     return {
