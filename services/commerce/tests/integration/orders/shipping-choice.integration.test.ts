@@ -105,6 +105,42 @@ describe("Bảng giá vận chuyển cho khách", () => {
     expect(self.fee).toBe(config.selfDeliveryFee);
   });
 
+  it("giỏ chưa thành đơn (trang live): báo giá theo số món và tiền hàng client gửi", async () => {
+    const res = await request(app).post("/api/orders/shipping-options").send({
+      provinceName: DIA_CHI.provinceName,
+      wardCode,
+      streetLine: DIA_CHI.streetLine,
+      paymentMethod: "COD",
+      itemCount: 3,
+      goodsAmount: "750000",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.weightGram).toBe(3 * config.shippingQuoteWeightGram);
+    const hang = (res.body.items as PhuongAn[]).map((o) => o.carrier).sort();
+    expect(hang).toEqual(["mock", "self"]);
+
+    // Cùng địa chỉ, cùng số món → cùng giá với bảng theo token: khách thấy
+    // một con số ở màn live và bước xác nhận không bị 409 vô cớ.
+    const don = await taoNhap(3);
+    const theoToken = (await bangGia(don.confirmToken, "COD")).body.items as PhuongAn[];
+    const tuDo = res.body.items as PhuongAn[];
+    for (const o of theoToken) {
+      expect(tuDo.find((x) => x.carrier === o.carrier && x.serviceCode === o.serviceCode)?.fee).toBe(o.fee);
+    }
+  });
+
+  it("giỏ chưa thành đơn: thiếu số món hoặc tiền hàng sai dạng thì 400", async () => {
+    const res = await request(app).post("/api/orders/shipping-options").send({
+      provinceName: DIA_CHI.provinceName,
+      wardCode,
+      streetLine: DIA_CHI.streetLine,
+      itemCount: 0,
+      goodsAmount: "abc",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("ValidationError");
+  });
+
   it("token sai thì 404, phường không thuộc tỉnh thì 400", async () => {
     expect((await bangGia("khong-co-token")).status).toBe(404);
 

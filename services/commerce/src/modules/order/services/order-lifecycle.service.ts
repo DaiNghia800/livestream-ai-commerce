@@ -79,6 +79,7 @@ import {
 } from "../../shipping/services/shipping-quote.service.js";
 import type { ShippingAddress } from "../../shipping/carriers/shipping-carrier.js";
 import type {
+  CartShippingOptionsInput,
   ConfirmOrderInput,
   SetOrderAddressInput,
   ShippingOptionsInput,
@@ -126,32 +127,59 @@ export class OrderLifecycleService {
     } finally {
       client.release();
     }
+    return this.baoGiaTheoDiaChi(input, this.demMon(order), this.tienHang(order), {
+      recipientName: order.recipientName ?? "Khách",
+      recipientPhone: order.recipientPhone ?? "",
+    });
+  }
 
+  /**
+   * Bảng giá cho giỏ chưa thành đơn (màn "Thanh toán" trên trang live).
+   * Không đọc database: khối lượng và tiền thu hộ ước từ số client gửi,
+   * bằng đúng công thức dùng cho đơn thật nên hai bảng giá khớp nhau.
+   */
+  async quoteShippingOptionsForCart(
+    input: CartShippingOptionsInput
+  ): Promise<{ weightGram: number; items: ShippingOption[] }> {
+    return this.baoGiaTheoDiaChi(input, input.itemCount, input.goodsAmount, {
+      recipientName: "Khách",
+      recipientPhone: "",
+    });
+  }
+
+  private async baoGiaTheoDiaChi(
+    input: ShippingOptionsInput,
+    soMon: number,
+    tienHang: string,
+    nguoiNhan: Pick<ShippingAddress, "recipientName" | "recipientPhone">
+  ): Promise<{ weightGram: number; items: ShippingOption[] }> {
     const ward = findCurrentWard(input.provinceName, input.wardCode);
     if (!ward) throw new Error("Invalid selected ward");
     const to: ShippingAddress = {
-      recipientName: order.recipientName ?? "Khách",
-      recipientPhone: order.recipientPhone ?? "",
+      ...nguoiNhan,
       provinceName: input.provinceName,
       districtName: null,
       wardName: ward.name,
       streetLine: input.streetLine,
       isNewFormat: true,
     };
-    const weightGram = this.uocKhoiLuong(order);
+    const weightGram = this.uocKhoiLuong(soMon);
     const items = await this.shippingQuotes.quoteOptions({
       to,
       weightGram,
       // Tiền hàng chưa gồm ship: lúc này phí còn chưa chọn.
-      codAmount: input.paymentMethod === "ONLINE" ? "0" : this.tienHang(order),
+      codAmount: input.paymentMethod === "ONLINE" ? "0" : tienHang,
       insuranceValue: "0",
     });
     return { weightGram, items };
   }
 
+  private demMon(order: Order): number {
+    return order.items.reduce((tong, item) => tong + item.quantity, 0);
+  }
+
   /** Mỗi món một mức cấu hình, chặn trần 50 kg là giới hạn chung của các hãng. */
-  private uocKhoiLuong(order: Order): number {
-    const soMon = order.items.reduce((tong, item) => tong + item.quantity, 0);
+  private uocKhoiLuong(soMon: number): number {
     return Math.min(50_000, Math.max(1, soMon) * config.shippingQuoteWeightGram);
   }
 
@@ -309,7 +337,7 @@ export class OrderLifecycleService {
               streetLine: address.streetLine ?? shippingAddress,
               isNewFormat: address.isNewFormat,
             },
-            weightGram: this.uocKhoiLuong(truocShip),
+            weightGram: this.uocKhoiLuong(this.demMon(truocShip)),
             codAmount: shipping.paymentMethod === "ONLINE" ? "0" : this.tienHang(truocShip),
             insuranceValue: "0",
           }

@@ -127,24 +127,51 @@ const ConfirmSelectedAddressSchema = z.object({
  * đã chọn (cùng dạng với lúc xác nhận) và cách trả, vì COD làm phí
  * của vài hãng khác đi.
  */
-export const ShippingOptionsRequestSchema = z
-  .object({
-    provinceName: z.enum(TINH_THANH),
-    wardCode: z.string().regex(/^\d{5}$/, { message: "wardCode is invalid" }),
-    streetLine: z.string().trim().min(3).max(200),
-    paymentMethod: z.enum(["COD", "ONLINE"]).optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (findCurrentWard(value.provinceName, value.wardCode)) return;
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["wardCode"],
-      message: "Phường/xã không thuộc tỉnh/thành đã chọn.",
-    });
+const DiaChiBaoGiaSchema = z.object({
+  provinceName: z.enum(TINH_THANH),
+  wardCode: z.string().regex(/^\d{5}$/, { message: "wardCode is invalid" }),
+  streetLine: z.string().trim().min(3).max(200),
+  paymentMethod: z.enum(["COD", "ONLINE"]).optional(),
+});
+
+function phuongPhaiThuocTinh(
+  value: { provinceName: string; wardCode: string },
+  ctx: z.RefinementCtx
+): void {
+  if (findCurrentWard(value.provinceName, value.wardCode)) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ["wardCode"],
+    message: "Phường/xã không thuộc tỉnh/thành đã chọn.",
   });
+}
+
+export const ShippingOptionsRequestSchema = DiaChiBaoGiaSchema.strict().superRefine(
+  phuongPhaiThuocTinh
+);
 
 export type ShippingOptionsInput = z.infer<typeof ShippingOptionsRequestSchema>;
+
+/**
+ * Bảng giá cho giỏ CHƯA thành đơn (màn "Thanh toán" trên trang live: món
+ * chỉ vào giỏ server lúc bấm Đặt hàng). Client gửi số món và tiền hàng
+ * để server ước khối lượng và tiền thu hộ y như lúc xác nhận; lệch với
+ * đơn thật thì bước xác nhận vẫn báo giá lại và từ chối nếu phí khác.
+ */
+export const CartShippingOptionsRequestSchema = DiaChiBaoGiaSchema.extend({
+  itemCount: z
+    .number()
+    .int({ message: "itemCount must be an integer" })
+    .min(1, { message: "itemCount must be at least 1" })
+    .max(10_000, { message: "itemCount is too large" }),
+  goodsAmount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, { message: "goodsAmount must be a money string" }),
+})
+  .strict()
+  .superRefine(phuongPhaiThuocTinh);
+
+export type CartShippingOptionsInput = z.infer<typeof CartShippingOptionsRequestSchema>;
 
 /** Keep the existing free-text request valid for older clients. */
 export const ConfirmOrderRequestSchema = z.union([

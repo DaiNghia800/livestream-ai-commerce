@@ -12,6 +12,7 @@ import {
 import {
   CancelIntentRequestSchema,
   CancelOrderRequestSchema,
+  CartShippingOptionsRequestSchema,
   ConfirmOrderRequestSchema,
   SetOrderAddressRequestSchema,
   ShippingOptionsRequestSchema,
@@ -103,6 +104,20 @@ export class OrderLifecycleController {
       );
     } catch (err) {
       this.handleError(err, res, "quote shipping options");
+    }
+  };
+
+  /**
+   * POST /orders/shipping-options — bảng giá cho giỏ chưa thành đơn.
+   * Không cần token vì chưa có đơn; không có gì riêng tư để bảo vệ
+   * (chỉ địa chỉ giao và số món khách tự nhập).
+   */
+  shippingOptionsForCart = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = CartShippingOptionsRequestSchema.parse(req.body);
+      res.json(await this.service.quoteShippingOptionsForCart(input));
+    } catch (err) {
+      this.handleError(err, res, "quote shipping options for cart");
     }
   };
 
