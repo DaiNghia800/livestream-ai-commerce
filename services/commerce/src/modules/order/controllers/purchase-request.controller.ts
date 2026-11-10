@@ -13,6 +13,10 @@ import {
   SubmitPurchaseRequestSchema,
 } from "../schemas/purchase-request.schema.js";
 import type { PurchaseRequestService } from "../services/purchase-request.service.js";
+import type { PurchaseRequestStatus } from "../types/purchase-request.types.js";
+
+const TRANG_THAI_DE_NGHI: readonly PurchaseRequestStatus[] = ["PENDING", "APPROVED", "REJECTED", "EXPIRED"];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class PurchaseRequestController {
   constructor(private readonly service: PurchaseRequestService) {}
@@ -62,6 +66,35 @@ export class PurchaseRequestController {
 
   /** Hàng đợi cho màn hình nhân viên. */
   queue = async (req: Request, res: Response): Promise<void> => {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+    // Có livestreamId: xem MỌI kết quả AI của phiên (soát lỗi / Postman),
+    // không chỉ hàng đợi đang chờ. status=all hoặc bỏ trống = tất cả.
+    // trim() vì giá trị dán từ clipboard hay kèm xuống dòng; không phải
+    // UUID thì báo 400 thay vì để Postgres ném lỗi ép kiểu thành 500.
+    const livestreamId = typeof req.query.livestreamId === "string" ? req.query.livestreamId.trim() : "";
+    if (livestreamId) {
+      if (!UUID_PATTERN.test(livestreamId)) {
+        res.status(400).json({ error: "BadRequest", message: "livestreamId must be a UUID" });
+        return;
+      }
+      const rawStatus = typeof req.query.status === "string" ? req.query.status.trim().toUpperCase() : "ALL";
+      if (rawStatus !== "ALL" && !TRANG_THAI_DE_NGHI.includes(rawStatus as PurchaseRequestStatus)) {
+        res.status(400).json({
+          error: "BadRequest",
+          message: `status must be one of ${TRANG_THAI_DE_NGHI.join(", ")} or all`,
+        });
+        return;
+      }
+      try {
+        const status = rawStatus === "ALL" ? null : (rawStatus as PurchaseRequestStatus);
+        res.status(200).json({ items: await this.service.listByLivestream(livestreamId, status, limit) });
+      } catch (err) {
+        this.handle(err, res, "list purchase requests of livestream");
+      }
+      return;
+    }
+
     const merchantId = req.query.merchantId;
     if (typeof merchantId !== "string" || !merchantId) {
       res.status(400).json({
@@ -72,7 +105,6 @@ export class PurchaseRequestController {
     }
 
     try {
-      const limit = Math.min(Number(req.query.limit) || 50, 200);
       res.status(200).json({ items: await this.service.listQueue(merchantId, limit) });
     } catch (err) {
       this.handle(err, res, "list purchase request queue");

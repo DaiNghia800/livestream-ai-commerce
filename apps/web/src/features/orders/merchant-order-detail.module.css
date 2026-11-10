@@ -1,0 +1,77 @@
+/* Chi tiết đơn phía shop.
+   Bọc trang bằng .chiTiet (display: contents nên không đổi bố cục) để ghi
+   đè vài luật chung đang làm chữ dài tràn khỏi thẻ ở cột phải 360px. */
+
+.chiTiet {
+  display: contents;
+}
+
+/* Cột của lưới chi tiết phải được phép co lại; grid item mặc định
+   min-width:auto nên một chuỗi dài làm cả cột phình ra. */
+.chiTiet :global(.detail-grid) > :global(.stack) {
+  min-width: 0;
+}
+
+/* Link kiểu inline trong thẻ: luật chung đặt nowrap (hợp với link ngắn
+   "Xem vận đơn"), nhưng "Xem chi tiết khoản thu LIVE-2026…-pay" thì phải
+   xuống dòng được và bẻ được cả mã dài không có dấu cách. */
+.chiTiet :global(.card) :global(.link-inline) {
+  display: inline;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Mọi giá trị người dùng nhập có thể dài và không có dấu cách: tên,
+   SĐT, địa chỉ, ghi chú, ghi chú lịch sử, mã đơn trên breadcrumb/tiêu đề. */
+.chiTiet :global(.kv) dd,
+.chiTiet :global(.card) > p,
+.chiTiet :global(.notice) p,
+.chiTiet :global(.timeline) p,
+.chiTiet :global(.breadcrumb) span,
+.chiTiet :global(.title-row) h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ô sản phẩm trong bảng: ảnh + tên (link) + mã. */
+.oSanPham {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 220px;
+}
+
+.khungAnh {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: var(--color-subtle);
+  color: var(--color-muted);
+  overflow: hidden;
+}
+
+.anh {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tenSanPham {
+  min-width: 0;
+}
+
+.tenSanPham a {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.maSanPham {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}

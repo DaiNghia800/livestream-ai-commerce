@@ -180,99 +180,6 @@ export async function findRequestHoldings(
 }
 
 /**
- * CHUYỂN CHỦ SỞ HỮU lượt giữ từ đề nghị sang dòng hàng.
- *
- * ĐÂY LÀ HÀM QUAN TRỌNG NHẤT CỦA T9.
- *
- * Cách làm sai mà ai cũng nghĩ ra đầu tiên: trả tồn rồi giữ lại dưới
- * tên đơn hàng. Giữa hai thao tác đó, dù chỉ vài micro giây, món hàng
- * nằm trong trạng thái KHẢ DỤNG — một khách khác đang F5 có thể cướp
- * mất đúng món mà khách này đã chờ nhân viên duyệt suốt ba phút. Tệ
- * hơn nữa, nếu bước giữ lại thất bại vì vừa hết hàng thì đề nghị đã
- * duyệt rồi mà không còn hàng.
- *
- * Ở đây chỉ đổi mấy cột chủ sở hữu. `inventory.held_quantity` KHÔNG hề
- * bị đụng tới — đó chính là tiêu chí nghiệm thu của ca test #23.
- *
- * `AND status = 'HOLDING'` giữ cho hàm chạy lại được: bấm duyệt hai
- * lần thì lần sau không đổi được gì.
- */
-export async function transferHoldToOrderItem(
-  client: PoolClient,
-  params: { reservationId: string; orderId: string; orderItemId: string }
-): Promise<boolean> {
-  const result = await client.query(
-    `UPDATE reservations
-        SET purchase_request_id = NULL,
-            order_id            = $2,
-            order_item_id       = $3
-      WHERE id = $1
-        AND status = 'HOLDING'
-        AND purchase_request_id IS NOT NULL`,
-    [params.reservationId, params.orderId, params.orderItemId]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
- * Dồn lượt giữ của đề nghị vào lượt giữ đang sống của dòng hàng.
- *
- * Dùng khi khách ĐÃ có đơn nháp chứa đúng mã này. Dòng hàng là duy
- * nhất theo (order_id, sku_id) và mỗi dòng chỉ được một lượt giữ
- * HOLDING, nên không thể chuyển chủ thẳng — phải cộng số lượng vào
- * lượt giữ đang có rồi đóng lượt giữ cũ lại.
- *
- * Đóng bằng trạng thái MERGED chứ KHÔNG phải RELEASED. RELEASED nghĩa
- * là tồn đã về kho, mà ở đây tồn không đi đâu cả, chỉ đổi người đứng
- * tên. Dùng nhầm RELEASED sẽ làm mọi phép đối soát sau này tính thiếu.
- *
- * `inventory` vẫn không bị đụng tới. Tổng số lượng HOLDING không đổi:
- * bên nhận cộng bao nhiêu thì bên cho rời khỏi HOLDING đúng bấy nhiêu.
- */
-export async function mergeHoldInto(
-  client: PoolClient,
-  params: { sourceReservationId: string; targetReservationId: string }
-): Promise<boolean> {
-  const claimed = await client.query<{ quantity: number }>(
-    `UPDATE reservations
-        SET status         = 'MERGED',
-            merged_into_id = $2,
-            released_at    = NOW(),
-            release_reason = 'MERGED_INTO_ORDER'
-      WHERE id = $1
-        AND status = 'HOLDING'
-      RETURNING quantity`,
-    [params.sourceReservationId, params.targetReservationId]
-  );
-
-  if (claimed.rowCount === 0) {
-    return false;
-  }
-
-  await client.query(
-    `UPDATE reservations
-        SET quantity = quantity + $2
-      WHERE id = $1 AND status = 'HOLDING'`,
-    [params.targetReservationId, claimed.rows[0].quantity]
-  );
-
-  return true;
-}
-
-/** Lượt giữ đang sống của một dòng hàng, nếu có. */
-export async function findHoldingForOrderItem(
-  client: PoolClient,
-  orderItemId: string
-): Promise<string | null> {
-  const result = await client.query<{ id: string }>(
-    `SELECT id FROM reservations
-      WHERE order_item_id = $1 AND status = 'HOLDING'`,
-    [orderItemId]
-  );
-  return result.rows[0]?.id ?? null;
-}
-
-/**
  * Đổi trạng thái đề nghị.
  *
  * Điều kiện trạng thái nằm ngay trong câu UPDATE, cùng khuôn với các
@@ -386,6 +293,56 @@ export async function listPendingRequests(
       ORDER BY pr.created_at
       LIMIT $2`,
     [params.merchantId, params.limit]
+  );
+  return result.rows as PurchaseRequest[];
+}
+
+/**
+ * Mọi kết quả AI của một phiên live, mới nhất lên trước.
+ *
+ * Khác hàng đợi duyệt: trả cả đề nghị đã tự duyệt / từ chối / hết hạn,
+ * kèm lý do từ chối và trạng thái đơn (nếu có) để nhìn một lượt là biết
+ * từng bình luận đi tới đâu. Dùng cho soát lỗi và màn "Kết quả AI".
+ */
+export async function listRequestsByLivestream(
+  client: PoolClient,
+  params: { livestreamId: string; status: string | null; limit: number }
+): Promise<PurchaseRequest[]> {
+  const result = await client.query(
+    `SELECT pr.id,
+            pr.merchant_id   AS "merchantId",
+            pr.customer_id   AS "customerId",
+            pr.livestream_id AS "livestreamId",
+            pr.comment_id    AS "commentId",
+            pr.source,
+            pr.status,
+            pr.confidence,
+            pr.ai_result     AS "aiResult",
+            pr.held_until    AS "heldUntil",
+            pr.order_id      AS "orderId",
+            o.status         AS "orderStatus",
+            pr.reviewed_at   AS "reviewedAt",
+            pr.reject_reason AS "rejectReason",
+            pr.guard_reasons AS "guardReasons",
+            pr.created_at    AS "createdAt",
+            COALESCE(
+                (SELECT json_agg(json_build_object(
+                            'skuId', r.sku_id::text,
+                            'quantity', r.quantity,
+                            'requestedQty', COALESCE(r.requested_quantity, r.quantity),
+                            'status', r.status
+                        ) ORDER BY r.sku_id)
+                   FROM reservations r
+                  WHERE r.purchase_request_id = pr.id),
+                '[]'::json
+            ) AS lines
+       FROM purchase_requests pr
+       LEFT JOIN orders o ON o.id = pr.order_id
+      WHERE pr.livestream_id = $1
+        AND ($2::varchar IS NULL OR pr.status = $2)
+      ORDER BY pr.created_at DESC
+      LIMIT $3`,
+    [params.livestreamId, params.status, params.limit]
   );
   return result.rows as PurchaseRequest[];
 }

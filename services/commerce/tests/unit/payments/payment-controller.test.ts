@@ -9,10 +9,12 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { config } from "../../../src/config.js";
 import type { Response } from "express";
 import type { PoolClient } from "pg";
 import { PaymentController } from "../../../src/modules/payment/controllers/payment.controller.js";
 import {
+  findConfirmTokenByOrder,
   insertTransaction,
   markCodCollected,
   markPaymentFailed,
@@ -43,16 +45,25 @@ function fakeRes() {
       if (this.statusCode === 0) this.statusCode = 200;
       return this;
     },
+    location: undefined as string | undefined,
+    redirect(code: number, url: string) {
+      this.statusCode = code;
+      this.location = url;
+    },
   };
-  return res as unknown as Response & { statusCode: number; body: any };
+  return res as unknown as Response & { statusCode: number; body: any; location?: string };
 }
 
 function fakeReq(overrides: Record<string, unknown> = {}) {
+  config.bankWebhookSecret = "unit-bank-webhook-secret";
   return {
     body: {},
     params: {},
     query: {},
-    header: () => undefined,
+    header: (name: string) =>
+      name === "x-bank-webhook-secret" ? config.bankWebhookSecret : undefined,
+    // Trình duyệt thường không xin JSON; test nào cần thì ghi đè.
+    get: () => undefined,
     socket: {},
     ...overrides,
   } as never;
@@ -233,14 +244,25 @@ describe("payment.repository — chốt chặn trạng thái", () => {
     return { query: vi.fn().mockResolvedValue({ rows: [], rowCount }) } as never;
   }
 
+  it("findConfirmTokenByOrder trả null khi đơn không tồn tại", async () => {
+    // Callback cổng cho một đơn đã bị xoá: controller trả JSON thay vì redirect tới /confirm/null.
+    expect(await findConfirmTokenByOrder(clientAffecting(0), "o-khong-co")).toBeNull();
+  });
+
   it("markCodCollected trả false khi không có khoản COD nào đang chờ", async () => {
-    // Đơn chuyển khoản trước, hoặc đã thu rồi. Guard nằm trong câu
-    // UPDATE nên gọi lại ở mỗi lần hoàn tất đơn đều vô hại.
+    // Đơn chuyển khoản trước, hoặc đã thu rồi.
     expect(await markCodCollected(clientAffecting(0), "o-1")).toBe(false);
   });
 
-  it("markCodCollected trả true khi thu được", async () => {
-    expect(await markCodCollected(clientAffecting(1), "o-1")).toBe(true);
+  it("markCodCollected ghi bút toán rồi tính lại tổng tiền", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "p-1", remaining: "100000.00" }] })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id: "p-1" }] });
+    expect(await markCodCollected({ query } as never, "o-1")).toBe(true);
+    expect(String(query.mock.calls[1][0])).toContain("payment_transactions");
+    expect(query.mock.calls[1][1]).toContain("manual-cod");
   });
 
   it("markPaymentFailed trả false khi khoản thu không còn PENDING", async () => {
@@ -454,10 +476,112 @@ describe("PaymentController — luồng cổng điện tử", () => {
     await new PaymentController({
       handleGatewayCallback: vi
         .fn()
-        .mockResolvedValue({ outcome: "ORDER_NOT_FOUND", payment: null }),
+        .mockResolvedValue({ outcome: "ORDER_NOT_FOUND", payment: null, confirmToken: null }),
     } as never).gatewayReturn(fakeReq({ params: { gateway: "mock" }, query: {} }), res);
 
     expect(res.body.payment).toBeNull();
     expect(res.body.outcome).toBe("ORDER_NOT_FOUND");
+  });
+
+  it("trang quay về: có token thì redirect sang trang xác nhận trên web", async () => {
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi.fn().mockResolvedValue({
+        outcome: "ERROR", payment: { id: "p1" }, confirmToken: "tok-123",
+      }),
+    } as never).gatewayReturn(fakeReq({ params: { gateway: "vnpay" }, query: {} }), res);
+
+    expect(res.statusCode).toBe(302);
+    expect(res.location).toBe(`${config.webBaseUrl}/confirm/tok-123?thanhToan=loi`);
+    expect(res.body).toBeUndefined();
+  });
+
+  it("trang quay về: xin JSON thì không redirect dù có token", async () => {
+    const res = fakeRes();
+    await new PaymentController({
+      handleGatewayCallback: vi.fn().mockResolvedValue({
+        outcome: "ALREADY_CONFIRMED", payment: { id: "p1", status: "PAID" }, confirmToken: "tok-123",
+      }),
+    } as never).gatewayReturn(
+      fakeReq({ params: { gateway: "vnpay" }, query: {}, get: () => "application/json" }),
+      res
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.outcome).toBe("ALREADY_CONFIRMED");
+    expect(res.body.note).toContain("IPN");
+  });
+});
+
+describe("PaymentController — nhánh cấu hình và trang thanh toán giả", () => {
+  it("webhook ngân hàng: chưa cấu hình bí mật thì khoá hẳn bằng 503", async () => {
+    const req = fakeReq(WEBHOOK);
+    // fakeReq vừa gán bí mật; xoá đi để mô phỏng máy chưa đặt BANK_WEBHOOK_SECRET.
+    const truoc = config.bankWebhookSecret;
+    config.bankWebhookSecret = "";
+    const recordBankTransfer = vi.fn();
+    const res = fakeRes();
+    try {
+      await new PaymentController({ recordBankTransfer } as never).bankWebhook(req, res);
+    } finally {
+      config.bankWebhookSecret = truoc;
+    }
+    expect(res.statusCode).toBe(503);
+    expect(res.body.error).toBe("BankWebhookNotConfigured");
+    // Không được chạm vào sổ tiền khi chưa xác thực được nguồn gửi.
+    expect(recordBankTransfer).not.toHaveBeenCalled();
+  });
+
+  it("fail/refund: không có body thì coi như {} và Zod báo lỗi đầu vào", async () => {
+    const markFailed = vi.fn().mockResolvedValue({ id: "p1", status: "FAILED" });
+    const refund = vi.fn();
+    const controller = new PaymentController({ markFailed, refund } as never);
+
+    // fail: reason có mặc định nên {} hợp lệ → gọi service với OTHER.
+    const resFail = fakeRes();
+    await controller.fail(fakeReq({ ...ORDER, body: undefined }), resFail);
+    expect(resFail.statusCode).toBe(200);
+    expect(markFailed).toHaveBeenCalledWith("o-1", "OTHER");
+
+    // refund: amount bắt buộc nên {} bị chặn 400, service không được gọi.
+    const resRefund = fakeRes();
+    await controller.refund(fakeReq({ ...ORDER, body: undefined }), resRefund);
+    expect(resRefund.statusCode).toBe(400);
+    expect(resRefund.body.error).toBe("ValidationError");
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it("trang thanh toán giả: tắt cổng giả thì 503 nêu rõ biến môi trường còn thiếu", async () => {
+    const truoc = config.allowMockPayment;
+    config.allowMockPayment = false;
+    const res = fakeRes();
+    try {
+      await new PaymentController({} as never).mockCheckoutPage(fakeReq({ query: {} }), res);
+    } finally {
+      config.allowMockPayment = truoc;
+    }
+    expect(res.statusCode).toBe(503);
+    expect(res.body.error).toBe("GatewayNotConfigured");
+    expect(res.body.gateway).toBe("mock");
+    expect(res.body.missing).toEqual(["ENABLE_MOCK_PAYMENT=true"]);
+  });
+
+  it("trang thanh toán giả: thiếu tham số thì dùng giá trị trống thay vì 'undefined'", async () => {
+    const truoc = config.allowMockPayment;
+    config.allowMockPayment = true;
+    const res = fakeRes();
+    try {
+      await new PaymentController({} as never).mockCheckoutPage(fakeReq({ query: {} }), res);
+    } finally {
+      config.allowMockPayment = truoc;
+    }
+    expect(res.statusCode).toBe(200);
+    expect(res.body.sandbox).toBe(true);
+    expect(res.body.orderCode).toBe("");
+    expect(res.body.amount).toBe("0");
+    // Gói IPN giả phải ký trên đúng chuỗi trống/"0" chứ không phải "undefined".
+    expect(res.body.thanhCong).toMatchObject({ txnRef: "", amount: "0", resultCode: "00" });
+    expect(res.body.thatBai).toMatchObject({ txnRef: "", amount: "0", resultCode: "24" });
+    expect(JSON.stringify(res.body)).not.toContain("undefined");
   });
 });

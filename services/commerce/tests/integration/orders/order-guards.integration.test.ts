@@ -6,8 +6,9 @@
  * luận bị sửa) — nằm ở tầng đọc bình luận của AI worker và phải chặn
  * TRƯỚC khi gọi sang service này, nên không test được ở đây.
  *
- * BẪY-06 (giữ một phần), BẪY-09 (link xác nhận là kênh chính) và
- * BẪY-12 (TTL hai tầng) đã có test từ T4 và T7.
+ * BẪY-06 (ghi một phần) và BẪY-09 (link xác nhận là kênh chính) đã có
+ * test từ T4 và T7. BẪY-12 (tồn ma) được giải bằng cách bỏ hẳn giữ tồn
+ * ở đơn nháp — xem order-lifecycle.integration.test.ts.
  */
 
 import crypto from "crypto";
@@ -125,24 +126,35 @@ async function readRisk(customerId: string) {
 }
 
 async function readOrderRow(orderId: string) {
-  const result = await pool.query<{
-    cod_blocked: boolean;
-    held_until: string;
-    created_at: string;
-    total_amount: string;
-  }>(
-    `SELECT cod_blocked, held_until, created_at, total_amount
-       FROM orders WHERE id = $1`,
+  const result = await pool.query<{ cod_blocked: boolean; total_amount: string }>(
+    `SELECT cod_blocked, total_amount FROM orders WHERE id = $1`,
     [orderId]
   );
   const row = result.rows[0];
-  return {
-    codBlocked: row.cod_blocked,
-    totalAmount: Number(row.total_amount),
-    holdSeconds: Math.round(
-      (new Date(row.held_until).getTime() - new Date(row.created_at).getTime()) / 1000
-    ),
-  };
+  return { codBlocked: row.cod_blocked, totalAmount: Number(row.total_amount) };
+}
+
+async function docTrangThai(orderId: string): Promise<string> {
+  const r = await pool.query<{ status: string }>(
+    `SELECT status FROM orders WHERE id = $1`,
+    [orderId]
+  );
+  return r.rows[0].status;
+}
+
+/**
+ * Tổng số lượng trên dòng hàng của mọi đơn còn sống của khách trong
+ * phiên — đúng con số mà guard BẪY-01 đếm, vì đơn nháp không giữ tồn.
+ */
+async function daGomTrongPhien(customerId: string, livestreamId: string): Promise<number> {
+  const r = await pool.query<{ tong: string }>(
+    `SELECT COALESCE(SUM(oi.quantity), 0) AS tong
+       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      WHERE o.customer_id = $1 AND o.livestream_id = $2
+        AND o.status IN ('DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'PROCESSING')`,
+    [customerId, livestreamId]
+  );
+  return Number(r.rows[0].tong);
 }
 
 describe("BẪY-05 — số lượng vô lý", () => {
@@ -223,11 +235,13 @@ describe("BẪY-01 — một account khoá sạch kho", () => {
     const skuA = await createSkuWithStock(pool, 100);
     const skuB = await createSkuWithStock(pool, 100);
 
-    // Gom dần tới sát trần bằng các bình luận hợp lệ
+    // Gom dần tới sát trần bằng các bình luận hợp lệ. Chúng tự chốt
+    // thành đơn nháp — không giữ tồn — nên trần phải đếm trên dòng hàng.
     await gomToiTran(skuA, { customerId, livestreamId: live });
-    expect((await readStock(pool, skuA)).held).toBe(
+    expect(await daGomTrongPhien(customerId, live)).toBe(
       config.maxHeldPerCustomerPerSession
     );
+    expect((await readStock(pool, skuA)).held).toBe(0);
 
     const res = await submit({
       skuId: skuB,
@@ -327,7 +341,7 @@ describe("BẪY-01 — một account khoá sạch kho", () => {
 });
 
 describe("BẪY-08 — bom hàng", () => {
-  it("điểm rủi ro cao thì TTL ngắn hơn và chặn COD", async () => {
+  it("điểm rủi ro cao thì chặn COD ngay từ lúc tạo nháp", async () => {
     const customerId = crypto.randomUUID();
     await seedRisk(customerId, { expired: 3 });
     const sku = await createSkuWithStock(pool, 10);
@@ -335,24 +349,19 @@ describe("BẪY-08 — bom hàng", () => {
     const res = await createDraft({ skuId: sku, quantity: 1, customerId });
     const row = await readOrderRow(res.body.id);
 
-    expect(row.holdSeconds).toBeLessThanOrEqual(config.holdRiskySeconds + 2);
-    expect(row.holdSeconds).toBeLessThan(config.holdSoftSeconds);
-    // Module thanh toán chưa dựng; cờ này là hợp đồng để nó tôn trọng
-    // khi dựng, thay vì phải tính lại điểm ở thời điểm khác.
+    // Cờ ghi vào đơn là hợp đồng để bước xác nhận và module thanh toán
+    // tôn trọng, thay vì phải tính lại điểm ở thời điểm khác.
     expect(row.codBlocked).toBe(true);
   });
 
-  it("khách sạch thì giữ đủ TTL thường và được COD", async () => {
+  it("khách sạch thì được COD", async () => {
     const sku = await createSkuWithStock(pool, 10);
     const res = await createDraft({
       skuId: sku,
       quantity: 1,
       customerId: crypto.randomUUID(),
     });
-    const row = await readOrderRow(res.body.id);
-
-    expect(row.holdSeconds).toBeGreaterThanOrEqual(config.holdSoftSeconds - 2);
-    expect(row.codBlocked).toBe(false);
+    expect((await readOrderRow(res.body.id)).codBlocked).toBe(false);
   });
 
   it("khách mua nhiều lần KHÔNG bị phạt oan vì vài lần lỡ", async () => {
@@ -368,7 +377,7 @@ describe("BẪY-08 — bom hàng", () => {
     expect((await readOrderRow(res.body.id)).codBlocked).toBe(false);
   });
 
-  it("khách rủi ro đi qua ĐƯỜNG BÌNH LUẬN cũng bị đẩy review và giữ ngắn", async () => {
+  it("khách rủi ro đi qua ĐƯỜNG BÌNH LUẬN cũng bị đẩy review", async () => {
     const customerId = crypto.randomUUID();
     await seedRisk(customerId, { fraud: 1 });
     const sku = await createSkuWithStock(pool, 10);
@@ -379,13 +388,6 @@ describe("BẪY-08 — bom hàng", () => {
 
     expect(res.body.decision).toBe("NEEDS_REVIEW");
     expect(res.body.purchaseRequest.guardReasons).toContain("HIGH_RISK_CUSTOMER");
-
-    // TTL rút ngắn áp cho cả lượt giữ của đề nghị
-    const heldUntil = new Date(res.body.purchaseRequest.heldUntil).getTime();
-    const createdAt = new Date(res.body.purchaseRequest.createdAt).getTime();
-    expect(Math.round((heldUntil - createdAt) / 1000)).toBeLessThanOrEqual(
-      config.holdRiskySeconds + 2
-    );
   });
 
   it("một lần nghi gian lận là đủ chạm ngưỡng", async () => {
@@ -394,23 +396,6 @@ describe("BẪY-08 — bom hàng", () => {
     expect((await readRisk(customerId))!.score).toBeGreaterThanOrEqual(
       config.riskScoreThreshold
     );
-  });
-
-  it("đơn hết hạn làm TĂNG điểm rủi ro", async () => {
-    const customerId = crypto.randomUUID();
-    const sku = await createSkuWithStock(pool, 10);
-    const draft = await createDraft({ skuId: sku, quantity: 1, customerId });
-
-    await pool.query(
-      `UPDATE orders SET held_until = NOW() - interval '1 minute' WHERE id = $1`,
-      [draft.body.id]
-    );
-    const { ExpireOrdersJob } = await import(
-      "../../../src/modules/order/jobs/expire-orders.job.js"
-    );
-    await new ExpireOrdersJob(pool).runOnce();
-
-    expect((await readRisk(customerId))?.expired).toBe(1);
   });
 
   it("khách TỰ HUỶ sớm KHÔNG bị tính là bom hàng", async () => {
@@ -491,23 +476,21 @@ describe("BẪY-07 — giá đổi giữa phiên", () => {
 });
 
 describe("BẪY-10 — khách bình luận huỷ", () => {
-  it("huỷ đơn nháp đang giữ và trả tồn NGAY", async () => {
+  it("đóng đơn nháp của khách NGAY — đơn nháp vốn không giữ tồn", async () => {
     const live = await createLivestream(pool);
     const customerId = crypto.randomUUID();
     const sku = await createSkuWithStock(pool, 10);
 
-    await createDraft({ skuId: sku, quantity: 3, customerId, livestreamId: live });
-    expect((await readStock(pool, sku)).held).toBe(3);
+    const draft = await createDraft({ skuId: sku, quantity: 3, customerId, livestreamId: live });
+    expect((await readStock(pool, sku)).held).toBe(0);
 
     const res = await request(app)
       .post("/api/orders/cancel-intent")
       .send({ customerId, livestreamId: live, commentId: "fb_thoi_k_lay_nua" });
 
     expect(res.status).toBe(200);
-    expect(res.body.cancelledOrderIds).toHaveLength(1);
-
-    // Thiếu nhánh này thì hàng bị giam oan tới hết TTL — 5 phút trong
-    // một phiên live là rất nhiều.
+    expect(res.body.cancelledOrderIds).toEqual([draft.body.id]);
+    expect(await docTrangThai(draft.body.id)).toBe("CANCELLED");
     expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
   });
 
@@ -567,15 +550,15 @@ describe("BẪY-10 — khách bình luận huỷ", () => {
     const skuA = await createSkuWithStock(pool, 10);
     const skuB = await createSkuWithStock(pool, 10);
 
-    await createDraft({ skuId: skuA, quantity: 2, customerId, livestreamId: liveA });
-    await createDraft({ skuId: skuB, quantity: 3, customerId, livestreamId: liveB });
+    const a = await createDraft({ skuId: skuA, quantity: 2, customerId, livestreamId: liveA });
+    const b = await createDraft({ skuId: skuB, quantity: 3, customerId, livestreamId: liveB });
 
     await request(app)
       .post("/api/orders/cancel-intent")
       .send({ customerId, livestreamId: liveA });
 
-    expect((await readStock(pool, skuA)).held).toBe(0);
-    expect((await readStock(pool, skuB)).held).toBe(3);
+    expect(await docTrangThai(a.body.id)).toBe("CANCELLED");
+    expect(await docTrangThai(b.body.id)).toBe("DRAFT");
   });
 
   it("không có gì để huỷ vẫn trả 200", async () => {
@@ -614,78 +597,6 @@ describe("BẪY-10 — khách bình luận huỷ", () => {
 
     expect(second.status).toBe(200);
     expect(second.body.nothingToCancel).toBe(true);
-    expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
-  });
-});
-
-describe("BẪY-11 — job hết hạn đụng lúc khách xác nhận", () => {
-  it("xác nhận đúng lúc job quét: chỉ một bên thắng, tồn không lệch", async () => {
-    const sku = await createSkuWithStock(pool, 10);
-    const draft = await createDraft({
-      skuId: sku,
-      quantity: 3,
-      customerId: crypto.randomUUID(),
-    });
-
-    // Đặt đơn vào đúng khoảnh khắc tranh chấp
-    await pool.query(
-      `UPDATE orders SET held_until = NOW() - interval '1 second' WHERE id = $1`,
-      [draft.body.id]
-    );
-
-    const { ExpireOrdersJob } = await import(
-      "../../../src/modules/order/jobs/expire-orders.job.js"
-    );
-
-    const [confirm] = await Promise.all([
-      request(app).post(`/api/orders/confirm/${draft.body.confirmToken}`).send({
-        recipientName: "Phạm Quốc Huy",
-        recipientPhone: "0909123456",
-        shippingAddress: "5 Nguyễn Trãi, phường Bến Thành, Quận 1",
-      }),
-      new ExpireOrdersJob(pool).runOnce(),
-    ]);
-
-    const row = await pool.query<{ status: string }>(
-      `SELECT status FROM orders WHERE id = $1`,
-      [draft.body.id]
-    );
-    const status = row.rows[0].status;
-
-    // Guard `WHERE status = ...` nằm ở CẢ HAI phía, nên chỉ một bên
-    // thắng. Bên thua nhận 409 chứ không âm thầm làm sai.
-    expect(["CONFIRMED", "EXPIRED"]).toContain(status);
-    if (status === "CONFIRMED") {
-      expect(confirm.status).toBe(200);
-      expect((await readStock(pool, sku)).held).toBe(3);
-    } else {
-      expect(confirm.status).toBe(409);
-      expect((await readStock(pool, sku)).held).toBe(0);
-    }
-  });
-
-  it("huỷ và cho hết hạn cùng lúc cũng chỉ trả tồn một lần", async () => {
-    const sku = await createSkuWithStock(pool, 10);
-    const draft = await createDraft({
-      skuId: sku,
-      quantity: 4,
-      customerId: crypto.randomUUID(),
-    });
-    await pool.query(
-      `UPDATE orders SET held_until = NOW() - interval '1 second' WHERE id = $1`,
-      [draft.body.id]
-    );
-
-    const { ExpireOrdersJob } = await import(
-      "../../../src/modules/order/jobs/expire-orders.job.js"
-    );
-    await Promise.all([
-      request(app)
-        .post(`/api/orders/${draft.body.id}/cancel`)
-        .send({ reason: "CUSTOMER_CANCEL" }),
-      new ExpireOrdersJob(pool).runOnce(),
-    ]);
-
     expect(await readStock(pool, sku)).toEqual({ onHand: 10, held: 0, sellable: 10 });
   });
 });

@@ -50,6 +50,7 @@ import {
 
 interface EditProductPageProps {
   productId: string;
+  returnTo?: "/shop/products" | "/shop/inventory";
 }
 
 type ProductStatus = BackendProduct["status"];
@@ -148,7 +149,7 @@ function formatHistoryValue(field: string, value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : JSON.stringify(value);
 }
 
-export function EditProductPage({ productId }: EditProductPageProps) {
+export function EditProductPage({ productId, returnTo = "/shop/products" }: EditProductPageProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [product, setProduct] = useState<BackendProduct | null>(null);
@@ -294,7 +295,7 @@ export function EditProductPage({ productId }: EditProductPageProps) {
           await updateProductSku(productId, sku.id, input);
         }
       }));
-      router.push("/shop/products");
+      router.push(returnTo);
     } catch (saveError) {
       setError(`Không thể lưu đầy đủ thay đổi: ${getErrorMessage(saveError)}. Tải lại dữ liệu để kiểm tra trạng thái đã cập nhật.`);
     } finally {
@@ -461,7 +462,7 @@ export function EditProductPage({ productId }: EditProductPageProps) {
             <button
               className={`${buttonClass} border border-outline-variant bg-white text-on-surface hover:bg-surface-container-low`}
               type="button"
-              onClick={() => router.push("/shop/products")}
+              onClick={() => router.push(returnTo)}
               disabled={saving || uploading}
             >
               <X size={16} aria-hidden="true" /> Hủy

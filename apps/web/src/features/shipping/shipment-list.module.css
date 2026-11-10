@@ -1,0 +1,360 @@
+/*
+ * Màn quản lý vận chuyển.
+ *
+ * Dùng chung hệ token với màn đơn hàng để hai trang cạnh nhau không
+ * vênh, nhưng để riêng module: đây là CSS module nên tên lớp được
+ * băm theo file, không thể rò sang trang của người khác.
+ *
+ * Không chép nguyên module của màn đơn hàng vì ở đó có bộ dựng điều
+ * kiện lọc và khu vực in phiếu mà màn này không dùng tới.
+ */
+
+.page {
+  padding: var(--space-6) var(--space-5);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ── Tiêu đề ─────────────────────────────────────────────────────── */
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.subtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  max-width: 68ch;
+}
+
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── Chip tình trạng kết nối từng hãng ───────────────────────────── */
+
+.carriers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.carrierChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+/* Chấm màu mang thông tin: xanh = gọi được, xám = chưa khai khoá. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border);
+  flex: none;
+}
+
+.dotOn {
+  background: var(--color-success);
+}
+
+.carrierOn {
+  color: var(--color-text);
+  border-color: var(--color-success);
+}
+
+/* ── Thẻ thống kê ────────────────────────────────────────────────── */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3);
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Thẻ đang được chọn làm bộ lọc: viền đậm thay vì đổi nền, để con số
+   vẫn đọc được dễ như các thẻ còn lại. */
+.statActive {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.statHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statValue {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.statNote {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.toneWaiting .statValue {
+  color: var(--color-warning);
+}
+.toneMoving .statValue {
+  color: var(--color-primary);
+}
+.toneDone .statValue {
+  color: var(--color-success);
+}
+.toneBad .statValue {
+  color: var(--color-error);
+}
+
+/* ── Thanh công cụ ───────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--space-2) var(--space-3) var(--space-2) 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.searchInput:focus-visible,
+.select:focus-visible,
+.stat:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+/* ── Bảng ────────────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th {
+  text-align: left;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.code:hover {
+  text-decoration: underline;
+}
+
+.sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phần cước chênh so với báo giá — shop đang chịu khoản này nên phải
+   nhìn thấy, không nuốt im lặng. */
+.diff {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-error);
+}
+
+.waiting {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+/* ── Phân trang ──────────────────────────────────────────────────── */
+
+.pager {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.pagerInfo {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  margin-right: auto;
+}
+
+.pages {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.page1 {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.page1:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pageOn {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.perPage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .pagerInfo {
+    width: 100%;
+    margin-right: 0;
+  }
+}

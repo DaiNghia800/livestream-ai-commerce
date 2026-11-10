@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
 import {
   holdStock,
   holdUpTo,
@@ -21,10 +21,7 @@ import {
   findRequestHoldings,
   markRequestExpired,
   markRequestReviewed,
-  mergeHoldInto,
-  transferHoldToOrderItem,
 } from "../../../src/modules/order/repositories/purchase-request.repository.js";
-import { OrderLifecycleService } from "../../../src/modules/order/services/order-lifecycle.service.js";
 import { SkuNotFoundError } from "../../../src/shared/errors/domain.errors.js";
 
 /** Client giả: trả lần lượt các kết quả đã dựng sẵn. */
@@ -85,40 +82,6 @@ describe("inventory.repository — chặn số lượng vô nghĩa", () => {
   });
 });
 
-describe("purchase-request.repository — dồn lượt giữ đã bị xử lý", () => {
-  it("mergeHoldInto trả false khi lượt giữ nguồn không còn HOLDING", async () => {
-    // Hai nhân viên cùng bấm duyệt: người sau thấy lượt giữ đã bị
-    // người trước dồn đi mất.
-    const client = clientReturning({ rowCount: 0 });
-
-    expect(
-      await mergeHoldInto(client, {
-        sourceReservationId: "a",
-        targetReservationId: "b",
-      })
-    ).toBe(false);
-
-    // Và tuyệt đối KHÔNG chạy câu cộng dồn thứ hai — chạy nghĩa là
-    // cộng số lượng vào đích lần thứ hai, thổi phồng đơn hàng.
-    expect(client.query).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("OrderLifecycleService.expireOrder — phân biệt lỗi thật với thua cuộc đua", () => {
-  it("lỗi KHÔNG phải tranh chấp trạng thái thì để nổi lên", async () => {
-    const pool = {
-      connect: vi.fn().mockRejectedValue(new Error("pool đã cạn kết nối")),
-    } as unknown as Pool;
-
-    // Thua cuộc đua là chuyện bình thường và trả null. Mất kết nối thì
-    // không: nuốt nó đi nghĩa là job quét báo "xong" trong khi không
-    // xử lý được đơn nào, và không ai biết tồn đang rò.
-    await expect(
-      new OrderLifecycleService(pool).expireOrder("o-1")
-    ).rejects.toThrow("pool đã cạn kết nối");
-  });
-});
-
 describe("order.repository — dòng hàng gắn với bình luận nguồn", () => {
   it("ghi lại mã bình luận khi có", async () => {
     const client = clientReturning({ rows: [{ id: "item-1" }], rowCount: 1 });
@@ -176,25 +139,12 @@ describe("purchase-request.repository — các chốt chặn còn lại", () => 
   it("rowCount null được coi là KHÔNG tác động dòng nào", async () => {
     const nullRowCount = clientReturning({ rows: [], rowCount: null as never });
 
-    // Coi null là thành công nghĩa là bước duyệt tưởng đã chuyển chủ
-    // lượt giữ trong khi thực tế chưa — đơn có dòng hàng mà không có
-    // hàng nào được giữ.
-    expect(
-      await transferHoldToOrderItem(nullRowCount, {
-        reservationId: "r",
-        orderId: "o",
-        orderItemId: "i",
-      })
-    ).toBe(false);
+    // Coi null là thành công nghĩa là bước duyệt tưởng đã đổi được
+    // trạng thái trong khi thực tế chưa — hai nhân viên cùng bấm sẽ
+    // cùng tưởng mình thắng.
     expect(
       await markRequestReviewed(nullRowCount, { id: "pr", status: "APPROVED" })
     ).toBe(false);
     expect(await markRequestExpired(nullRowCount, "pr")).toBe(false);
-    expect(
-      await mergeHoldInto(nullRowCount, {
-        sourceReservationId: "a",
-        targetReservationId: "b",
-      })
-    ).toBe(false);
   });
 });

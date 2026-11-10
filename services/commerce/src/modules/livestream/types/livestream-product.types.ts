@@ -1,3 +1,12 @@
+export interface LivestreamProductSku {
+  id: string;
+  skuCode: string;
+  variantName?: string | null;
+  price: number;
+  availableStock?: number;
+  imageUrl?: string | null;
+}
+
 export interface LivestreamProduct {
   id: string;
   livestreamId: string;
@@ -13,4 +22,5 @@ export interface LivestreamProduct {
   variantName?: string | null;
   price?: number | null;
   imageUrl?: string | null;
+  variants?: LivestreamProductSku[];
 }

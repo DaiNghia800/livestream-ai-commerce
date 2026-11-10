@@ -18,6 +18,7 @@ export function MonitoringChatPanel({
 }: MonitoringChatPanelProps) {
   const [activeFilter, setActiveFilter] = useState<MonitoringChatFilter>("ALL");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
 
   // Compute filter counts dynamically from actual message data
   const counts = useMemo(() => {
@@ -50,12 +51,21 @@ export function MonitoringChatPanel({
     return messages;
   }, [messages, activeFilter]);
 
-  // Reset scroll to top only when switching filters
+  // Handle scroll to detect if user has scrolled up
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isNearBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight < 80;
+    shouldAutoScrollRef.current = isNearBottom;
+  };
+
+  // Auto-scroll when new messages arrive if user is near bottom
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
+    if (scrollContainerRef.current && shouldAutoScrollRef.current) {
+      scrollContainerRef.current.scrollTop =
+        scrollContainerRef.current.scrollHeight;
     }
-  }, [activeFilter]);
+  }, [messages, activeFilter]);
 
   return (
     <section
@@ -70,14 +80,15 @@ export function MonitoringChatPanel({
               Tin nhắn &amp; AI
             </h2>
             <span className="text-[10px] sm:text-[11px] text-slate-500 block mt-0.5 truncate">
-              Chế độ giám sát tự động • Dữ liệu mô phỏng
+              Luồng bình luận thời gian thực • AWS IVS Chat &amp; Lambda AI
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-            Dữ liệu mô phỏng
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            IVS Chat Realtime
           </span>
         </div>
       </div>
@@ -153,12 +164,23 @@ export function MonitoringChatPanel({
       {/* Scrollable Chat Stream */}
       <div
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 bg-slate-50/30 min-h-0"
       >
         {filteredMessages.length > 0 ? (
           filteredMessages.map((msg) => (
             <MonitoringChatMessage key={msg.id} message={msg} />
           ))
+        ) : messages.length === 0 ? (
+          <div className="py-12 text-center text-slate-500 space-y-1.5">
+            <MessageSquare className="h-6 w-6 text-slate-300 mx-auto mb-1" aria-hidden="true" />
+            <p className="text-xs font-semibold text-slate-800">
+              Chưa có bình luận nào trong phiên live
+            </p>
+            <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+              Hệ thống đang sẵn sàng tiếp nhận bình luận và tự động phân tích cú pháp tạo đơn qua Trợ lý AI.
+            </p>
+          </div>
         ) : (
           <div className="py-12 text-center text-slate-500 space-y-1.5">
             <Filter className="h-6 w-6 text-slate-300 mx-auto mb-1" aria-hidden="true" />

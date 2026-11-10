@@ -5,10 +5,12 @@ import type {
   AdjustmentListQuery,
   BatchAdjustInventoryInput,
   InventoryListQuery,
+  SaveAdjustmentDraftInput,
   StockHoldInput,
 } from "../schemas/inventory.schema.js";
 import type {
   InventoryAdjustment,
+  InventoryAdjustmentDocument,
   InventoryAdjustmentPage,
   InventoryChangeResult,
   InventoryItem,
@@ -31,7 +33,20 @@ export class InventorySkuNotFoundError extends Error {
   }
 }
 
+export class AdjustmentDocumentNotFoundError extends Error {
+  constructor(message = "Adjustment document was not found or is no longer a draft") {
+    super(message);
+    this.name = "AdjustmentDocumentNotFoundError";
+  }
+}
+
 export interface IInventoryRepository {
+  getAdjustmentDraft(shopId: number, productId: string): Promise<InventoryAdjustmentDocument | null>;
+  saveAdjustmentDraft(
+    shopId: number,
+    input: SaveAdjustmentDraftInput,
+    userId?: number
+  ): Promise<InventoryAdjustmentDocument>;
   list(shopId: number, query: InventoryListQuery): Promise<InventoryPage>;
   getSummary(shopId: number): Promise<InventorySummary>;
   findBySku(shopId: number, skuId: string): Promise<InventoryItem | null>;
@@ -116,11 +131,12 @@ const ADJUSTMENT_SELECT = `
     a.held_after AS "heldAfter",
     a.reason,
     a.note,
-    a.created_by::text AS "createdBy",
+    COALESCE(u.full_name, u.email, a.created_by::text) AS "createdBy",
     a.created_at AS "createdAt"
   FROM inventory_adjustments a
   JOIN product_skus s ON s.id = a.sku_id
   JOIN products p ON p.id = s.product_id
+  LEFT JOIN users u ON u.id = a.created_by
 `;
 
 function asItem(row: Record<string, any>): InventoryItem {
@@ -252,7 +268,105 @@ async function inTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise
   }
 }
 
+async function loadDocument(
+  client: Pick<PoolClient, "query">,
+  documentId: string
+): Promise<InventoryAdjustmentDocument> {
+  const doc = await client.query(
+    `SELECT d.id::text AS id, d.product_id::text AS "productId", d.status, d.channel,
+            d.sync_live AS "syncLive", d.created_at AS "createdAt", d.updated_at AS "updatedAt",
+            d.confirmed_at AS "confirmedAt", u.id::text AS "userId",
+            u.full_name AS "userName", u.email AS "userEmail"
+     FROM inventory_adjustment_documents d
+     LEFT JOIN users u ON u.id = d.created_by
+     WHERE d.id = $1`,
+    [documentId]
+  );
+  const row = doc.rows[0];
+  const items = await client.query(
+    `SELECT sku_id::text AS "skuId", delta, reason, note
+     FROM inventory_adjustment_document_items WHERE document_id = $1 ORDER BY sku_id`,
+    [documentId]
+  );
+  return {
+    id: row.id,
+    code: `ADJ-${new Date(row.createdAt).getFullYear()}-${row.id.padStart(4, "0")}`,
+    productId: row.productId,
+    status: row.status,
+    channel: row.channel,
+    syncLive: row.syncLive,
+    createdBy: row.userId ? { id: row.userId, name: row.userName, email: row.userEmail } : null,
+    createdAt: new Date(row.createdAt).toISOString(),
+    updatedAt: new Date(row.updatedAt).toISOString(),
+    confirmedAt: row.confirmedAt ? new Date(row.confirmedAt).toISOString() : null,
+    items: items.rows.map((item) => ({
+      skuId: item.skuId,
+      delta: Number(item.delta),
+      reason: item.reason,
+      note: item.note ?? null,
+    })),
+  };
+}
+
 export class PostgresInventoryRepository implements IInventoryRepository {
+  async getAdjustmentDraft(
+    shopId: number,
+    productId: string
+  ): Promise<InventoryAdjustmentDocument | null> {
+    const found = await pool.query(
+      `SELECT id::text AS id FROM inventory_adjustment_documents
+       WHERE shop_id = $1 AND product_id = $2 AND status = 'draft'`,
+      [shopId, productId]
+    );
+    return found.rows[0] ? loadDocument(pool, found.rows[0].id) : null;
+  }
+
+  saveAdjustmentDraft(
+    shopId: number,
+    input: SaveAdjustmentDraftInput,
+    userId?: number
+  ): Promise<InventoryAdjustmentDocument> {
+    return inTransaction(async (client) => {
+      const product = await client.query(
+        "SELECT id FROM products WHERE id = $1 AND shop_id = $2",
+        [input.productId, shopId]
+      );
+      if (!product.rowCount) {
+        throw new AdjustmentDocumentNotFoundError("Product was not found");
+      }
+      const skuIds = input.items.map((item) => item.skuId);
+      const skus = await client.query(
+        "SELECT id::text AS id FROM product_skus WHERE product_id = $1 AND id = ANY($2::bigint[])",
+        [input.productId, skuIds]
+      );
+      const known = new Set(skus.rows.map((row) => row.id));
+      const missing = skuIds.find((id) => !known.has(id));
+      if (missing) throw new InventorySkuNotFoundError(missing);
+
+      // The partial unique index makes concurrent saves converge on one draft.
+      const upserted = await client.query(
+        `INSERT INTO inventory_adjustment_documents (shop_id, product_id, sync_live, created_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (shop_id, product_id) WHERE status = 'draft'
+         DO UPDATE SET sync_live = EXCLUDED.sync_live, updated_at = now()
+         RETURNING id::text AS id`,
+        [shopId, input.productId, input.syncLive, userId ?? null]
+      );
+      const documentId = upserted.rows[0].id as string;
+      await client.query("DELETE FROM inventory_adjustment_document_items WHERE document_id = $1", [
+        documentId,
+      ]);
+      for (const item of input.items) {
+        await client.query(
+          `INSERT INTO inventory_adjustment_document_items (document_id, sku_id, delta, reason, note)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [documentId, item.skuId, item.delta, item.reason, item.note ?? null]
+        );
+      }
+      return loadDocument(client, documentId);
+    });
+  }
+
   async list(shopId: number, query: InventoryListQuery): Promise<InventoryPage> {
     const conditions = [
       "p.shop_id = $1",
@@ -282,9 +396,7 @@ export class PostgresInventoryRepository implements IInventoryRepository {
         conditions.push(`${AVAILABLE} > ${THRESHOLD}`);
         break;
       case "high_hold":
-        conditions.push(
-          "COALESCE(i.held_quantity, 0) > 0 AND COALESCE(i.held_quantity, 0) * 2 >= COALESCE(i.on_hand_quantity, 0)"
-        );
+        conditions.push("COALESCE(i.held_quantity, 0) > 0");
         break;
     }
     const where = conditions.join(" AND ");
@@ -297,7 +409,9 @@ export class PostgresInventoryRepository implements IInventoryRepository {
         values
       ),
       pool.query(
-        `SELECT COUNT(*)::int AS total
+        `SELECT
+           COUNT(*)::int AS total,
+           COALESCE(SUM(COALESCE(i.held_quantity, 0)), 0)::int AS "filteredTotalHeld"
          FROM product_skus s JOIN products p ON p.id = s.product_id
          LEFT JOIN inventory i ON i.sku_id = s.id WHERE ${where}`,
         values
@@ -310,6 +424,7 @@ export class PostgresInventoryRepository implements IInventoryRepository {
       page: query.page,
       pageSize: query.pageSize,
       total: count.rows[0].total,
+      filteredTotalHeld: count.rows[0].filteredTotalHeld,
       summary,
     };
   }
@@ -367,6 +482,14 @@ export class PostgresInventoryRepository implements IInventoryRepository {
     // Lock rows in a stable order so concurrent batches cannot deadlock.
     const ordered = [...input.items].sort((a, b) => Number(a.skuId) - Number(b.skuId));
     return inTransaction(async (client) => {
+      if (input.documentId) {
+        const locked = await client.query(
+          `SELECT id FROM inventory_adjustment_documents
+           WHERE id = $1 AND shop_id = $2 AND status = 'draft' FOR UPDATE`,
+          [input.documentId, shopId]
+        );
+        if (!locked.rowCount) throw new AdjustmentDocumentNotFoundError();
+      }
       const results: InventoryChangeResult[] = [];
       for (const entry of ordered) {
         const adjustment = await applyMovement(client, shopId, entry.skuId, {
@@ -378,6 +501,24 @@ export class PostgresInventoryRepository implements IInventoryRepository {
           userId,
         });
         results.push({ item: await loadItem(client, shopId, entry.skuId), adjustment });
+      }
+      if (input.documentId) {
+        await client.query("DELETE FROM inventory_adjustment_document_items WHERE document_id = $1", [
+          input.documentId,
+        ]);
+        for (const { adjustment } of results) {
+          await client.query(
+            `INSERT INTO inventory_adjustment_document_items (document_id, sku_id, delta, reason, note)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [input.documentId, adjustment.skuId, adjustment.delta, adjustment.reason, adjustment.note]
+          );
+        }
+        await client.query(
+          `UPDATE inventory_adjustment_documents
+           SET status = 'confirmed', confirmed_at = now(), created_by = COALESCE(created_by, $2)
+           WHERE id = $1`,
+          [input.documentId, userId ?? null]
+        );
       }
       return results;
     });

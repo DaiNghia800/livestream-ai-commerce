@@ -1,5 +1,6 @@
 import type { LivestreamReportData, CommentLogItem } from "../types/report";
 import { mockLivestreams } from "./livestream.mock";
+import type { Livestream } from "../types/livestream";
 
 const sampleCommentLogs: CommentLogItem[] = [
   {
@@ -1191,7 +1192,10 @@ export const mockReportData33: LivestreamReportData = {
   commentLogs: sampleCommentLogs33,
 };
 
-export function getLivestreamReport(livestreamId: string): LivestreamReportData | null {
+export function getLivestreamReport(
+  livestreamId: string,
+  customSession?: Livestream,
+): LivestreamReportData | null {
   // If specific report exists
   if (livestreamId === "LIVE-2025-07") {
     return mockReportData7;
@@ -1200,8 +1204,8 @@ export function getLivestreamReport(livestreamId: string): LivestreamReportData 
     return mockReportData33;
   }
 
-  // Check if session exists in mockLivestreams
-  const session = mockLivestreams.find((s) => s.id === livestreamId);
+  // Check if session exists in customSession or mockLivestreams
+  const session = customSession || mockLivestreams.find((s) => s.id === livestreamId);
   if (!session) {
     return null;
   }

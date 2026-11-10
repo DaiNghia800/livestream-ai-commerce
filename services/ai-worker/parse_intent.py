@@ -1,17 +1,21 @@
 """
 Parse purchase intent from a livestream comment.
 
-Strategy (hybrid):
-  0. Guard negation, questions and ambiguous purchase language
-  1. Regex tries first — fast, free, no network
-  2. If regex confidence is "high" → apply the business decision gate
-  3. If regex confidence is "low"  → call Gemini AI to verify
-  4. If Gemini fails              → propagate the technical failure
-  5. If no keywords found         → skip (no intent)
+Strategy:
+  With an AI key (OpenAI or Gemini) the AI is the decision maker:
+    1. Regex fast path only for a clearly formed order (buy word + code +
+       one more field, no ambiguity) — no network, no cost
+    2. Anything else that could be a purchase (buy word, a number, a code,
+       or ambiguous purchase language) goes to the AI together with the
+       livestream's product list; the AI returns kind + items
+    3. Pure chatter (no number, no buy word) is dropped without the AI
+  Without an AI key the legacy regex-only path with its conservative guards
+  applies, and a low-confidence comment fails with a configuration error.
 """
 
 import re
 import logging
+import os
 import unicodedata
 
 from catalog import CatalogProvider, DEFAULT_CATALOG
@@ -25,8 +29,9 @@ KNOWN_SIZES = DEFAULT_CATALOG.known_sizes
 
 # Strong keywords = clearly want to buy
 # Weak keywords = might be buying, need more signals
-STRONG_KEYWORDS = ["chốt", "mua", "order", "đặt"]
-WEAK_KEYWORDS = ["lấy", "cho"]
+# Có cả dạng không dấu ("chot", "dat", "lay") vì khách gõ điện thoại hay bỏ dấu.
+STRONG_KEYWORDS = ["chốt", "chot", "mua", "order", "đặt", "dat"]
+WEAK_KEYWORDS = ["lấy", "lay", "cho"]
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +55,9 @@ def parse_purchase_intent(
         A dict with:
           - "has_intent": True if this looks like a purchase comment
           - "confidence": "high" | "low" | None
-          - "source": "regex" | "gemini" — who made the final decision
-          - "product_code": str or None
-          - "color": str or None
-          - "size": str or None
-          - "quantity": int or None
+          - "source": "regex" | "gemini" | "openai" — who made the final decision
+          - "items": [{product_code, quantity, color, size}] (AI path)
+          - "product_code", "color", "size", "quantity": first item (legacy)
           - "raw": the original content (for debugging)
           - "decision": no_purchase | needs_clarification | purchase_candidate
           - "reason_codes": machine-readable reasons for the decision
@@ -90,7 +93,6 @@ def parse_purchase_intent(
     if regex_result["confidence"] == "high":
         return apply_decision(regex_result)
 
-    # --- Step 2: Regex confidence is "low" → ask Gemini AI ---
     if not use_ai:
         return apply_decision(regex_result)
 
@@ -140,7 +142,10 @@ def _regex_parse(
         quantity is not None,
     ])
 
-    if has_strong and fields_found >= 2:
+    # Chỉ "chắc" khi có từ mua, nhận được MÃ và thêm một trường nữa. Thiếu
+    # mã thì số lượng + size vẫn không ra đơn được, phải để AI đọc (mã dài
+    # kiểu SHIPDEMO-mve51bb3-M regex không bắt được).
+    if has_strong and product_code is not None and fields_found >= 2:
         confidence = "high"
     elif has_strong or fields_found >= 1:
         confidence = "low"
@@ -159,19 +164,53 @@ def _regex_parse(
     }, quantity_result.issue
 
 
-# ── Gemini AI caller ─────────────────────────────────────────
+# ── AI provider selection ────────────────────────────────────
 
 
-def _try_gemini(content: str) -> dict:
+def ai_provider() -> str:
+    """Pick the AI provider: OpenAI when its key is configured, Gemini otherwise.
+
+    Returns "openai" or "gemini".
     """
-    Call Gemini AI and return a result dict.
-    Import is lazy to avoid crash when google-genai is not installed.
+    # Nạp .env gốc trước khi đọc, vì hàm này chạy trước khi client nào được
+    # import (các client mới gọi load_dotenv khi import).
+    dotenv.load_dotenv()
+    return "openai" if os.environ.get("OPENAI_API_KEY", "").strip() else "gemini"
+
+
+def ai_available() -> bool:
+    """True when an AI key (OpenAI or Gemini) is configured."""
+    dotenv.load_dotenv()
+    return bool(os.environ.get("OPENAI_API_KEY", "").strip() or os.environ.get("GEMINI_API_KEY", "").strip())
+
+
+def _try_ai(content: str, catalogue: list[dict] | None = None) -> dict:
+    """Route a comment to the configured AI provider."""
+    provider = ai_provider()
+    logger.info(f"Calling {provider} for: {content}")
+    if catalogue is None:
+        # Giữ chữ ký một tham số cho đường cũ và test cũ.
+        return _try_openai(content) if provider == "openai" else _try_gemini(content)
+    return _try_openai(content, catalogue) if provider == "openai" else _try_gemini(content, catalogue)
+
+
+# ── OpenAI caller ────────────────────────────────────────────
+
+
+def _try_openai(content: str, catalogue: list[dict] | None = None) -> dict:
+    """Call OpenAI and return a result dict in the same shape as _try_gemini.
+
+    Import is lazy so a Gemini-only setup never needs the openai package.
     Raises AIParsingError on failure.
     """
-    from gemini_client import parse_with_gemini
+    from openai_client import parse_with_openai
 
-    ai_response = parse_with_gemini(content)
+    ai_response = parse_with_openai(content) if catalogue is None else parse_with_openai(content, catalogue)
+    return _ai_result(ai_response, "openai", content)
 
+
+def _ai_result(ai_response: dict, source: str, content: str) -> dict:
+    """Shape a provider answer into the worker's result dict."""
     return {
         "has_intent": ai_response["has_intent"],
         "confidence": "high",  # Intent classification still requires field evidence.

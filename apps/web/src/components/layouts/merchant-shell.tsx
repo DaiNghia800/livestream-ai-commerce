@@ -12,20 +12,24 @@ import {
   CircleUserRound,
   CreditCard,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
   Radio,
   Search,
   Settings,
   ShoppingCart,
+  Store,
   Truck,
+  UsersRound,
   Warehouse,
   Wifi,
   X,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Brand } from "./brand";
 import styles from "./merchant-shell.module.css";
 
@@ -37,7 +41,9 @@ const navigation = [
   { label: "Sản phẩm", href: "/shop/products", icon: Package },
   { label: "Tồn kho", href: "/shop/inventory", icon: Warehouse },
   { label: "Thanh toán", href: "/shop/payments", icon: CreditCard },
-  { label: "Vận chuyển", icon: Truck },
+  { label: "Vận chuyển", href: "/shop/shipping", icon: Truck },
+  { label: "Mời shop", href: "/shop/invitations", icon: Store },
+  { label: "Quản lý người dùng", href: "/shop/users", icon: UsersRound },
   { label: "Thông báo", icon: Bell },
   { label: "Báo cáo", icon: BarChart3 },
   { label: "Cài đặt", icon: Settings },
@@ -47,14 +53,74 @@ function isActivePath(pathname: string, href: string, exact?: boolean) {
   return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function subscribeToStorage(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
+function getAdminSession() {
+  return (
+    localStorage.getItem("user_role") === "admin" &&
+    Boolean(localStorage.getItem("admin_access_token"))
+  );
+}
+
+function getProfileSnapshot(): string | null {
+  const profileKey =
+    localStorage.getItem("user_role") === "admin" ? "admin_auth_user" : "auth_user";
+  return localStorage.getItem(profileKey);
+}
+
+function parseProfile(snapshot: string | null): { full_name: string } | null {
+  if (!snapshot) return null;
+  try {
+    const value: unknown = JSON.parse(snapshot);
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "full_name" in value &&
+      typeof value.full_name === "string"
+    ) {
+      return { full_name: value.full_name };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function MerchantShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isAdminSession = useSyncExternalStore(
+    subscribeToStorage,
+    getAdminSession,
+    () => false
+  );
+  const profileSnapshot = useSyncExternalStore(
+    subscribeToStorage,
+    getProfileSnapshot,
+    () => null
+  );
+  const profile = parseProfile(profileSnapshot);
+  const profileName = profile?.full_name || (isAdminSession ? "Quản trị viên" : "Chủ cửa hàng");
+  const profileRole = isAdminSession ? "Quản trị viên" : "Chủ cửa hàng";
   const navigationId = useId();
 
   const isMonitoring = pathname ? /\/monitoring\/?$/.test(pathname) : false;
   const isProductsPage = pathname === "/shop/products";
+  const isAdminArea =
+    pathname === "/shop/invitations" || pathname === "/shop/users";
+
+  function signOutAdmin() {
+    localStorage.removeItem("admin_access_token");
+    localStorage.removeItem("admin_refresh_token");
+    localStorage.removeItem("admin_auth_user");
+    localStorage.removeItem("user_role");
+    router.replace("/admin");
+  }
 
   return (
     <div className={styles.shell}>
@@ -102,8 +168,8 @@ export function MerchantShell({ children }: { children: ReactNode }) {
       <aside
         id={navigationId}
         className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""} ${
-          isProductsPage ? styles.sidebarProduct : ""
-        } ${sidebarCollapsed ? styles.sidebarCollapsed : ""}`}
+          sidebarCollapsed ? styles.sidebarCollapsed : ""
+        }`}
       >
         <div className={styles.sidebarHeader}>
           <div className={styles.brandRow}>
@@ -133,7 +199,13 @@ export function MerchantShell({ children }: { children: ReactNode }) {
 
         {/* Scrollable Navigation - CHỈ cuộn phần main menu */}
         <nav className={`${styles.navigation} custom-scrollbar`} aria-label="Điều hướng chủ shop">
-          {navigation.map((item) => {
+          {navigation.filter((item) => {
+            if (!("href" in item)) return true;
+            return (
+              (item.href !== "/shop/invitations" && item.href !== "/shop/users") ||
+              isAdminSession
+            );
+          }).map((item) => {
             const Icon = item.icon;
             if (!("href" in item)) {
               return (
@@ -163,7 +235,7 @@ export function MerchantShell({ children }: { children: ReactNode }) {
                 <span>{item.label}</span>
               </Link>
             );
-          })}
+            })}
         </nav>
 
         {/* Fixed Footer */}
@@ -180,16 +252,12 @@ export function MerchantShell({ children }: { children: ReactNode }) {
           sidebarCollapsed ? styles.contentExpanded : ""
         }`}
       >
-        <header className={`${styles.header} ${isProductsPage ? styles.headerProduct : ""}`}>
+        <header className={styles.header}>
           <label className={styles.search}>
             <span className="sr-only">Tìm kiếm trong khu vực quản lý</span>
             <Search size={18} aria-hidden="true" />
             <input
-              placeholder={
-                isProductsPage
-                  ? "Tìm theo tên, SĐT, hoặc mã đơn..."
-                  : "Tìm theo mã SKU, tên sản phẩm, vị trí kho..."
-              }
+              placeholder="Tìm theo mã SKU, tên sản phẩm, vị trí kho..."
               disabled
             />
           </label>
@@ -198,9 +266,6 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               className={styles.connectionStatus}
               aria-label="Trạng thái kết nối IVS và Gemini"
             >
-              {isProductsPage && (
-                <Wifi className={styles.productConnectionIcon} size={16} aria-hidden="true" />
-              )}
               <span className={styles.connectionLabel}>Trạng thái kết nối</span>
               <span className={styles.connectionDot} aria-hidden="true" />
               <span className={styles.connectionDetails}>
@@ -213,26 +278,18 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               <button
                 aria-label="Đồng bộ kho WMS"
                 className={styles.iconButton}
-                title={isProductsPage ? "AI Bot Tự động hóa" : "Đồng bộ kho WMS"}
+                title="Đồng bộ kho WMS"
                 type="button"
               >
-                {isProductsPage ? (
-                  <Bot size={17} aria-hidden="true" />
-                ) : (
-                  <ArrowLeftRight size={17} aria-hidden="true" />
-                )}
+                <ArrowLeftRight size={17} aria-hidden="true" />
               </button>
               <button
                 aria-label="Cảm biến và thiết bị"
                 className={styles.iconButton}
-                title={isProductsPage ? "Đồng bộ kho đa kênh" : "Cảm biến & Thiết bị"}
+                title="Cảm biến & Thiết bị"
                 type="button"
               >
-                {isProductsPage ? (
-                  <ArrowLeftRight size={17} aria-hidden="true" />
-                ) : (
-                  <Radio size={17} aria-hidden="true" />
-                )}
+                <Radio size={17} aria-hidden="true" />
               </button>
               <button
                 aria-label="Thông báo hệ thống"
@@ -249,20 +306,27 @@ export function MerchantShell({ children }: { children: ReactNode }) {
               className={styles.checkoutButton}
               href="/shop/orders"
             >
-              {isProductsPage ? (
-                <Radio size={16} aria-hidden="true" />
-              ) : (
-                <ShoppingCart size={16} aria-hidden="true" />
-              )}
+              <ShoppingCart size={16} aria-hidden="true" />
               <span>Chốt đơn ngay</span>
             </Link>
+            {isAdminArea && (
+              <button
+                aria-label="Đăng xuất quản trị"
+                className={styles.iconButton}
+                title="Đăng xuất quản trị"
+                type="button"
+                onClick={signOutAdmin}
+              >
+                <LogOut size={17} aria-hidden="true" />
+              </button>
+            )}
             <div className={styles.profile} aria-label="Tài khoản đang xem">
               <span className={styles.avatar} aria-hidden="true">
                 <CircleUserRound size={21} aria-hidden="true" />
               </span>
               <span className={styles.profileCopy}>
-                <strong>{isProductsPage ? "Admin Kho Vận" : "Văn Vận Hành"}</strong>
-                <small>Quản trị viên kho và vận hành</small>
+                <strong>{profileName}</strong>
+                <small>{profileRole}</small>
               </span>
             </div>
           </div>

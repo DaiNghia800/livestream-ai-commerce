@@ -12,9 +12,12 @@ export type Tone = "neutral" | "success" | "warning" | "danger";
 export const orderStatuses = {
   DRAFT: { label: "Đơn nháp", tone: "neutral" },
   PENDING_CONFIRMATION: { label: "Chờ xác nhận", tone: "warning" },
+  AWAITING_PAYMENT: { label: "Chờ thanh toán", tone: "warning" },
   CONFIRMED: { label: "Đã xác nhận", tone: "success" },
   PROCESSING: { label: "Đang xử lý", tone: "neutral" },
+  SHIPPING: { label: "Đang giao hàng", tone: "warning" },
   COMPLETED: { label: "Hoàn thành", tone: "success" },
+  RETURNED: { label: "Đã hoàn hàng", tone: "danger" },
   CANCELLED: { label: "Đã hủy", tone: "danger" },
   EXPIRED: { label: "Hết hạn giữ", tone: "danger" },
 } as const;

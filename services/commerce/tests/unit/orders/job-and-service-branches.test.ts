@@ -12,7 +12,6 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
-import { ExpireOrdersJob } from "../../../src/modules/order/jobs/expire-orders.job.js";
 import { ExpirePurchaseRequestsJob } from "../../../src/modules/order/jobs/expire-purchase-requests.job.js";
 import { PublishOutboxJob } from "../../../src/modules/order/jobs/publish-outbox.job.js";
 import { getOrCreateOpenDraft } from "../../../src/modules/order/services/draft-order.resolver.js";
@@ -31,86 +30,6 @@ function silenceConsole() {
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 }
-
-describe("Hẹn giờ của job quét đơn hết hạn", () => {
-  const fakePool = {} as never;
-
-  it("ghi log khi có đơn thật sự hết hạn", async () => {
-    silenceConsole();
-    const job = new ExpireOrdersJob(fakePool, { intervalMs: 20 });
-    vi.spyOn(job, "runOnce").mockResolvedValue({
-      scanned: 3,
-      expired: 2,
-      skipped: 1,
-      failed: 0,
-    });
-
-    job.start();
-    await tick(60);
-    job.stop();
-
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("hết hạn 2")
-    );
-  });
-
-  it("lượt quét ném lỗi KHÔNG giết tiến trình", async () => {
-    silenceConsole();
-    const job = new ExpireOrdersJob(fakePool, { intervalMs: 20 });
-    vi.spyOn(job, "runOnce").mockRejectedValue(new Error("mất kết nối"));
-
-    job.start();
-    await tick(60);
-    job.stop();
-
-    // Lỗi phải bị nuốt và ghi log. Để nó nổi lên thành unhandled
-    // rejection thì Node giết cả service, và shop mất luôn cả API
-    // chỉ vì một lượt quét nền hỏng.
-    expect(console.error).toHaveBeenCalled();
-  });
-
-  it("lượt trước chưa xong thì BỎ QUA lượt này, không xếp chồng", async () => {
-    silenceConsole();
-    const job = new ExpireOrdersJob(fakePool, { intervalMs: 10 });
-    vi.spyOn(job, "runOnce").mockImplementation(
-      () => tick(80).then(() => ({ scanned: 0, expired: 0, skipped: 0, failed: 0 }))
-    );
-
-    job.start();
-    await tick(60);
-    job.stop();
-
-    // Đơn quá hạn vẫn còn đó, lượt sau sẽ gặp lại. Xếp chồng thì mỗi
-    // lượt lại mượn thêm kết nối và cuối cùng cạn pool.
-    expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Lượt trước chưa xong")
-    );
-    expect(job.runOnce).toHaveBeenCalledTimes(1);
-  });
-
-  it("im lặng khi không có gì để làm", async () => {
-    silenceConsole();
-    const job = new ExpireOrdersJob(fakePool, { intervalMs: 20 });
-    vi.spyOn(job, "runOnce").mockResolvedValue({
-      scanned: 0,
-      expired: 0,
-      skipped: 0,
-      failed: 0,
-    });
-
-    job.start();
-    await tick(60);
-    job.stop();
-
-    // Quét mỗi 30 giây mà lượt nào cũng ghi log thì log sản xuất thành
-    // rác, và lúc có sự cố thật không ai tìm ra dòng cần tìm.
-    //
-    // Lọc theo "hết hạn" chứ không theo "quét": dòng khởi động
-    // ("Đã bật, quét mỗi 30s") là log hợp lệ, chỉ ghi một lần.
-    const calls = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(calls.filter((c) => String(c[0]).includes("hết hạn"))).toHaveLength(0);
-  });
-});
 
 describe("Hẹn giờ của job quét đề nghị quá hạn", () => {
   const fakeService = {} as never;

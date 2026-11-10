@@ -22,6 +22,7 @@ export type StudioChatMessageStatus =
 
 export interface StudioChatMessage {
   id: string;
+  userId?: string;
   userName: string;
   userAvatar?: string;
   content: string;
@@ -29,10 +30,14 @@ export interface StudioChatMessage {
   status?: StudioChatMessageStatus;
   isAiParsed?: boolean;
   extractedSku?: string;
+  extractedProductName?: string;
   extractedQuantity?: number;
   orderCreated?: boolean;
   orderId?: string;
   reviewReason?: string;
+  targetUserName?: string;
+  badge?: string;
+  createdAt?: string;
 }
 
 export interface StudioSessionState {

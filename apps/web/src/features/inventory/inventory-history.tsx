@@ -14,7 +14,6 @@ import {
   Clock3,
   FilePlus2,
   FileSpreadsheet,
-  Filter,
   History,
   PackageCheck,
   RefreshCw,
@@ -28,6 +27,7 @@ import {
 } from "lucide-react";
 import {
   getInventoryAdjustments,
+  exportInventoryAdjustments,
   type InventoryAdjustment,
   type InventoryAdjustmentPage,
   type InventoryMovementType,
@@ -89,6 +89,11 @@ function formatSigned(value: number) {
   return value > 0 ? `+${value}` : String(value);
 }
 
+function actorName(event: InventoryAdjustment) {
+  if (event.createdBy) return event.createdBy;
+  return event.movementType === "adjustment" ? "Quản trị viên kho" : "Hệ thống";
+}
+
 function describe(event: InventoryAdjustment) {
   const action = ACTION_BY_MOVEMENT[event.movementType];
   const totalBefore = event.onHandAfter - event.delta;
@@ -121,13 +126,25 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [actionFilter, setActionFilter] = useState<"all" | Action>("all");
   const [timeFilter, setTimeFilter] = useState("all");
-  const [skuId, setSkuId] = useState(initialSkuId ?? "");
+  const [skuId] = useState(initialSkuId ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [result, setResult] = useState<InventoryAdjustmentPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -169,45 +186,32 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
   const summary = result?.summary;
 
   function resetFilters() {
-    setQuery("");
-    setDebouncedQuery("");
     setActionFilter("all");
     setTimeFilter("all");
-    setSkuId("");
     setPage(1);
-    setNotice("Đã đặt lại bộ lọc nhật ký.");
+    setNotice("Đã đặt lại bộ lọc loại hành động và thời gian.");
   }
 
-  function exportEvents() {
-    const rows = [
-      ["Thời gian", "Sản phẩm", "SKU", "Biến thể", "Loại", "Thay đổi tồn", "Thay đổi giữ chỗ", "Tồn sau", "Giữ chỗ sau", "Lý do", "Ghi chú", "Người xử lý"],
-      ...events.map((event) => [
-        new Date(event.createdAt).toLocaleString("vi-VN"),
-        event.productName,
-        event.skuCode,
-        event.variantName,
-        ACTION_LABEL[ACTION_BY_MOVEMENT[event.movementType]],
-        event.delta,
-        event.heldDelta,
-        event.onHandAfter,
-        event.heldAfter,
-        event.reason,
-        event.note ?? "",
-        event.createdBy ?? "Hệ thống",
-      ]),
-    ];
-    const csv = rows
-      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "inventory-history.csv";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    setNotice(`Đã xuất ${events.length} bản ghi nhật ký.`);
+  async function exportEvents() {
+    try {
+      const file = await exportInventoryAdjustments({
+        q: debouncedQuery || undefined,
+        skuId: skuId || undefined,
+        movementType: actionFilter === "all" ? undefined : MOVEMENT_BY_ACTION[actionFilter],
+        ...timeRange(timeFilter),
+      });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "nhat-ky-ton-kho.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setNotice(`Đã xuất ${total} bản ghi nhật ký ra file Excel.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không thể xuất nhật ký tồn kho.");
+    }
   }
 
   return (
@@ -230,25 +234,12 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
         <div className={styles.historyHeaderActions}>
           <button
             className={styles.historySecondaryButton}
-            onClick={() =>
-              document.getElementById("inventory-history-filters")?.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              })
-            }
-            type="button"
-          >
-            <Filter size={15} aria-hidden="true" />
-            Bộ lọc nâng cao
-          </button>
-          <button
-            className={styles.historySecondaryButton}
             disabled={events.length === 0}
             onClick={exportEvents}
             type="button"
           >
             <FileSpreadsheet size={15} aria-hidden="true" />
-            Xuất dữ liệu Excel/CSV
+            Xuất dữ liệu Excel
           </button>
           <Link className={styles.historyPrimaryButton} href="/shop/inventory/adjustment">
             <FilePlus2 size={15} aria-hidden="true" />
@@ -362,6 +353,10 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
               <ChevronDown size={14} aria-hidden="true" />
             </div>
           </label>
+          <button className={styles.resetHistoryButton} onClick={resetFilters} type="button">
+            <RotateCcw size={13} aria-hidden="true" />
+            Đặt lại mặc định
+          </button>
         </div>
         <div className={styles.quickFilters}>
           {QUICK_FILTERS.map((filter) => (
@@ -379,16 +374,6 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
               <span>{filter.label}</span>
             </button>
           ))}
-          {skuId && (
-            <button className={styles.resetHistoryButton} onClick={() => setSkuId("")} type="button">
-              <X size={13} aria-hidden="true" />
-              Bỏ lọc theo SKU
-            </button>
-          )}
-          <button className={styles.resetHistoryButton} onClick={resetFilters} type="button">
-            <RotateCcw size={13} aria-hidden="true" />
-            Đặt lại mặc định
-          </button>
         </div>
       </section>
 
@@ -462,7 +447,7 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
                     <td className={styles.eventActor}>
                       <span className={styles[`actor-${info.action}`]}>
                         <UserRound size={13} aria-hidden="true" />
-                        {event.createdBy ?? "Hệ thống"}
+                        {actorName(event)}
                       </span>
                     </td>
                   </tr>

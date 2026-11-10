@@ -2,20 +2,50 @@ import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import {
   AdjustInventorySchema,
+  AdjustmentDraftQuerySchema,
   AdjustmentListQuerySchema,
   BatchAdjustInventorySchema,
   InventoryListQuerySchema,
+  SaveAdjustmentDraftSchema,
   StockHoldSchema,
   UpdateThresholdSchema,
 } from "../schemas/inventory.schema.js";
 import {
+  AdjustmentDocumentNotFoundError,
   InsufficientStockError,
   InventorySkuNotFoundError,
 } from "../repositories/inventory.repository.js";
 import { InventoryNotFoundError, InventoryService } from "../services/inventory.service.js";
+import { InventorySpreadsheetService } from "../services/inventory-spreadsheet.service.js";
 
 export class InventoryController {
-  constructor(private readonly service: InventoryService) {}
+  private readonly spreadsheet: InventorySpreadsheetService;
+
+  constructor(private readonly service: InventoryService) {
+    this.spreadsheet = new InventorySpreadsheetService(service);
+  }
+
+  getAdjustmentDraft = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const query = AdjustmentDraftQuerySchema.parse(req.query);
+      res
+        .status(200)
+        .json({ data: await this.service.getAdjustmentDraft(req.shopId!, query.productId) });
+    } catch (error) {
+      this.handleError(error, res, "Failed to fetch adjustment draft");
+    }
+  };
+
+  saveAdjustmentDraft = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = SaveAdjustmentDraftSchema.parse(req.body);
+      res
+        .status(200)
+        .json({ data: await this.service.saveAdjustmentDraft(req.shopId!, input, req.userId) });
+    } catch (error) {
+      this.handleError(error, res, "Failed to save adjustment draft");
+    }
+  };
 
   list = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -91,6 +121,44 @@ export class InventoryController {
     }
   };
 
+  exportInventory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { page: _page, pageSize: _pageSize, ...filters } = InventoryListQuerySchema.parse(
+        req.query
+      );
+      const { buffer } = await this.spreadsheet.exportInventory(req.shopId!, filters);
+      res
+        .status(200)
+        .set(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        .set("Content-Disposition", 'attachment; filename="kiem-ke-ton-kho.xlsx"')
+        .send(buffer);
+    } catch (error) {
+      this.handleError(error, res, "Failed to export inventory");
+    }
+  };
+
+  exportAdjustments = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { page: _page, pageSize: _pageSize, ...filters } = AdjustmentListQuerySchema.parse(
+        req.query
+      );
+      const { buffer } = await this.spreadsheet.exportAdjustments(req.shopId!, filters);
+      res
+        .status(200)
+        .set(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        .set("Content-Disposition", 'attachment; filename="nhat-ky-ton-kho.xlsx"')
+        .send(buffer);
+    } catch (error) {
+      this.handleError(error, res, "Failed to export inventory history");
+    }
+  };
+
   private holdHandler(action: "reserve" | "release" | "consume", fallback: string) {
     return async (req: Request, res: Response): Promise<void> => {
       try {
@@ -117,7 +185,11 @@ export class InventoryController {
       });
       return;
     }
-    if (error instanceof InventoryNotFoundError || error instanceof InventorySkuNotFoundError) {
+    if (
+      error instanceof InventoryNotFoundError ||
+      error instanceof InventorySkuNotFoundError ||
+      error instanceof AdjustmentDocumentNotFoundError
+    ) {
       res.status(404).json({ error: "NotFound", message: error.message });
       return;
     }

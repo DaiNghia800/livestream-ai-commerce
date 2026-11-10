@@ -16,6 +16,7 @@ import {
   Heart,
   MessageCircle,
   Share2,
+  Radio,
 } from "lucide-react";
 import { PinnedProductOverlay } from "./pinned-product-overlay";
 import type { StudioProductItem } from "../../types/studio";
@@ -36,6 +37,9 @@ export interface StudioStreamPreviewProps {
   pinnedProduct?: StudioProductItem | null;
   isMicActive?: boolean;
   isEnded?: boolean;
+  broadcastState?: "IDLE" | "CONNECTING" | "LIVE" | "ERROR";
+  onResumeLive?: () => void;
+  isResuming?: boolean;
   aspectRatio?: "16:9" | "9:16";
   onChangeAspectRatio?: (ratio: "16:9" | "9:16") => void;
   showSafezone?: boolean;
@@ -57,8 +61,9 @@ export function StudioStreamPreview({
   pinnedProduct = null,
   isMicActive = false,
   isEnded = false,
+  onResumeLive,
+  isResuming = false,
   aspectRatio = "16:9",
-  onChangeAspectRatio,
   showSafezone = true,
   onToggleSafezone,
   isMirrorVideo = false,
@@ -107,22 +112,22 @@ export function StudioStreamPreview({
   const hasLiveVideo = cameraStatus === "active" && Boolean(localStream);
 
   return (
-    <div className="relative flex-1 min-h-0 w-full h-full bg-[#080B10] flex items-center justify-center overflow-hidden select-none p-1 sm:p-2 lg:p-3 group/stage">
+    <div className="relative flex-1 min-h-0 w-full h-full bg-surface-container-low/50 flex items-center justify-center overflow-hidden select-none p-1.5 sm:p-2.5 lg:p-3 group/stage">
       {/* 1. Nẹp gập/mở mép viền TRÁI (Edge Gripper Tab Left) */}
       {onToggleLeftSidebar && (
         <button
           type="button"
           onClick={onToggleLeftSidebar}
-          className={`absolute left-0 top-1/2 -translate-y-1/2 z-30 h-14 w-4 bg-[#141C2E]/90 hover:bg-[#1E2942] text-cyan-400 hover:text-white rounded-r-lg border-y border-r border-cyan-500/30 flex items-center justify-center backdrop-blur-md shadow-xl transition-all active:scale-95 cursor-pointer opacity-70 group-hover/stage:opacity-100 ${
-            !isLeftSidebarOpen ? "w-6 bg-cyan-950/90 text-cyan-300 ring-1 ring-cyan-500/40" : ""
+          className={`absolute left-0 top-1/2 -translate-y-1/2 z-30 h-14 w-4 bg-surface-container-lowest hover:bg-surface-container text-outline hover:text-primary rounded-r-lg border-y border-r border-outline-variant/60 flex items-center justify-center backdrop-blur-md shadow-md transition-all active:scale-95 cursor-pointer opacity-80 group-hover/stage:opacity-100 ${
+            !isLeftSidebarOpen ? "w-6 text-primary font-bold" : ""
           }`}
           title={isLeftSidebarOpen ? "Thu gọn thanh công cụ trái (Phím [)" : "Mở thanh công cụ trái (Phím [)"}
-          aria-label="Thu gọn hoặc mở thanh công cụ trái"
+          aria-label="Đóng mở thanh công cụ trái"
         >
           {isLeftSidebarOpen ? (
             <ChevronLeft className="h-3.5 w-3.5 -ml-0.5" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-cyan-300 animate-pulse" />
+            <ChevronRight className="h-4 w-4 text-primary" />
           )}
         </button>
       )}
@@ -132,8 +137,8 @@ export function StudioStreamPreview({
         <button
           type="button"
           onClick={onToggleRightSidebar}
-          className={`absolute right-0 top-1/2 -translate-y-1/2 z-30 h-14 w-4 bg-[#141C2E]/90 hover:bg-[#1E2942] text-rose-400 hover:text-white rounded-l-lg border-y border-l border-rose-500/30 flex items-center justify-center backdrop-blur-md shadow-xl transition-all active:scale-95 cursor-pointer opacity-70 group-hover/stage:opacity-100 ${
-            !isRightSidebarOpen ? "w-6 bg-rose-950/90 text-rose-300 ring-1 ring-rose-500/40" : ""
+          className={`absolute right-0 top-1/2 -translate-y-1/2 z-30 h-14 w-4 bg-surface-container-lowest hover:bg-surface-container text-outline hover:text-primary rounded-l-lg border-y border-l border-outline-variant/60 flex items-center justify-center backdrop-blur-md shadow-md transition-all active:scale-95 cursor-pointer opacity-80 group-hover/stage:opacity-100 ${
+            !isRightSidebarOpen ? "w-6 text-primary font-bold" : ""
           }`}
           title={isRightSidebarOpen ? "Thu gọn thanh Bán hàng & Chat (Phím ])" : "Mở thanh Bán hàng & Chat (Phím ])"}
           aria-label="Thu gọn hoặc mở thanh Bán hàng & Chat"
@@ -141,14 +146,14 @@ export function StudioStreamPreview({
           {isRightSidebarOpen ? (
             <ChevronRight className="h-3.5 w-3.5 -mr-0.5" />
           ) : (
-            <ChevronLeft className="h-4 w-4 text-rose-300 animate-pulse" />
+            <ChevronLeft className="h-4 w-4 text-primary" />
           )}
         </button>
       )}
 
       {/* 3. Main Stage Canvas Viewport */}
       <div
-        className={`relative flex items-center justify-center bg-black overflow-hidden rounded-xl border border-slate-800/80 shadow-2xl transition-all duration-300 mx-auto my-auto ${
+        className={`relative flex items-center justify-center bg-slate-950 overflow-hidden rounded-2xl border-2 border-slate-800/80 shadow-2xl ring-1 ring-black/20 transition-all duration-300 mx-auto my-auto ${
           aspectRatio === "9:16"
             ? "aspect-[9/16] h-full max-h-full w-auto max-w-[85vw] md:max-w-[450px]"
             : "aspect-video w-full h-auto max-w-full max-h-full"
@@ -169,10 +174,10 @@ export function StudioStreamPreview({
 
         {/* Case 2: Camera Inactive / Placeholder states */}
         {!hasLiveVideo && (
-          <div className="flex flex-col items-center justify-center text-center p-4 sm:p-6 text-slate-300 w-full h-full bg-radial from-slate-900 via-slate-950 to-black">
+          <div className="flex flex-col items-center justify-center text-center p-4 sm:p-6 text-slate-300 w-full h-full bg-gradient-to-b from-slate-900 via-[#0d1424] to-black">
             {cameraStatus === "requesting" ? (
               <div className="flex flex-col items-center gap-2.5">
-                <RefreshCw className="h-8 w-8 text-cyan-400 animate-spin" aria-hidden="true" />
+                <RefreshCw className="h-8 w-8 text-primary animate-spin" aria-hidden="true" />
                 <p className="text-xs sm:text-sm font-semibold text-slate-200">
                   Đang khởi tạo nguồn Camera &amp; Micro...
                 </p>
@@ -182,10 +187,10 @@ export function StudioStreamPreview({
               </div>
             ) : cameraStatus === "denied" ? (
               <div className="flex flex-col items-center gap-2 max-w-sm">
-                <div className="h-10 w-10 rounded-full bg-rose-950/80 border border-rose-800 flex items-center justify-center text-rose-400 mb-0.5">
+                <div className="h-10 w-10 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-0.5">
                   <AlertCircle className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h4 className="text-xs sm:text-sm font-bold text-rose-300">
+                <h4 className="text-xs sm:text-sm font-bold text-rose-400">
                   Quyền truy cập Camera bị từ chối
                 </h4>
                 <p className="text-[11px] text-slate-400 leading-relaxed">
@@ -212,7 +217,7 @@ export function StudioStreamPreview({
                 <button
                   type="button"
                   onClick={onRequestCamera}
-                  className="mt-1.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
+                  className="mt-1.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-primary hover:bg-primary-container text-white text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
                 >
                   <Camera className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Bật lại Camera</span>
@@ -220,7 +225,7 @@ export function StudioStreamPreview({
               </div>
             ) : isEnded ? (
               <div className="flex flex-col items-center gap-2">
-                <div className="h-10 w-10 rounded-full bg-purple-950/80 border border-purple-800 flex items-center justify-center text-purple-400 mb-0.5">
+                <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 mb-0.5">
                   <CameraOff className="h-5 w-5" aria-hidden="true" />
                 </div>
                 <h4 className="text-xs sm:text-sm font-bold text-slate-200">
@@ -232,37 +237,63 @@ export function StudioStreamPreview({
               </div>
             ) : (
               /* Idle State */
-              <div className="relative z-10 flex flex-col items-center gap-2 max-w-sm">
-                <div className="h-12 w-12 rounded-full bg-slate-900 border border-slate-700/80 flex items-center justify-center text-cyan-400 mb-1 shadow-lg">
-                  <Camera className="h-6 w-6" aria-hidden="true" />
+              isLive ? (
+                <div className="relative z-10 flex flex-col items-center gap-2.5 max-w-sm px-4">
+                  <div className="h-12 w-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-0.5 shadow-lg">
+                    <Radio className="h-6 w-6 animate-pulse" aria-hidden="true" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-amber-300">
+                    {isResuming ? "Đang tự động kết nối lại luồng phát..." : "Luồng phát video đang tạm dừng"}
+                  </h4>
+                  <p className="text-[11px] text-slate-300 leading-relaxed text-center">
+                    {isResuming
+                      ? "Hệ thống đang tự động khôi phục Camera/Micro và đẩy luồng video lên AWS IVS..."
+                      : "Phiên phát sóng vẫn đang hoạt động. Vui lòng kết nối lại Camera để tiếp tục đẩy luồng video lên AWS IVS."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onResumeLive || onRequestCamera}
+                    disabled={isResuming}
+                    className="mt-1.5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-950/40 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    <Radio className={`h-4 w-4 ${isResuming ? "animate-spin" : ""}`} aria-hidden="true" />
+                    <span>{isResuming ? "Đang kết nối lại..." : "TIẾP TỤC PHÁT SÓNG"}</span>
+                  </button>
+                  <span className="text-[10px] text-slate-400 mt-0.5">
+                    (Kênh AWS IVS sẽ tự động nhận lại video và kích hoạt Live Channels)
+                  </span>
                 </div>
-                <h4 className="text-xs sm:text-sm font-bold text-slate-200">
-                  {isLive
-                    ? "Camera thiết bị chưa kích hoạt (Phiên đang LIVE Demo)"
-                    : "Xem trước Khung hình TikTok Live Studio"}
-                </h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Khởi động camera để kiểm tra góc máy, ánh sáng và sản phẩm trước khi phát trực tiếp.
-                </p>
-                <button
-                  type="button"
-                  onClick={onRequestCamera}
-                  className="mt-1.5 inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-cyan-900/30 transition active:scale-95 cursor-pointer"
-                >
-                  <Camera className="h-4 w-4" aria-hidden="true" />
-                  <span>Mở Camera của thiết bị</span>
-                </button>
-                <span className="text-[10px] text-slate-500 mt-1">
-                  (Video chỉ chạy cục bộ, sẵn sàng đồng bộ lên AWS IVS)
-                </span>
-              </div>
+              ) : (
+                <div className="relative z-10 flex flex-col items-center gap-2 max-w-sm">
+                  <div className="h-12 w-12 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center text-primary mb-1 shadow-lg">
+                    <Camera className="h-6 w-6" aria-hidden="true" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-100">
+                    Xem trước Khung hình TikTok Live Studio
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Khởi động camera để kiểm tra góc máy, ánh sáng và sản phẩm trước khi phát trực tiếp.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onRequestCamera}
+                    className="mt-1.5 inline-flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-container text-white text-xs font-bold rounded-xl shadow-md transition active:scale-95 cursor-pointer"
+                  >
+                    <Camera className="h-4 w-4" aria-hidden="true" />
+                    <span>Mở Camera của thiết bị</span>
+                  </button>
+                  <span className="text-[10px] text-slate-500 mt-1">
+                    (Video chỉ chạy cục bộ, sẵn sàng đồng bộ lên AWS IVS)
+                  </span>
+                </div>
+              )
             )}
           </div>
         )}
 
         {/* 4. Safe Zone TikTok UI Overlay (Chỉ xuất hiện khi showSafezone bật) */}
         {showSafezone && (
-          <div className="absolute inset-0 pointer-events-none z-15 border border-dashed border-cyan-500/20">
+          <div className="absolute inset-0 pointer-events-none z-15 border border-dashed border-white/10">
             {/* Lưới căn góc 3x3 */}
             <div className="absolute inset-x-0 top-1/3 border-b border-white/5 border-dashed" />
             <div className="absolute inset-x-0 top-2/3 border-b border-white/5 border-dashed" />
@@ -300,10 +331,10 @@ export function StudioStreamPreview({
 
             {/* Thước tâm điểm giữa màn hình */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 pointer-events-none opacity-40">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-cyan-400" />
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-cyan-400" />
-              <div className="absolute top-1/2 left-0 -translate-y-1/2 w-1.5 h-0.5 bg-cyan-400" />
-              <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1.5 h-0.5 bg-cyan-400" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-white/40" />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-white/40" />
+              <div className="absolute top-1/2 left-0 -translate-y-1/2 w-1.5 h-0.5 bg-white/40" />
+              <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1.5 h-0.5 bg-white/40" />
             </div>
           </div>
         )}
@@ -315,7 +346,7 @@ export function StudioStreamPreview({
 
         {/* 6. Live Status Badge trên màn hình */}
         {isLive && (
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-[#FE2C55] text-white px-2.5 py-0.5 rounded-full text-[11px] font-bold shadow-lg pointer-events-none animate-in fade-in">
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-rose-600 text-white px-2.5 py-0.5 rounded-full text-[11px] font-bold shadow-lg pointer-events-none animate-in fade-in">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
@@ -336,7 +367,7 @@ export function StudioStreamPreview({
                     className="w-1.5 rounded-xs transition-all duration-100"
                     style={{
                       height: `${lvl}%`,
-                      backgroundColor: lvl > 70 ? "#FE2C55" : lvl > 50 ? "#F59E0B" : "#10B981",
+                      backgroundColor: lvl > 80 ? "#EF4444" : lvl > 60 ? "#F59E0B" : "#22C55E",
                     }}
                   />
                 ))}
@@ -365,47 +396,18 @@ export function StudioStreamPreview({
 
         {/* 8. Top-Left Canvas Quick Controls Overlay */}
         <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 pointer-events-auto">
-          {/* Ratio switch pill */}
-          {onChangeAspectRatio && (
-            <div className="flex items-center bg-slate-950/80 backdrop-blur-md rounded-lg border border-slate-700/60 p-0.5 text-[10px] font-bold">
-              <button
-                type="button"
-                onClick={() => onChangeAspectRatio("16:9")}
-                className={`px-1.5 py-0.5 rounded transition ${
-                  aspectRatio === "16:9"
-                    ? "bg-cyan-500 text-white"
-                    : "text-slate-400 hover:text-white"
-                }`}
-                title="Khung ngang 16:9"
-              >
-                16:9
-              </button>
-              <button
-                type="button"
-                onClick={() => onChangeAspectRatio("9:16")}
-                className={`px-1.5 py-0.5 rounded transition ${
-                  aspectRatio === "9:16"
-                    ? "bg-[#FE2C55] text-white"
-                    : "text-slate-400 hover:text-white"
-                }`}
-                title="Khung dọc 9:16 TikTok"
-              >
-                9:16
-              </button>
-            </div>
-          )}
-
           {/* Safezone toggle */}
           {onToggleSafezone && (
             <button
               type="button"
               onClick={onToggleSafezone}
-              className={`p-1 rounded-lg border backdrop-blur-md transition ${
+              className={`p-1.5 rounded-lg border backdrop-blur-md transition cursor-pointer shadow-xs ${
                 showSafezone
-                  ? "bg-cyan-950/80 text-cyan-300 border-cyan-700"
+                  ? "bg-slate-800/90 text-cyan-400 border-slate-700"
                   : "bg-slate-950/80 text-slate-500 border-slate-800"
               }`}
-              title="Bật/Tắt vạch Safezone"
+              title="Bật/Tắt vạch căn lề Safezone TikTok"
+              aria-label="Bật/Tắt vạch căn lề Safezone TikTok"
             >
               <ShieldAlert className="h-3.5 w-3.5" />
             </button>
@@ -416,12 +418,13 @@ export function StudioStreamPreview({
             <button
               type="button"
               onClick={onToggleTheaterMode}
-              className={`p-1 rounded-lg border backdrop-blur-md transition ${
+              className={`p-1.5 rounded-lg border backdrop-blur-md transition cursor-pointer shadow-xs ${
                 isTheaterMode
-                  ? "bg-indigo-950/80 text-indigo-300 border-indigo-700"
+                  ? "bg-slate-800 text-slate-200 border-slate-700"
                   : "bg-slate-950/80 text-slate-400 hover:text-white border-slate-800"
               }`}
               title="Chế độ Rạp chiếu mở rộng tối đa (Phím F)"
+              aria-label="Chế độ Rạp chiếu mở rộng tối đa"
             >
               <Maximize2 className="h-3.5 w-3.5" />
             </button>

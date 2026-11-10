@@ -76,12 +76,17 @@ export const ORDER_DETAIL = {
   codBlocked: false,
   livestreamId: null,
   createdAt: "2026-10-10T19:40:00+07:00",
+  activeShipmentId: null,
+  addressNormalized: true,
   items: [
     {
       id: "item-1",
       skuId: "sku-1",
       skuCode: "AO01-BE-L",
+      productId: "31",
+      productCode: "AO01",
       productName: "Áo sơ mi lụa",
+      imageUrl: null,
       variantName: "Be · L",
       quantity: 2,
       requestedQty: 2,
@@ -175,11 +180,221 @@ export interface StubOptions {
   orderDetail?: unknown | null;
   payments?: unknown[];
   reviewQueue?: unknown[];
+  shipments?: unknown[];
+  shipmentDetail?: unknown | null;
+  tracking?: unknown | null;
   /** Bắt mọi lời gọi hỏng, để kiểm màn hình báo lỗi. */
   fail?: boolean;
 }
 
+// ── Vận chuyển ─────────────────────────────────────────────────────
+
+const VAN_DON_CHUNG = {
+  orderId: "order-1",
+  serviceCode: "2",
+  clientOrderCode: "LIVE-20261010-abc-1a2b3c",
+  deliveryAttempt: 0,
+  feeQuoted: "20900.00",
+  feeActual: null,
+  weightGram: 600,
+  failureReason: null,
+  trackingToken: "tok-abcdef0123456789abcdef",
+  recipientName: "Nguyễn Thuỳ Trang",
+};
+
+export const SHIP_CHO_LAY = {
+  ...VAN_DON_CHUNG,
+  id: "ship-1",
+  orderCode: "LIVE-20261010-abc123",
+  carrier: "ghn",
+  trackingCode: "GHN7728491",
+  status: "CREATED",
+  codAmount: "598000.00",
+  lastSyncedAt: "2026-10-18T05:09:51.000Z",
+  createdAt: "2026-10-18T05:09:48.000Z",
+};
+
+export const SHIP_DANG_DI = {
+  ...VAN_DON_CHUNG,
+  id: "ship-2",
+  orderCode: "LIVE-20261010-def456",
+  carrier: "ghtk",
+  trackingCode: "GHTK9023194",
+  status: "IN_TRANSIT",
+  codAmount: "0.00",
+  // Hãng cân lại ở kho rồi chốt cước cao hơn báo giá.
+  feeActual: "26500.00",
+  lastSyncedAt: "2026-10-18T06:00:00.000Z",
+  createdAt: "2026-10-17T05:09:48.000Z",
+};
+
+export const SHIP_HONG = {
+  ...VAN_DON_CHUNG,
+  id: "ship-3",
+  orderCode: "LIVE-20261010-ghi789",
+  carrier: "ghn",
+  trackingCode: "GHN8892100",
+  status: "FAILED",
+  codAmount: "380000.00",
+  deliveryAttempt: 1,
+  failureReason: "Giao lần 1 không gặp khách",
+  lastSyncedAt: "2026-10-18T04:00:00.000Z",
+  createdAt: "2026-10-16T05:09:48.000Z",
+};
+
+export const SHIP_TU_GIAO = {
+  ...VAN_DON_CHUNG,
+  id: "ship-4",
+  orderCode: "LIVE-20261010-jkl012",
+  carrier: "self",
+  trackingCode: "SELF1A2B3C4D",
+  status: "CREATED",
+  codAmount: "150000.00",
+  lastSyncedAt: null,
+  createdAt: "2026-10-18T07:00:00.000Z",
+};
+
+export const SHIP_DETAIL = {
+  ...SHIP_CHO_LAY,
+  events: [
+    {
+      eventCode: "ready_to_pick",
+      mappedStatus: "CREATED",
+      occurredAt: "2026-10-18T05:09:50.000Z",
+      description: "Tạo đơn hàng",
+    },
+    {
+      eventCode: "created",
+      mappedStatus: "CREATED",
+      occurredAt: "2026-10-18T05:09:48.000Z",
+      description: "Đã tạo vận đơn qua ghn",
+    },
+    {
+      eventCode: "mot_ma_la",
+      mappedStatus: null,
+      occurredAt: "2026-10-18T05:09:40.000Z",
+      description: "",
+    },
+  ],
+  lengthCm: 28,
+  widthCm: 20,
+  heightCm: 5,
+  insuranceValue: "598000.00",
+  note: "Cho xem hàng không cho thử",
+  expectedDeliveryText: "23/10 - 24/10",
+  pickedUpAt: null,
+  deliveredAt: null,
+  nguoiGui: {
+    name: "Kho LiveOrder",
+    phone: "0900000000",
+    streetLine: "123 Nguyễn Văn Linh",
+    wardName: "Phường Tân Thuận",
+    districtName: "Quận 7",
+    provinceName: "TP. Hồ Chí Minh",
+  },
+  nguoiNhan: {
+    name: "Nguyễn Thuỳ Trang",
+    phone: "0984122899",
+    streetLine: "18 Duy Tân",
+    wardName: "Phường Dịch Vọng Hậu",
+    districtName: "Cầu Giấy",
+    provinceName: "Hà Nội",
+  },
+  items: [
+    { skuCode: "AO01-BE-L", productName: "Áo sơ mi lụa", quantity: 2 },
+  ],
+  // Có mốc giả lập = đang ở môi trường thử. Fixture để sẵn vài mốc
+  // để kiểm bảng giả lập hiện ra và bấm được.
+  moPhong: [
+    { code: "picked", label: "Đã lấy hàng" },
+    { code: "delivered", label: "Giao thành công" },
+  ],
+};
+
+export const CARRIERS = [
+  { name: "mock", label: "Hãng giả (thử nghiệm)", ready: true, missing: [] },
+  { name: "self", label: "Shop tự giao", ready: true, missing: [] },
+  { name: "ghn", label: "Giao Hàng Nhanh", ready: true, missing: [] },
+  {
+    name: "ghtk",
+    label: "Giao Hàng Tiết Kiệm",
+    ready: false,
+    missing: ["GHTK_TOKEN"],
+  },
+  { name: "vtp", label: "Viettel Post", ready: false, missing: ["VTP_USERNAME"] },
+  {
+    name: "ahamove",
+    label: "AhaMove (nội thành)",
+    ready: false,
+    missing: ["AHAMOVE_API_KEY"],
+  },
+];
+
+/** Dữ liệu trang công khai — đã che bớt đúng như backend trả về. */
+export const TRACKING_CONG_KHAI = {
+  trackingCode: "GHN7728491",
+  carrier: "ghn",
+  status: "IN_TRANSIT",
+  lastSyncedAt: "2026-10-18T06:00:00.000Z",
+  createdAt: "2026-10-18T05:09:48.000Z",
+  recipientName: "Nguyễn Thuỳ T.",
+  recipientPhone: "0984***899",
+  area: "Phường Bến Thành, TP. Hồ Chí Minh",
+  events: [
+    {
+      mappedStatus: "IN_TRANSIT",
+      occurredAt: "2026-10-18T06:00:00.000Z",
+      description: "Đang luân chuyển",
+    },
+    {
+      mappedStatus: "PICKED_UP",
+      occurredAt: "2026-10-18T05:30:00.000Z",
+      description: "Bưu tá đã lấy hàng",
+    },
+  ],
+};
+
+export const TRACKING_CHUA_CO_MA = {
+  ...TRACKING_CONG_KHAI,
+  trackingCode: null,
+  status: "REQUESTED",
+  events: [],
+};
+
 /** Cài sẵn các tuyến API trước khi điều hướng. */
+/**
+ * Đơn mà bộ tách địa chỉ KHÔNG dám quyết.
+ *
+ * "Nha Trang" là tên thành phố, sau 01/07/2025 không còn là đơn vị
+ * hành chính nào — đúng tình huống shop phải sửa tay.
+ */
+export const ORDER_DIA_CHI_HONG = {
+  ...ORDER_DETAIL,
+  id: "55555555-5555-4555-8555-555555555555",
+  orderCode: "LIVE-20261011-eee555",
+  shippingAddress: "88 Trần Phú, phường Lộc Thọ, Nha Trang",
+  addressNormalized: false,
+};
+
+/** Quận/huyện và phường/xã giả, đủ để thử chuỗi chọn nối tiếp. */
+export const HUYEN_MAU: Record<string, string[]> = {
+  "Khánh Hòa": ["Thành phố Nha Trang", "Thành phố Cam Ranh"],
+  "TP. Hồ Chí Minh": ["Quận 1", "Thành phố Thủ Dầu Một"],
+};
+
+export const XA_MAU: Record<string, string[]> = {
+  "Thành phố Nha Trang": ["Phường Lộc Thọ", "Phường Vạn Thắng"],
+  "Quận 1": ["Phường Bến Nghé", "Phường Bến Thành"],
+};
+
+/** Vài tỉnh đủ dùng cho test; bản thật có 34. */
+export const TINH_THANH_MAU = [
+  "Hà Nội",
+  "Khánh Hòa",
+  "TP. Hồ Chí Minh",
+  "Đà Nẵng",
+];
+
 export async function stubApi(page: Page, options: StubOptions = {}) {
   const {
     // Nhân bản để có đủ đơn thử phân trang. Mã đơn phải khác nhau,
@@ -199,6 +414,9 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
     orderDetail = ORDER_DETAIL,
     payments = [PAYMENT_PAID, PAYMENT_UNDERPAID],
     reviewQueue = [REVIEW_REQUEST],
+    shipments = [SHIP_CHO_LAY, SHIP_DANG_DI, SHIP_HONG, SHIP_TU_GIAO],
+    shipmentDetail = SHIP_DETAIL,
+    tracking = TRACKING_CONG_KHAI,
     fail = false,
   } = options;
 
@@ -234,12 +452,89 @@ export async function stubApi(page: Page, options: StubOptions = {}) {
       return json(route, { items: rows });
     }
 
+    if (path.startsWith("/payments/by-ref/")) {
+      const ref = decodeURIComponent(path.slice("/payments/by-ref/".length));
+      const payment = payments.find((p) => (p as { txnRef?: string }).txnRef === ref);
+      return payment ? json(route, payment) : json(route, { message: "Không tìm thấy giao dịch" }, 404);
+    }
+
+    // Phải xét TRƯỚC "/shipments/:id", nếu không "carriers" bị nuốt
+    // thành một id.
+    if (path === "/shipments/carriers") {
+      return json(route, { items: CARRIERS });
+    }
+
+    // Cùng lý do như carriers: đặt trước "/shipments/:id".
+    if (path === "/shipments/provinces") {
+      return json(route, { items: TINH_THANH_MAU });
+    }
+
+    if (path === "/shipments/districts") {
+      const tinh = url.searchParams.get("province") ?? "";
+      return json(route, { items: HUYEN_MAU[tinh] ?? [] });
+    }
+
+    if (path === "/shipments/wards") {
+      const huyen = url.searchParams.get("district") ?? "";
+      return json(route, { items: XA_MAU[huyen] ?? [] });
+    }
+
+    if (path === "/shipments") {
+      return json(route, { items: shipments });
+    }
+
+    if (path.startsWith("/tracking/")) {
+      return tracking
+        ? json(route, tracking)
+        : json(route, { error: "TRACKING_NOT_FOUND" }, 404);
+    }
+
+    // Giả lập một mốc: trả về chính bản chi tiết, đủ để màn hình
+    // tải lại mà không cần dựng cả máy trạng thái trong fixture.
+    if (path.endsWith("/simulate")) {
+      return json(route, { ketQua: "APPLIED", chiTiet: shipmentDetail });
+    }
+
+    if (path.startsWith("/shipments/")) {
+      return shipmentDetail
+        ? json(route, shipmentDetail)
+        : json(route, { error: "SHIPMENT_NOT_FOUND" }, 404);
+    }
+
     if (path === "/purchase-requests") {
       return json(route, { items: reviewQueue });
     }
 
     if (path.endsWith("/approve") || path.endsWith("/reject")) {
       return json(route, { ok: true });
+    }
+
+    // Lưu địa chỉ: trả về đơn đã chuẩn hoá, dựng từ chính thân gửi
+    // lên để test đối chiếu được cái gì thật sự tới server.
+    if (path.endsWith("/address")) {
+      const than = route.request().postDataJSON() as {
+        provinceName: string;
+        wardName: string;
+        streetLine: string;
+      };
+      if (than.provinceName === "Hà Nội") {
+        // Một nhánh từ chối để kiểm việc hiện lỗi nguyên văn.
+        return json(
+          route,
+          {
+            error: "ValidationError",
+            message: '"Hà Nội" không nhận giao tuyến này.',
+          },
+          400,
+        );
+      }
+      return json(route, {
+        ...(orderDetail as object),
+        addressNormalized: true,
+        shippingAddress: [than.streetLine, than.wardName, than.provinceName].join(
+          ", ",
+        ),
+      });
     }
 
     if (path === "/orders/draft") {

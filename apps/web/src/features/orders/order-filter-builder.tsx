@@ -26,7 +26,6 @@ import {
   Minus,
   Plus,
   RotateCcw,
-  Save,
   Tag,
   Truck,
   Wallet,
@@ -334,7 +333,6 @@ export interface FilterBuilderProps {
   onRowsChange: (rows: FilterRow[]) => void;
   onModeChange: (mode: MatchMode) => void;
   onReset: () => void;
-  onSave: () => void;
   /** Số đơn còn lại sau khi lọc, hiện ở chân bảng. */
   ketQua: number;
 }
@@ -345,7 +343,6 @@ export function OrderFilterBuilder({
   onRowsChange,
   onModeChange,
   onReset,
-  onSave,
   ketQua,
 }: FilterBuilderProps) {
   const [moThem, setMoThem] = useState(false);
@@ -497,14 +494,6 @@ export function OrderFilterBuilder({
         <span className={styles.footNote}>
           {demDieuKien(rows)} điều kiện đang áp dụng · {ketQua} đơn khớp
         </span>
-        <button
-          type="button"
-          className={styles.ghost}
-          onClick={onSave}
-          disabled={demDieuKien(rows) === 0}
-        >
-          <Save size={15} aria-hidden="true" /> Lưu bộ lọc
-        </button>
         <button
           type="button"
           className={styles.ghost}

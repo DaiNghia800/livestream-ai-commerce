@@ -39,6 +39,7 @@ export interface InventoryPage {
   page: number;
   pageSize: number;
   total: number;
+  filteredTotalHeld: number;
   summary: InventorySummary;
 }
 
@@ -153,6 +154,39 @@ export function getInventoryAdjustments(query: AdjustmentListQuery, signal?: Abo
   });
 }
 
+async function downloadXlsx(path: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/inventory${path}`, {
+      headers: { "X-Shop-Id": SHOP_ID },
+    });
+  } catch {
+    throw new InventoryApiError("Không thể kết nối Commerce API. Hãy kiểm tra backend đang chạy.");
+  }
+  if (!response.ok) {
+    let message = `Commerce API failed (${response.status})`;
+    try {
+      message = ((await response.json()) as { message?: string }).message || message;
+    } catch {
+      // Error body may be empty or binary.
+    }
+    throw new InventoryApiError(message, response.status);
+  }
+  return response.blob();
+}
+
+export function exportInventoryAdjustments(
+  query: Omit<AdjustmentListQuery, "page" | "pageSize">,
+): Promise<Blob> {
+  return downloadXlsx(`/adjustments/export.xlsx${toQueryString(query)}`);
+}
+
+export function exportInventory(
+  query: Omit<InventoryListQuery, "page" | "pageSize">,
+): Promise<Blob> {
+  return downloadXlsx(`/export.xlsx${toQueryString(query)}`);
+}
+
 export function adjustInventory(skuId: string, input: AdjustStockInput) {
   return inventoryRequest<{ item: InventoryItem; adjustment: InventoryAdjustment }>(
     `/skus/${encodeURIComponent(skuId)}/adjust`,
@@ -160,10 +194,47 @@ export function adjustInventory(skuId: string, input: AdjustStockInput) {
   );
 }
 
-export function adjustInventoryBatch(items: (AdjustStockInput & { skuId: string })[]) {
+export function adjustInventoryBatch(
+  items: (AdjustStockInput & { skuId: string })[],
+  documentId?: string,
+) {
   return inventoryRequest<{
     data: { item: InventoryItem; adjustment: InventoryAdjustment }[];
-  }>("/adjustments/batch", { method: "POST", body: JSON.stringify({ items }) });
+  }>("/adjustments/batch", { method: "POST", body: JSON.stringify({ items, documentId }) });
+}
+
+export interface AdjustmentDocument {
+  id: string;
+  code: string;
+  productId: string;
+  status: "draft" | "confirmed";
+  channel: string;
+  syncLive: boolean;
+  createdBy: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+  items: { skuId: string; delta: number; reason: string; note: string | null }[];
+}
+
+export async function getAdjustmentDraft(productId: string, signal?: AbortSignal) {
+  const result = await inventoryRequest<{ data: AdjustmentDocument | null }>(
+    `/adjustments/documents/draft${toQueryString({ productId })}`,
+    { signal },
+  );
+  return result.data;
+}
+
+export async function saveAdjustmentDraft(input: {
+  productId: string;
+  syncLive: boolean;
+  items: { skuId: string; delta: number; reason: string; note: string | null }[];
+}) {
+  const result = await inventoryRequest<{ data: AdjustmentDocument }>(
+    "/adjustments/documents/draft",
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+  return result.data;
 }
 
 export function updateLowStockThreshold(skuId: string, lowStockThreshold: number) {

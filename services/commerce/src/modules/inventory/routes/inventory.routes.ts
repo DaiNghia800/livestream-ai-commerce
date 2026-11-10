@@ -42,7 +42,11 @@ export function createInventoryRouter(customRepository?: IInventoryRepository): 
   router.use(requireShopHeader, optionalUserHeader);
   router.get("/", controller.list);
   router.get("/summary", controller.summary);
+  router.get("/export.xlsx", controller.exportInventory);
   router.get("/adjustments", controller.listAdjustments);
+  router.get("/adjustments/export.xlsx", controller.exportAdjustments);
+  router.get("/adjustments/documents/draft", controller.getAdjustmentDraft);
+  router.put("/adjustments/documents/draft", controller.saveAdjustmentDraft);
   router.post("/adjustments/batch", controller.adjustMany);
   router.get("/skus/:skuId", skuId, controller.getBySku);
   router.post("/skus/:skuId/adjust", skuId, controller.adjust);

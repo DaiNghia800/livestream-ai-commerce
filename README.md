@@ -113,4 +113,5 @@ feature/* ──→ PR vào dev ──→ PR vào main
 chore/*   ──→ PR vào dev ──→ PR vào main
 ```
 
-Xem thêm: [Hướng dẫn frontend](docs/frontend-guide.md)
+Xem thêm: [Hướng dẫn frontend](docs/frontend-guide.md) và
+[hướng dẫn quản lý người dùng, phân quyền](docs/user-management.md)

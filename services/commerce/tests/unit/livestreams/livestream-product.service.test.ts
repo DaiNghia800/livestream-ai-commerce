@@ -6,6 +6,7 @@ import {
   InvalidLivestreamStatusError,
   DuplicateProductError,
   ProductNotInLivestreamError,
+  ProductNotFoundError,
 } from "../../../src/modules/livestream/services/livestream-product.service.js";
 import type { ILivestreamRepository } from "../../../src/modules/livestream/repositories/livestream.repository.js";
 import type { ILivestreamProductRepository } from "../../../src/modules/livestream/repositories/livestream-product.repository.js";
@@ -159,6 +160,18 @@ describe("LivestreamProductService - Unit Tests", () => {
           isFeatured: false,
         })
       ).rejects.toThrow(DuplicateProductError);
+    });
+
+    it("UT-LP-007b - Throws ProductNotFoundError when product does not exist in catalog", async () => {
+      productRepo.productExists = vi.fn().mockResolvedValue(false);
+
+      await expect(
+        service.addProduct(MERCHANT_ID, LIVESTREAM_ID, {
+          productId: "9999999",
+          displayOrder: 0,
+          isFeatured: false,
+        })
+      ).rejects.toThrow(ProductNotFoundError);
     });
   });
 

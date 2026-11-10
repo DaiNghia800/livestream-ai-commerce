@@ -14,8 +14,12 @@ class QuantityResult:
 
 
 _NUMBER = r"[-+−]?\s*(?:\d+(?:[.,/]\d+)*|[.,]\d+)(?:[eE][+-]?\d+)?"
-_UNITS = re.compile(r"\s*(?:cái|chiếc|bộ|đôi|cặp|sản\s+phẩm|sp)\b")
-_LABEL = re.compile(r"\b(?:số\s+lượng|sl)\s*[:=]?\s*$")
+# Đơn vị và nhãn có cả dạng không dấu vì khách gõ điện thoại hay bỏ dấu
+# ("2 cai", "so luong 2"); đứng ngay sau số nên ít nhầm với từ khác.
+_UNITS = re.compile(
+    r"\s*(?:cái|cai|chiếc|chiec|bộ|bo|đôi|doi|cặp|cap|sản\s+phẩm|san\s+pham|sp)\b"
+)
+_LABEL = re.compile(r"\b(?:số\s+lượng|so\s+luong|sl)\s*[:=]?\s*$")
 _OTHER_LABEL = re.compile(
     r"\b(?:giá|tiền|tổng|ship|phí|size|cỡ|lúc|sđt)\s*[:=]?\s*$"
 )

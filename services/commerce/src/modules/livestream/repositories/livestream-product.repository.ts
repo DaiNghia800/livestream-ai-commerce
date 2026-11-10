@@ -28,6 +28,7 @@ export interface ILivestreamProductRepository {
     dto: UpdateLivestreamProductDto
   ): Promise<LivestreamProduct | null>;
   removeProduct(livestreamId: string, productId: string): Promise<boolean>;
+  productExists?(productId: string, variantId?: string | null): Promise<boolean>;
 }
 
 export class PostgresLivestreamProductRepository
@@ -112,7 +113,8 @@ export class PostgresLivestreamProductRepository
         ps.sku_code AS "skuCode",
         ps.variant_name AS "variantName",
         ps.price::float AS "price",
-        pimg.url AS "imageUrl"
+        pimg.url AS "imageUrl",
+        pskus.skus_list AS "variants"
       FROM livestream_products lp
       LEFT JOIN products p ON (p.id::text = lp.product_id OR p.code = lp.product_id)
       LEFT JOIN LATERAL (
@@ -129,6 +131,25 @@ export class PostgresLivestreamProductRepository
         ORDER BY pi.is_primary DESC, pi.sort_order ASC
         LIMIT 1
       ) pimg ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object(
+          'id', s.id::text,
+          'skuCode', s.sku_code,
+          'variantName', s.variant_name,
+          'price', s.price::float,
+          'availableStock', COALESCE(i.on_hand_quantity - i.held_quantity, 0),
+          'imageUrl', COALESCE(psku_img.url, pimg.url)
+        ) ORDER BY s.id), '[]'::jsonb) AS skus_list
+        FROM product_skus s
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        LEFT JOIN LATERAL (
+          SELECT url FROM product_images pi
+          WHERE pi.sku_id = s.id
+          ORDER BY pi.is_primary DESC, pi.sort_order ASC
+          LIMIT 1
+        ) psku_img ON TRUE
+        WHERE s.product_id = p.id AND s.status = 'active'
+      ) pskus ON TRUE
       WHERE lp.livestream_id = $1 AND lp.product_id = $2;
     `;
     const result = await pool.query(query, [livestreamId, productId]);
@@ -150,6 +171,7 @@ export class PostgresLivestreamProductRepository
       variantName: row.variantName || null,
       price: row.price !== null && row.price !== undefined ? Number(row.price) : null,
       imageUrl: row.imageUrl || null,
+      variants: Array.isArray(row.variants) ? row.variants : [],
     };
   }
 
@@ -169,7 +191,8 @@ export class PostgresLivestreamProductRepository
         ps.sku_code AS "skuCode",
         ps.variant_name AS "variantName",
         ps.price::float AS "price",
-        pimg.url AS "imageUrl"
+        pimg.url AS "imageUrl",
+        pskus.skus_list AS "variants"
       FROM livestream_products lp
       LEFT JOIN products p ON (p.id::text = lp.product_id OR p.code = lp.product_id)
       LEFT JOIN LATERAL (
@@ -186,6 +209,25 @@ export class PostgresLivestreamProductRepository
         ORDER BY pi.is_primary DESC, pi.sort_order ASC
         LIMIT 1
       ) pimg ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object(
+          'id', s.id::text,
+          'skuCode', s.sku_code,
+          'variantName', s.variant_name,
+          'price', s.price::float,
+          'availableStock', COALESCE(i.on_hand_quantity - i.held_quantity, 0),
+          'imageUrl', COALESCE(psku_img.url, pimg.url)
+        ) ORDER BY s.id), '[]'::jsonb) AS skus_list
+        FROM product_skus s
+        LEFT JOIN inventory i ON i.sku_id = s.id
+        LEFT JOIN LATERAL (
+          SELECT url FROM product_images pi
+          WHERE pi.sku_id = s.id
+          ORDER BY pi.is_primary DESC, pi.sort_order ASC
+          LIMIT 1
+        ) psku_img ON TRUE
+        WHERE s.product_id = p.id AND s.status = 'active'
+      ) pskus ON TRUE
       WHERE lp.livestream_id = $1
       ORDER BY lp.is_featured DESC, lp.display_order ASC, lp.created_at ASC;
     `;
@@ -205,6 +247,7 @@ export class PostgresLivestreamProductRepository
       variantName: row.variantName || null,
       price: row.price !== null && row.price !== undefined ? Number(row.price) : null,
       imageUrl: row.imageUrl || null,
+      variants: Array.isArray(row.variants) ? row.variants : [],
     }));
   }
 
@@ -291,6 +334,39 @@ export class PostgresLivestreamProductRepository
     `;
     const result = await pool.query(query, [livestreamId, productId]);
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async productExists(
+    productId: string,
+    variantId?: string | null
+  ): Promise<boolean> {
+    const cleanId = productId.trim();
+    const query = `
+      SELECT 1 FROM products
+      WHERE (id::text = $1 OR code = $1)
+        AND status = 'active'
+      LIMIT 1;
+    `;
+    const result = await pool.query(query, [cleanId]);
+    if (result.rows.length === 0) {
+      return false;
+    }
+
+    if (variantId && variantId.trim()) {
+      const cleanVariantId = variantId.trim();
+      const skuQuery = `
+        SELECT 1 FROM product_skus
+        WHERE (id::text = $1 OR sku_code = $1)
+          AND status = 'active'
+        LIMIT 1;
+      `;
+      const skuResult = await pool.query(skuQuery, [cleanVariantId]);
+      if (skuResult.rows.length === 0) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }
 
@@ -385,5 +461,16 @@ export class InMemoryLivestreamProductRepository
   ): Promise<boolean> {
     const key = this.getKey(livestreamId, productId);
     return this.items.delete(key);
+  }
+
+  private validProductIds?: Set<string>;
+
+  setValidProductIds(ids: string[]): void {
+    this.validProductIds = new Set(ids);
+  }
+
+  async productExists(productId: string): Promise<boolean> {
+    if (!this.validProductIds) return true;
+    return this.validProductIds.has(productId);
   }
 }
