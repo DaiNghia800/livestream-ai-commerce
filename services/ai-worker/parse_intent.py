@@ -23,6 +23,13 @@ from intent_policy import apply_decision, guard_comment
 from quantity_parser import extract_quantity
 from product_codes import find_product_identifiers, is_supported_product_code, mask_product_codes
 
+# Re-export for test patching (tests patch parse_intent.fetch_catalogue)
+# Lambda ZIP doesn't include catalogue, so this stays off in production
+try:
+    from catalogue import fetch_catalogue
+except ImportError:
+    fetch_catalogue = None
+
 # --- Backward-compatible catalog aliases ---
 KNOWN_COLORS = DEFAULT_CATALOG.known_colors
 KNOWN_SIZES = DEFAULT_CATALOG.known_sizes
@@ -85,20 +92,22 @@ def parse_purchase_intent(
     if quantity_issue:
         return apply_decision(regex_result, quantity_issue=quantity_issue)
 
-    # AI must not invent or repair a code outside the supported MVP grammar.
-    if regex_result["product_code"] is None:
-        return apply_decision(regex_result)
-
     # Skip AI for confident extraction, but still check completeness.
     if regex_result["confidence"] == "high":
+        return apply_decision(regex_result)
+
+    # Low confidence — let AI try, even if no product code was found
+    # (AI can read long SKU codes the regex doesn't know).
+    if regex_result["confidence"] != "low":
+        # Must be None or unclear — no product evidence, give up.
         return apply_decision(regex_result)
 
     if not use_ai:
         return apply_decision(regex_result)
 
-    logger.info("Low confidence, calling Gemini AI")
+    logger.info("Low confidence, calling AI provider")
     # Will raise AIParsingError if AI fails. We let it bubble up.
-    ai_result = _try_gemini(content)
+    ai_result = _try_ai(content)
     return _ground_ai_result(ai_result, regex_result)
 
 
@@ -108,10 +117,15 @@ def parse_purchase_intent(
 def _regex_parse(
     content: str,
     *,
-    known_colors: list[str],
-    known_sizes: list[str],
+    known_colors: list[str] | None = None,
+    known_sizes: list[str] | None = None,
 ) -> tuple[dict, str | None]:
     """Pure regex-based parsing. No network, no side effects."""
+    if known_colors is None:
+        known_colors = KNOWN_COLORS
+    if known_sizes is None:
+        known_sizes = KNOWN_SIZES
+
     lower = content.lower()
 
     # NFC keeps decomposed Vietnamese letters intact for Unicode word boundaries.
@@ -172,15 +186,11 @@ def ai_provider() -> str:
 
     Returns "openai" or "gemini".
     """
-    # Nạp .env gốc trước khi đọc, vì hàm này chạy trước khi client nào được
-    # import (các client mới gọi load_dotenv khi import).
-    dotenv.load_dotenv()
     return "openai" if os.environ.get("OPENAI_API_KEY", "").strip() else "gemini"
 
 
 def ai_available() -> bool:
     """True when an AI key (OpenAI or Gemini) is configured."""
-    dotenv.load_dotenv()
     return bool(os.environ.get("OPENAI_API_KEY", "").strip() or os.environ.get("GEMINI_API_KEY", "").strip())
 
 
