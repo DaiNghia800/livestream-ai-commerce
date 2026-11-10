@@ -38,23 +38,49 @@ RATE_LIMIT_INTERVAL = 4.0  # seconds between requests
 MAX_RETRIES = 2
 RETRY_BASE_DELAY = 2.0  # seconds, doubles each retry
 
+# SDK timeout uses milliseconds; the retry budget uses monotonic seconds.
+HTTP_TIMEOUT_MS = 10_000
+TOTAL_RETRY_BUDGET = 30.0
+# This budget is cooperative: HTTPX timeouts bound network phases, not total
+# wall-clock execution. A future Lambda adapter must also reserve deadline time.
+
 logger = logging.getLogger(__name__)
+
+
+def _configured_retries() -> int:
+    """Allow a smaller operational retry limit without changing the default."""
+    value = os.environ.get("GEMINI_MAX_RETRIES")
+    if value is None:
+        return MAX_RETRIES
+    if value not in ("0", "1", "2"):
+        raise AIParsingError("ai_configuration", "GEMINI_MAX_RETRIES must be 0, 1 or 2")
+    return int(value)
 
 # ── Rate limiter (simple token bucket) ───────────────────────
 
 _last_request_time: float = 0.0
 
 
-def _wait_for_rate_limit():
-    """Block until enough time has passed since the last request."""
+def _wait_for_rate_limit(deadline: float | None = None):
+    """Wait for this process's request interval without exhausting its budget."""
     global _last_request_time
-    now = time.time()
+    now = time.monotonic()
     elapsed = now - _last_request_time
     if elapsed < RATE_LIMIT_INTERVAL:
         wait = RATE_LIMIT_INTERVAL - elapsed
+        if deadline is not None and wait >= deadline - now:
+            raise AIParsingError("ai_timeout", "Gemini retry budget exhausted")
         logger.debug(f"Rate limit: waiting {wait:.1f}s")
         time.sleep(wait)
-    _last_request_time = time.time()
+    _last_request_time = time.monotonic()
+
+
+def _request_timeout_ms(deadline: float) -> int:
+    """Round down the remaining budget; zero must never disable SDK timeouts."""
+    timeout = min(HTTP_TIMEOUT_MS, int((deadline - time.monotonic()) * 1000))
+    if timeout <= 0:
+        raise AIParsingError("ai_timeout", "Gemini retry budget exhausted")
+    return timeout
 
 
 # ── Schema & prompt (shared with every provider) ─────────────
@@ -86,6 +112,8 @@ def _get_client() -> genai.Client:
         _client = genai.Client(
             api_key=api_key,
             http_options=genai.types.HttpOptions(
+                timeout=HTTP_TIMEOUT_MS,
+                client_args={"follow_redirects": False},
                 retry_options=genai.types.HttpRetryOptions(attempts=1),
             ),
         )
@@ -97,6 +125,12 @@ def _get_client() -> genai.Client:
 def parse_with_gemini(content: str, catalogue: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """
     Send a comment to Gemini AI and parse the purchase intent.
+
+    Module constants configure at most three attempts, 10,000 ms per request,
+    and a cooperative 30-second budget including setup, rate limiting and
+    backoff. Blocking HTTP phases can overshoot this budget; it is not a strict
+    wall-clock guarantee or a substitute for a future Lambda deadline check.
+    GEMINI_MAX_RETRIES can select 0, 1 or 2 retries; the normal default is 2.
 
     Args:
         content: The validated, stripped comment text.
@@ -110,6 +144,8 @@ def parse_with_gemini(content: str, catalogue: list[dict[str, Any]] | None = Non
         AIParsingError: if AI call fails after retries, config is missing,
                         or schema validation fails.
     """
+    deadline = time.monotonic() + TOTAL_RETRY_BUDGET
+    max_retries = _configured_retries()
     client = _get_client()
     user_prompt = _build_user_prompt(content, catalogue)
 
@@ -120,15 +156,24 @@ def parse_with_gemini(content: str, catalogue: list[dict[str, Any]] | None = Non
         response_mime_type="application/json",
         response_schema=PurchaseIntentSchema,
     )
-    for attempt in range(MAX_RETRIES + 1):
+    for attempt in range(max_retries + 1):
         try:
-            _wait_for_rate_limit()
+            _request_timeout_ms(deadline)
+            _wait_for_rate_limit(deadline)
+            request_config = config.model_copy(update={
+                "http_options": genai.types.HttpOptions(
+                    timeout=_request_timeout_ms(deadline),
+                    retry_options=genai.types.HttpRetryOptions(attempts=1),
+                ),
+            })
 
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=user_prompt,
-                config=config,
+                config=request_config,
             )
+
+            _request_timeout_ms(deadline)
 
             result = response.parsed
             if not isinstance(result, PurchaseIntentSchema):
@@ -159,11 +204,13 @@ def parse_with_gemini(content: str, catalogue: list[dict[str, Any]] | None = Non
             else:
                 error_type = "ai_network"
 
-            if attempt == MAX_RETRIES:
+            if attempt == max_retries:
                 raise AIParsingError(error_type, "Gemini request failed after retries") from e
             delay = RETRY_BASE_DELAY * (2 ** attempt)
+            if delay >= deadline - time.monotonic():
+                raise AIParsingError(error_type, "Gemini retry budget exhausted") from e
             logger.warning("Gemini %s; retry %s/%s in %ss",
-                           error_type, attempt + 1, MAX_RETRIES, delay)
+                           error_type, attempt + 1, max_retries, delay)
             time.sleep(delay)
 
     raise AssertionError("Unreachable retry state")

@@ -34,5 +34,5 @@ def offline_only(monkeypatch):
     monkeypatch.setattr("time.sleep", blocked)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_MAX_RETRIES", raising=False)
+    monkeypatch.delenv("AI_WORKER_USE_AI", raising=False)

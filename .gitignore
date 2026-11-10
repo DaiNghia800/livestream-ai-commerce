@@ -39,3 +39,7 @@ docs/test
 
 # Editor
 .vscode/
+
+# Local agent skills and workflow docs - keep local only
+agents/
+workflows/

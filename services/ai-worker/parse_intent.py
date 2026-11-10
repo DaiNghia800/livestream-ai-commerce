@@ -18,22 +18,14 @@ import logging
 import os
 import unicodedata
 
-import dotenv
-
-from catalogue import fetch_catalogue
-from intent_policy import apply_ai_decision, apply_decision, guard_comment
+from catalog import CatalogProvider, DEFAULT_CATALOG
+from intent_policy import apply_decision, guard_comment
 from quantity_parser import extract_quantity
+from product_codes import find_product_identifiers, is_supported_product_code, mask_product_codes
 
-# --- Known values (will move to database/config later) ---
-# Sorted longest-first so "xanh dương" matches before "xanh"
-KNOWN_COLORS = [
-    "xanh dương", "xanh lá",
-    "đen", "trắng", "đỏ", "xanh", "hồng",
-    "vàng", "nâu", "xám", "tím", "cam",
-    "be", "kem",
-]
-
-KNOWN_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"]
+# --- Backward-compatible catalog aliases ---
+KNOWN_COLORS = DEFAULT_CATALOG.known_colors
+KNOWN_SIZES = DEFAULT_CATALOG.known_sizes
 
 # Strong keywords = clearly want to buy
 # Weak keywords = might be buying, need more signals
@@ -45,15 +37,19 @@ logger = logging.getLogger(__name__)
 
 
 def parse_purchase_intent(
-    content: str, use_ai: bool = True, session_id: str | None = None
+    content: str,
+    use_ai: bool = True,
+    *,
+    catalog: CatalogProvider | None = None,
 ) -> dict:
     """
     Extract purchase intent from a comment string.
 
     Args:
         content: The validated, stripped comment text.
-        use_ai: If False, never call an AI (tests, offline runs).
-        session_id: Livestream id, used to give the AI the product list.
+        use_ai: If True, call Gemini AI when regex confidence is low.
+                Set to False in tests to avoid real API calls.
+        catalog: Optional CatalogProvider for product attributes (colors, sizes).
 
     Returns:
         A dict with:
@@ -68,47 +64,18 @@ def parse_purchase_intent(
 
         A purchase_candidate still requires Commerce SKU validation.
     """
-    regex_result, quantity_issue = _regex_parse(content)
-    if use_ai and ai_available():
-        return _parse_ai_first(content, regex_result, quantity_issue, session_id)
-    return _parse_regex_only(content, regex_result, quantity_issue, use_ai)
+    active_catalog = catalog if catalog is not None else DEFAULT_CATALOG
+    known_colors = active_catalog.known_colors
+    known_sizes = active_catalog.known_sizes
 
-
-def _parse_ai_first(
-    content: str, regex_result: dict, quantity_issue: str | None, session_id: str | None
-) -> dict:
-    """AI decides everything the regex fast path cannot settle."""
-    guarded = guard_comment(content, known_colors=KNOWN_COLORS)
-
-    # Đường nhanh: câu chuẩn, không mập mờ → không tốn lượt AI.
-    if (guarded is None and regex_result["has_intent"]
-            and regex_result["confidence"] == "high" and not quantity_issue):
-        return apply_decision(regex_result)
-
-    # Tán gẫu thuần (không số, không từ mua, không dấu hiệu mua) → bỏ qua.
-    if not _worth_asking(content, regex_result, guarded):
-        return apply_decision(_no_intent(content, source="regex"))
-
-    catalogue = fetch_catalogue(session_id) if session_id else []
-    return apply_ai_decision(_try_ai(content, catalogue))
-
-
-def _worth_asking(content: str, regex_result: dict, guarded: dict | None) -> bool:
-    """Cheap filter before paying for an AI call."""
-    return bool(
-        regex_result["has_intent"]      # có từ mua (mạnh hoặc yếu)
-        or guarded is not None          # có ngôn ngữ mua nhưng mập mờ
-        or re.search(r"\d", content)    # có con số: số lượng hoặc mã
-    )
-
-
-def _parse_regex_only(
-    content: str, regex_result: dict, quantity_issue: str | None, use_ai: bool
-) -> dict:
-    """Legacy path: conservative guards, regex, and no AI available."""
-    guarded = guard_comment(content, known_colors=KNOWN_COLORS)
+    guarded = guard_comment(content, known_colors=known_colors)
     if guarded is not None:
         return guarded
+
+    # --- Step 1: Regex tries first (fast, free) ---
+    regex_result, quantity_issue = _regex_parse(
+        content, known_colors=known_colors, known_sizes=known_sizes
+    )
 
     # No purchase evidence found by the current regex rules.
     if not regex_result["has_intent"]:
@@ -118,6 +85,10 @@ def _parse_regex_only(
     if quantity_issue:
         return apply_decision(regex_result, quantity_issue=quantity_issue)
 
+    # AI must not invent or repair a code outside the supported MVP grammar.
+    if regex_result["product_code"] is None:
+        return apply_decision(regex_result)
+
     # Skip AI for confident extraction, but still check completeness.
     if regex_result["confidence"] == "high":
         return apply_decision(regex_result)
@@ -125,14 +96,21 @@ def _parse_regex_only(
     if not use_ai:
         return apply_decision(regex_result)
 
-    # Không có key: _try_ai ném AIParsingError cấu hình, để worker giữ message.
-    return apply_decision(_try_ai(content))
+    logger.info("Low confidence, calling Gemini AI")
+    # Will raise AIParsingError if AI fails. We let it bubble up.
+    ai_result = _try_gemini(content)
+    return _ground_ai_result(ai_result, regex_result)
 
 
 # ── Regex parser ─────────────────────────────────────────────
 
 
-def _regex_parse(content: str) -> tuple[dict, str | None]:
+def _regex_parse(
+    content: str,
+    *,
+    known_colors: list[str],
+    known_sizes: list[str],
+) -> tuple[dict, str | None]:
     """Pure regex-based parsing. No network, no side effects."""
     lower = content.lower()
 
@@ -151,8 +129,9 @@ def _regex_parse(content: str) -> tuple[dict, str | None]:
         return _no_intent(content, source="regex"), None
 
     product_code = _extract_product_code(content)
-    color = _extract_color(lower)
-    size = _extract_size(content)
+    attribute_text = mask_product_codes(content)
+    color = _extract_color(attribute_text.lower(), known_colors=known_colors)
+    size = _extract_size(attribute_text, known_sizes=known_sizes)
     quantity_result = extract_quantity(content, product_code)
     quantity = quantity_result.value
 
@@ -230,14 +209,24 @@ def _try_openai(content: str, catalogue: list[dict] | None = None) -> dict:
     return _ai_result(ai_response, "openai", content)
 
 
+def _try_gemini(content: str, catalogue: list[dict] | None = None) -> dict:
+    """Call Gemini and return a result dict.
+
+    Import is lazy so a Gemini-only setup doesn't load Gemini until needed.
+    Raises AIParsingError on failure.
+    """
+    from gemini_client import parse_with_gemini
+
+    ai_response = parse_with_gemini(content) if catalogue is None else parse_with_gemini(content, catalogue)
+    return _ai_result(ai_response, "gemini", content)
+
+
 def _ai_result(ai_response: dict, source: str, content: str) -> dict:
     """Shape a provider answer into the worker's result dict."""
     return {
         "has_intent": ai_response["has_intent"],
-        "confidence": "high",  # AI verified → treat as high
-        "source": source,
-        "kind": ai_response.get("kind"),
-        "items": ai_response.get("items"),
+        "confidence": "high",  # Intent classification still requires field evidence.
+        "source": "gemini",
         "product_code": ai_response.get("product_code"),
         "color": ai_response.get("color"),
         "size": ai_response.get("size"),
@@ -246,19 +235,39 @@ def _ai_result(ai_response: dict, source: str, content: str) -> dict:
     }
 
 
-# ── Gemini AI caller ─────────────────────────────────────────
 
+def _ground_ai_result(ai_result: dict, evidence: dict) -> dict:
+    """Validate AI fields against the existing deterministic comment evidence."""
+    result = dict(ai_result)
+    result["raw"] = evidence["raw"]
 
-def _try_gemini(content: str, catalogue: list[dict] | None = None) -> dict:
-    """
-    Call Gemini AI and return a result dict.
-    Import is lazy to avoid crash when google-genai is not installed.
-    Raises AIParsingError on failure.
-    """
-    from gemini_client import parse_with_gemini
+    code = result.get("product_code")
+    code = code.strip() if isinstance(code, str) else ""
+    result["product_code"] = (
+        evidence["product_code"]
+        if is_supported_product_code(code) and code.upper() == evidence["product_code"]
+        else None
+    )
 
-    ai_response = parse_with_gemini(content) if catalogue is None else parse_with_gemini(content, catalogue)
-    return _ai_result(ai_response, "gemini", content)
+    quantity_issue = None
+    quantity = result.get("quantity")
+    if type(quantity) is int and quantity > 0:
+        if evidence["quantity"] is None:
+            result["quantity"] = None
+        elif quantity != evidence["quantity"]:
+            result["quantity"] = None
+            quantity_issue = "invalid_quantity"
+
+    for field in ("color", "size"):
+        value, expected = result.get(field), evidence.get(field)
+        if isinstance(value, str) and expected is not None:
+            normalized = " ".join(unicodedata.normalize("NFC", value).casefold().split())
+            if normalized == expected.casefold():
+                result[field] = expected
+                continue
+        result[field] = None
+
+    return apply_decision(result, quantity_issue=quantity_issue)
 
 
 # ── Private helpers ──────────────────────────────────────────
@@ -279,29 +288,37 @@ def _no_intent(content: str, source: str = "regex") -> dict:
 
 
 def _extract_product_code(content: str) -> str | None:
-    """Find product codes like A12, SP05, SKU-123."""
-    match = re.search(r"\b([A-Za-z]{1,4}[\-]?\d{1,5})\b", content)
-    return match.group(1).upper() if match else None
+    """Return one complete supported identifier, never a substring."""
+    identifiers = find_product_identifiers(content)
+    if len(identifiers) == 1 and is_supported_product_code(identifiers[0]):
+        return identifiers[0]
+    return None
 
 
-def _extract_color(lower: str) -> str | None:
+def _extract_color(lower: str, known_colors: list[str]) -> str | None:
     """Find a standalone known color, preferring complete multiword names."""
     text = " ".join(unicodedata.normalize("NFC", lower).casefold().split())
-    for c in KNOWN_COLORS:
+    for c in known_colors:
         if re.search(rf"(?<!\w){re.escape(c)}(?!\w)", text):
             return c
     return None
 
 
-def _extract_size(content: str) -> str | None:
-    """Find clothing size (S, M, L, XL, etc.)."""
+def _extract_size(content: str, known_sizes: list[str]) -> str | None:
+    """Find clothing size (S, M, L, XL, etc.) dynamically based on catalog sizes."""
+    if not known_sizes:
+        return None
+    # Sort longest-first so e.g. 'XXXL' matches before 'XXL', '4XL' before 'XL'
+    sorted_sizes = sorted(known_sizes, key=len, reverse=True)
+    sizes_pattern = "|".join(re.escape(s) for s in sorted_sizes)
     match = re.search(
-        r"\bsize\s*(\w+)|\b(XXS|XS|XXL|XXXL|XL|S|M|L)\b",
+        rf"(?:\bsize\s*|(?<!\w))({sizes_pattern})(?!\w)",
         content,
         re.IGNORECASE,
     )
     if match:
-        raw_size = (match.group(1) or match.group(2)).upper()
-        if raw_size in KNOWN_SIZES:
-            return raw_size
+        raw_size = match.group(1).upper()
+        size_map = {s.upper(): s for s in known_sizes}
+        if raw_size in size_map:
+            return size_map[raw_size]
     return None

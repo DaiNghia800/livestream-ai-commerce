@@ -1,0 +1,10 @@
+[
+  {"id": "low-confidence", "content": "Lấy A12 2 cái", "allow_ai": true, "decision": "purchase_candidate", "offline_decision": "needs_clarification", "fields": {"product_code": "A12", "quantity": 2}},
+  {"id": "missing-quantity-ai", "content": "Mua B05", "allow_ai": true, "decision": "needs_clarification", "reason": "missing_quantity", "fields": {"quantity": null}},
+  {"id": "complete-code", "content": "Chốt SP-POLO-012 2 cái", "allow_ai": false, "decision": "purchase_candidate", "fields": {"product_code": "SP-POLO-012", "quantity": 2}},
+  {"id": "missing-quantity-regex", "content": "Chốt B05 đen", "allow_ai": false, "decision": "needs_clarification", "reason": "missing_quantity"},
+  {"id": "question", "content": "A12 đen còn không?", "allow_ai": false, "decision": "no_purchase", "reason": "question"},
+  {"id": "negation", "content": "Không mua A12 2 cái", "allow_ai": false, "decision": "no_purchase", "reason": "explicit_negation"},
+  {"id": "ambiguous-color", "content": "Chốt A12 đỏ hoặc đen 2 cái", "allow_ai": false, "decision": "needs_clarification", "reason": "ambiguous_color"},
+  {"id": "variant-masking", "content": "Chốt SKU-123-XL size M 2 cái", "allow_ai": false, "decision": "purchase_candidate", "fields": {"product_code": "SKU-123-XL", "size": "M"}}
+]

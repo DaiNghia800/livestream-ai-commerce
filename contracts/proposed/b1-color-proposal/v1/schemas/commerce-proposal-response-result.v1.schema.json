@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:livestream-ai-commerce:proposed:b1:commerce-proposal-response-result:v1",
+  "title": "PROPOSED / NOT IMPLEMENTED — commerce-proposal-response-result v1",
+  "description": "Future opt-in B1 draft for team review. Schema validity is not identity, SKU, inventory, consent or transaction verification. Not an implemented API or authorization to create orders.",
+  "x-contract-status": "PROPOSED / NOT IMPLEMENTED",
+  "type": "object",
+  "properties": {
+    "schema_name": {
+      "const": "b1.commerce-proposal-response-result"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "error"
+      ]
+    },
+    "proposal_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "proposal_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "outcome": {
+      "enum": [
+        "ACCEPTED",
+        "REJECTED",
+        "EXPIRED",
+        "INVALIDATED",
+        null
+      ]
+    },
+    "reason_code": {
+      "enum": [
+        null,
+        "CUSTOMER_ACCEPTED",
+        "CUSTOMER_REJECTED",
+        "EXPIRED",
+        "STOCK_UNAVAILABLE",
+        "PRICE_CHANGED",
+        "CONTEXT_INVALID"
+      ]
+    },
+    "order_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "confirmed_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "inventory_reserved": {
+      "type": "boolean"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/error"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "status",
+    "proposal_id",
+    "proposal_version",
+    "outcome",
+    "reason_code",
+    "order_id",
+    "confirmed_at",
+    "inventory_reserved",
+    "processed_at",
+    "error"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "UNAUTHENTICATED",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "VERSION_CONFLICT",
+            "IDEMPOTENCY_CONFLICT",
+            "TECHNICAL_FAILURE"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "retryable"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "not": {
+                  "const": "TECHNICAL_FAILURE"
+                }
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retryable": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "ACCEPTED",
+              "REJECTED",
+              "EXPIRED",
+              "INVALIDATED"
+            ]
+          },
+          "error": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "error"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "const": null
+          },
+          "reason_code": {
+            "const": null
+          },
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "error": {
+            "$ref": "#/$defs/error"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "ACCEPTED"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "inventory_reserved": {
+            "const": true
+          },
+          "reason_code": {
+            "const": "CUSTOMER_ACCEPTED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "REJECTED"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "reason_code": {
+            "const": "CUSTOMER_REJECTED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "EXPIRED"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "reason_code": {
+            "const": "EXPIRED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "INVALIDATED"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "reason_code": {
+            "enum": [
+              "STOCK_UNAVAILABLE",
+              "PRICE_CHANGED",
+              "CONTEXT_INVALID"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

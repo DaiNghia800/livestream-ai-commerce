@@ -1,58 +1,45 @@
-"""
-Read a comment event from a local JSON file and process it.
+"""Read one local JSON event and print the existing processor result as JSON."""
 
-This script is the DATA SOURCE layer — it only handles:
-  1. Reading the file
-  2. Parsing JSON
-  3. Delegating to process_comment_event()
-
-When Realtime service is ready, a new entry point (e.g. worker.py)
-will replace this file's role, but reuse the same process function.
-"""
-
+import argparse
 import json
+from pathlib import Path
+import sys
+
 from process_comment import process_comment_event
 
-FILE_PATH = "contracts/examples/comment-created.v1.json"
 
-try:
-    # --- Layer 1: File access ---
-    with open(FILE_PATH, "r", encoding="utf-8") as file:
-        raw = file.read()
+DEFAULT_FILE = Path(__file__).resolve().parents[2] / "contracts/examples/comment-created.v1.json"
 
-    # --- Layer 2: JSON parsing ---
-    event = json.loads(raw)
 
-except FileNotFoundError:
-    print(f"[FILE ERROR] File not found: {FILE_PATH}")
-    raise SystemExit(1)
-except PermissionError:
-    print(f"[FILE ERROR] Permission denied: {FILE_PATH}")
-    raise SystemExit(1)
-except json.JSONDecodeError as e:
-    print(f"[JSON ERROR] Invalid JSON in {FILE_PATH}: {e}")
-    raise SystemExit(1)
+def main(argv: list[str] | None = None) -> int:
+    """Run offline by default; return 0 for business outcomes, 1/2 for errors."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--file", type=Path, default=DEFAULT_FILE,
+                        help="Path to one comment event JSON file (default: repository sample)")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--offline", dest="use_ai", action="store_false",
+                       help="Disable Gemini calls (default)")
+    modes.add_argument("--allow-ai", dest="use_ai", action="store_true",
+                       help="Allow real Gemini calls when the parser needs AI assistance")
+    parser.set_defaults(use_ai=False)
+    args = parser.parse_args(argv)
 
-# --- Layer 3: Process (delegated) ---
-result = process_comment_event(event)
+    # Limit input-error handling to file I/O and JSON decoding.
+    try:
+        with args.file.open("r", encoding="utf-8-sig") as file:
+            event = json.load(file)
+    except (OSError, UnicodeError):
+        print("Input error: cannot read the input file as UTF-8.", file=sys.stderr)
+        return 2
+    except json.JSONDecodeError as error:
+        print(f"Input error: invalid JSON at line {error.lineno}, column {error.colno}.",
+              file=sys.stderr)
+        return 2
 
-if result["status"] != "ok":
-    print(f"[ERROR: {result['error_type']}] {result['message']}")
-    raise SystemExit(1)
+    result = process_comment_event(event, use_ai=args.use_ai)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] == "ok" else 1
 
-print(f"[OK] {result['message']}")
-print(f"  Session : {result['session_id']}")
-print(f"  Customer: {result['customer_id']}")
 
-intent = result["intent"]
-print(f"  Decision  : {intent['decision']}")
-print(f"  Reasons   : {', '.join(intent['reason_codes']) or '—'}")
-if intent["has_intent"]:
-    print(f"  Confidence: {intent['confidence']}")
-    print(f"  Source    : {intent['source']}")
-    print(f"  Product   : {intent['product_code'] or '—'}")
-    print(f"  Color     : {intent['color'] or '—'}")
-    print(f"  Size      : {intent['size'] or '—'}")
-    print(f"  Quantity  : {intent['quantity'] or '—'}")
-else:
-    print("  (No purchase intent detected)")
+if __name__ == "__main__":
+    raise SystemExit(main())

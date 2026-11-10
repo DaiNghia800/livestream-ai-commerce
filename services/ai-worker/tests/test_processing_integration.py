@@ -2,6 +2,7 @@
 
 import json
 import runpy
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -126,8 +127,11 @@ def test_missing_configuration_crosses_parser_and_process(monkeypatch):
 
 def test_example_script_with_real_example(monkeypatch, capsys):
     monkeypatch.chdir(ROOT)
-    runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
-    assert "[OK]" in capsys.readouterr().out
+    monkeypatch.setattr(sys, "argv", ["read_example.py"])
+    with pytest.raises(SystemExit) as caught:
+        runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
+    assert caught.value.code == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
 
 
 def test_example_script_reports_technical_error(monkeypatch, tmp_path, capsys):
@@ -136,10 +140,14 @@ def test_example_script_reports_technical_error(monkeypatch, tmp_path, capsys):
     (directory / "comment-created.v1.json").write_text(json.dumps(event()), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(gemini_client, "_client", None)
+    monkeypatch.setattr(sys, "argv", ["read_example.py", "--allow-ai", "--file",
+                                    str(directory / "comment-created.v1.json")])
     with pytest.raises(SystemExit) as caught:
         runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
     assert caught.value.code == 1
-    assert "[ERROR: ai_configuration]" in capsys.readouterr().out
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "error"
+    assert result["error_type"] == "ai_configuration"
 
 
 @pytest.mark.parametrize("content,decision,reason", [
@@ -174,6 +182,7 @@ def test_business_decision_preserves_ids_without_ai(monkeypatch, content, decisi
 def test_sdk_response_passes_through_decision_gate(transport_client, payload, decision, reason):
     transport_client.return_value = response(json.dumps(payload))
     source = event()
+    source["content"] = "Lấy B05 2 cái"
     result = process_comment_event(source)
     assert result["status"] == "ok"
     assert result["intent"]["decision"] == decision
@@ -190,11 +199,16 @@ def test_example_script_displays_clarification(monkeypatch, tmp_path, capsys):
     source["content"] = "Chốt A12 đen"
     (directory / "comment-created.v1.json").write_text(json.dumps(source), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
-    runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
+    monkeypatch.setattr(sys, "argv", ["read_example.py", "--offline", "--file",
+                                    str(directory / "comment-created.v1.json")])
+    with pytest.raises(SystemExit) as caught:
+        runpy.run_path(str(ROOT / "services/ai-worker/read_example.py"), run_name="__main__")
+    assert caught.value.code == 0
     output = capsys.readouterr().out
     assert "needs_clarification" in output
     assert "missing_quantity" in output
     assert "[ERROR" not in output
+    assert json.loads(output)["status"] == "ok"
 
 
 @pytest.mark.parametrize("payload", [
@@ -289,3 +303,36 @@ def test_partial_numeric_tokens_preserve_context_without_ai(monkeypatch, content
     assert result["intent"]["decision"] == "needs_clarification"
     assert result["intent"]["reason_codes"] == ["invalid_quantity"]
     assert result["intent"]["quantity"] is None
+
+
+@pytest.mark.parametrize("content,decision,code,reason", [
+    ("Chốt SP-POLO-012 2 cái", "purchase_candidate", "SP-POLO-012", None),
+    ("Chốt AT99-DEN-HE2023 2 cái", "purchase_candidate", "AT99-DEN-HE2023", None),
+    ("Chốt SP-POLO-012 XX-POLO-012 2 cái", "needs_clarification", None, "multiple_products"),
+    ("Cho SP-POLO-012 XX-POLO-012 2 cái", "needs_clarification", None, "multiple_products"),
+    ("Chốt AO01TFORMRONG 2 cái", "needs_clarification", None, "missing_product_code"),
+    ("Chốt AO-SM-LUA 2 cái", "needs_clarification", None, "missing_product_code"),
+])
+def test_complete_product_identifiers_preserve_context_without_ai(
+    monkeypatch, content, decision, code, reason
+):
+    client = Mock(side_effect=AssertionError("AI must not replace a product identifier"))
+    monkeypatch.setattr(gemini_client, "_get_client", client)
+    source = event()
+    source["content"] = content
+
+    result = process_comment_event(source)
+
+    client.assert_not_called()
+    assert result["status"] == "ok"
+    for field in ("event_id", "comment_id", "session_id", "customer_id"):
+        assert result[field] == source[field]
+    assert result["content"] == content
+    assert result["intent"]["raw"] == content
+    assert result["intent"]["decision"] == decision
+    assert result["intent"]["product_code"] == code
+    if reason:
+        assert reason in result["intent"]["reason_codes"]
+    else:
+        assert result["intent"]["reason_codes"] == []
+        assert result["intent"]["quantity"] == 2

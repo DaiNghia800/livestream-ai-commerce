@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:livestream-ai-commerce:proposed:b1:commerce-color-proposal:v1",
+  "title": "PROPOSED / NOT IMPLEMENTED — commerce-color-proposal v1",
+  "description": "Future opt-in B1 draft for team review. Schema validity is not identity, SKU, inventory, consent or transaction verification. Not an implemented API or authorization to create orders.",
+  "x-contract-status": "PROPOSED / NOT IMPLEMENTED",
+  "type": "object",
+  "properties": {
+    "schema_name": {
+      "const": "b1.commerce-color-proposal"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "proposal_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "proposal_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": [
+        "AWAITING_CUSTOMER_CONFIRMATION",
+        "ACCEPTED",
+        "REJECTED",
+        "EXPIRED",
+        "INVALIDATED"
+      ]
+    },
+    "correlation": {
+      "$ref": "#/$defs/correlation"
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "customer_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "merchant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "shop_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "livestream_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "customer_id",
+        "merchant_id",
+        "shop_id",
+        "livestream_id"
+      ],
+      "additionalProperties": false
+    },
+    "product_code": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 50
+    },
+    "quantity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "requested_colors": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true
+    },
+    "selection_mode": {
+      "const": "SELLER_PROPOSES"
+    },
+    "proposed_variant": {
+      "type": "object",
+      "properties": {
+        "sku_id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "sku_code": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "maxLength": 50
+        },
+        "color": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sku_id",
+        "sku_code",
+        "color",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "price_quote": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "const": "VND"
+        },
+        "unit_price": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$"
+        },
+        "goods_subtotal": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$"
+        }
+      },
+      "required": [
+        "currency",
+        "unit_price",
+        "goods_subtotal"
+      ],
+      "additionalProperties": false
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "confirmed_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "order_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "inventory_reserved": {
+      "type": "boolean"
+    },
+    "status_reason": {
+      "enum": [
+        null,
+        "CUSTOMER_ACCEPTED",
+        "CUSTOMER_REJECTED",
+        "EXPIRED",
+        "STOCK_UNAVAILABLE",
+        "PRICE_CHANGED",
+        "CONTEXT_INVALID"
+      ]
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "proposal_id",
+    "proposal_version",
+    "status",
+    "correlation",
+    "context",
+    "product_code",
+    "quantity",
+    "requested_colors",
+    "selection_mode",
+    "proposed_variant",
+    "price_quote",
+    "created_at",
+    "expires_at",
+    "confirmed_at",
+    "order_id",
+    "inventory_reserved",
+    "status_reason"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "correlation": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "comment_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "customer_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source_schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "event_id",
+        "comment_id",
+        "session_id",
+        "customer_id",
+        "source_schema_version",
+        "occurred_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "AWAITING_CUSTOMER_CONFIRMATION"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "status_reason": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ACCEPTED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "inventory_reserved": {
+            "const": true
+          },
+          "status_reason": {
+            "const": "CUSTOMER_ACCEPTED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "REJECTED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "status_reason": {
+            "const": "CUSTOMER_REJECTED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "EXPIRED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "status_reason": {
+            "const": "EXPIRED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "INVALIDATED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order_id": {
+            "const": null
+          },
+          "confirmed_at": {
+            "const": null
+          },
+          "inventory_reserved": {
+            "const": false
+          },
+          "status_reason": {
+            "enum": [
+              "STOCK_UNAVAILABLE",
+              "PRICE_CHANGED",
+              "CONTEXT_INVALID"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -8,6 +8,7 @@ It does NOT know where the event came from (file, queue, API).
 from datetime import datetime
 from typing import Any
 
+from catalog import CatalogProvider
 from parse_intent import parse_purchase_intent
 from ai_errors import AIParsingError
 
@@ -29,12 +30,19 @@ def _make_error(error_type: str, message: str) -> dict[str, Any]:
     return {"status": "error", "error_type": error_type, "message": message}
 
 
-def process_comment_event(event: dict[str, Any]) -> dict[str, Any]:
+def process_comment_event(
+    event: dict[str, Any],
+    *,
+    use_ai: bool = True,
+    catalog: CatalogProvider | None = None,
+) -> dict[str, Any]:
     """
     Validate and process a single comment event.
     
     Args:
         event: A dict parsed from the comment.created contract.
+        use_ai: Allow Gemini assistance; False keeps processing fully offline.
+        catalog: Optional CatalogProvider for product attributes (colors, sizes).
         
     Returns:
         A dict with status, intent (if valid), and preserved event properties.
@@ -85,7 +93,10 @@ def process_comment_event(event: dict[str, Any]) -> dict[str, Any]:
 
     try:
         # Validation passed -> parse intent
-        intent = parse_purchase_intent(content, session_id=event["session_id"])
+        if catalog is not None:
+            intent = parse_purchase_intent(content, use_ai=use_ai, catalog=catalog)
+        else:
+            intent = parse_purchase_intent(content, use_ai=use_ai)
     except AIParsingError as e:
         # Catch known AI errors and return them cleanly for SQS routing
         error_result = _make_error(e.error_type, e.message)

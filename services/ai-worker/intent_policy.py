@@ -7,6 +7,8 @@ resolve a unique SKU and validate availability and price before any order.
 import re
 import unicodedata
 
+from product_codes import find_product_identifiers, is_supported_product_code
+
 
 # Khách gõ điện thoại hay bỏ dấu ("chot", "khong mua"), nên mỗi từ khoá có
 # thêm dạng không dấu. Chỉ thêm dạng ít đụng từ khác: "đừng"→"dung" trùng
@@ -72,9 +74,11 @@ def guard_comment(
     elif has_purchase and re.search(r"\b(?:nếu|miễn là)\b", text):
         reason = "conditional_purchase"
 
-    if reason is None and has_purchase:
-        codes = set(re.findall(r"\b[a-z]{1,4}-?\d{1,5}\b", text))
-        if len(codes) > 1:
+    if reason is None and (has_purchase or re.search(r"\bcho\b", text)):
+        identifiers = find_product_identifiers(content)
+        if any(not is_supported_product_code(code) for code in identifiers):
+            reason = "missing_product_code"
+        elif len(identifiers) > 1:
             reason = "multiple_products"
 
     if reason is None and known_colors:
