@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback/states";
 import { CancelOrderDialog } from "./cancel-order-dialog";
 import { CreateShipmentDialog } from "@/features/shipping/create-shipment-dialog";
+import { tenHang } from "@/features/shipping/labels";
 import { EditAddressDialog } from "./edit-address-dialog";
 import { formatCountdown, formatDateTime, formatMoney } from "@/lib/format";
 import { ordersApi, paymentsApi, type OrderDetail } from "@/lib/api";
@@ -498,6 +499,14 @@ function OrderDetailView({
               <MapPin size={18} aria-hidden="true" /> Địa chỉ nhận hàng
             </h2>
             <p>{order.shippingAddress ?? "Chưa có"}</p>
+            {order.shippingCarrier && (
+              <p className="muted">
+                Khách chọn <strong>{tenHang(order.shippingCarrier, order.shippingServiceCode)}</strong>
+                {" · phí "}
+                {Number(order.shippingFee ?? 0) > 0 ? formatMoney(Number(order.shippingFee)) : "miễn phí"}
+                {" (đã tính vào tổng đơn)"}
+              </p>
+            )}
             {order.note && (
               <div className="notice notice-warning">
                 <h3>Ghi chú của khách</h3>
@@ -570,6 +579,15 @@ function OrderDetailView({
       <CreateShipmentDialog
         orderId={order.id}
         orderCode={order.orderCode}
+        khachChon={
+          order.shippingCarrier
+            ? {
+                carrier: order.shippingCarrier,
+                serviceCode: order.shippingServiceCode ?? null,
+                fee: order.shippingFee ?? "0",
+              }
+            : null
+        }
         open={moVanDon}
         onClose={() => setMoVanDon(false)}
         onCreated={(vanDon) => router.push(`/shop/shipping/${vanDon.id}`)}

@@ -160,6 +160,10 @@ export interface OrderDetail {
   createdAt: string;
   activeShipmentId: string | null;
   addressNormalized: boolean;
+  /** Dịch vụ vận chuyển khách đã chọn và trả phí lúc xác nhận. */
+  shippingCarrier?: string | null;
+  shippingServiceCode?: string | null;
+  shippingFee?: string;
   items: OrderItemLine[];
   history: OrderStatusChange[];
   payment: PaymentSummary | null;
@@ -254,11 +258,27 @@ export const ordersApi = {
     note?: string;
     /** Bỏ trống = để module thanh toán tự lo như trước. */
     paymentMethod?: "COD" | "ONLINE";
+    /**
+     * Dịch vụ khách chọn từ bảng giá. `fee` là giá khách ĐÃ THẤY: server
+     * báo giá lại và trả 409 ShippingQuoteChanged nếu lệch.
+     */
+    shippingOption?: { carrier: string; serviceCode: string; fee: string };
   }) => call<CustomerOrder>(`/orders/confirm/${encodeURIComponent(token)}`, {
     method: "POST",
       headers: headerXacThuc(),
     body: details,
   }),
+
+  /** Bảng giá vận chuyển cho địa chỉ khách vừa chọn, trước khi xác nhận. */
+  shippingOptions: (token: string, diaChi: {
+    provinceName: string;
+    wardCode: string;
+    streetLine: string;
+    paymentMethod?: "COD" | "ONLINE";
+  }) => call<{ weightGram: number; items: ShippingOption[] }>(
+    `/orders/confirm/${encodeURIComponent(token)}/shipping-options`,
+    { method: "POST", headers: headerXacThuc(), body: diaChi },
+  ),
 
   list: (filter: {
     merchantId?: string;
@@ -352,6 +372,11 @@ export interface CustomerOrder {
   livestreamTitle: string | null;
   /** Lý do huỷ, ví dụ OUT_OF_STOCK_AT_PAYMENT (tiền về nhưng hết hàng). */
   cancelReason?: string | null;
+  /** Dịch vụ vận chuyển khách đã chọn lúc xác nhận; null = chưa chọn. */
+  shippingCarrier?: string | null;
+  shippingServiceCode?: string | null;
+  /** Phí ship đã nằm trong totalAmount; "0" khi chưa chọn. */
+  shippingFee?: string;
   items: Array<{
     id: string;
     skuId: string;
@@ -770,6 +795,16 @@ export interface ShipmentDetail extends ShipmentListItem {
    * mà màn hình vẫn hiện nút bấm vào là lỗi.
    */
   moPhong: ChangGiaLap[];
+}
+
+/** Một dòng trong bảng giá vận chuyển khách chọn ở bước xác nhận. */
+export interface ShippingOption {
+  carrier: string;
+  carrierLabel: string;
+  serviceCode: string;
+  /** Đồng, số nguyên dạng chuỗi. */
+  fee: string;
+  etaText: string | null;
 }
 
 export interface CarrierOption {

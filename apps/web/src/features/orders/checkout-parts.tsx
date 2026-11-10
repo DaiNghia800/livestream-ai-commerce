@@ -10,7 +10,8 @@
 
 import { MapPin, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ApiError, type CustomerOrder, type UserAddress } from "@/lib/api";
+import { ApiError, type CustomerOrder, type ShippingOption, type UserAddress } from "@/lib/api";
+import { formatMoney } from "@/lib/format";
 import { TEN_NHAN, docDiaChi } from "./address-book-dialog";
 import styles from "./checkout-parts.module.css";
 
@@ -106,11 +107,67 @@ export function DiaChiNhanHang({
  * nháp không giữ tồn, người khác vừa bấm trước. Khách cần biết để
  * liên hệ shop sửa đơn — bấm lại không giải quyết được gì.
  */
+/** Khoá nhận diện một dòng bảng giá: hãng + dịch vụ. */
+export function khoaVanChuyen(o: Pick<ShippingOption, "carrier" | "serviceCode">): string {
+  return `${o.carrier}/${o.serviceCode}`;
+}
+
+/**
+ * Bảng chọn dịch vụ vận chuyển, dùng chung thẻ radio với cách trả.
+ * Mỗi dòng: tên hãng, thời gian dự kiến, phí — đủ để khách so, không
+ * hơn. Miễn phí ghi chữ "Miễn phí" chứ không ghi "0 ₫".
+ */
+export function ChonVanChuyen({
+  items,
+  chon,
+  onChon,
+}: {
+  items: ShippingOption[];
+  chon: string | null;
+  onChon: (khoa: string) => void;
+}) {
+  return (
+    <div className={styles.phuongThuc} role="radiogroup" aria-label="Phương thức vận chuyển">
+      {items.map((o) => {
+        const khoa = khoaVanChuyen(o);
+        return (
+          <label key={khoa} className={`${styles.cachTra} ${chon === khoa ? styles.cachTraChon : ""}`}>
+            <input
+              type="radio"
+              name="phuong-thuc-van-chuyen"
+              value={khoa}
+              checked={chon === khoa}
+              onChange={() => onChon(khoa)}
+            />
+            <span>
+              <strong>{o.carrierLabel}</strong>
+              <span className="muted">{o.etaText ?? "Thời gian giao do hãng báo"}</span>
+            </span>
+            <strong className={styles.phiShip}>
+              {Number(o.fee) > 0 ? formatMoney(Number(o.fee)) : "Miễn phí"}
+            </strong>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 export function loiXacNhan(cause: unknown, items: CustomerOrder["items"]): string {
   if (cause instanceof ApiError && cause.status === 409) {
     const body = cause.body as
-      | { error?: string; rejected?: Array<{ skuId: string; requested: number; sellable: number }> }
+      | {
+          error?: string;
+          rejected?: Array<{ skuId: string; requested: number; sellable: number }>;
+          actualFee?: string;
+        }
       | undefined;
+    if (body?.error === "ShippingQuoteChanged") {
+      const moi = body.actualFee && /^\d+(\.\d+)?$/.test(body.actualFee)
+        ? ` Phí mới: ${formatMoney(Number(body.actualFee))}.`
+        : "";
+      return `Phí vận chuyển vừa thay đổi.${moi} Bảng giá đã được cập nhật, hãy chọn lại rồi xác nhận.`;
+    }
     if (body?.error === "OutOfStock" && body.rejected?.length) {
       const dong = body.rejected.map((r) => {
         const item = items.find((i) => i.skuId === r.skuId);
