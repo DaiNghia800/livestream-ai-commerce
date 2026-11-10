@@ -129,6 +129,7 @@ export function createOrderRouter(
   });
 
   router.get("/confirm/:token", taiKhoanTuyChon, lifecycleController.openConfirmLink);
+  router.post("/confirm/:token/shipping-options", taiKhoanTuyChon, lifecycleController.shippingOptions);
   router.post("/confirm/:token", taiKhoanTuyChon, lifecycleController.confirm);
 
   // Luồng shop

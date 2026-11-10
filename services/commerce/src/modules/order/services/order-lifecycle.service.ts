@@ -23,6 +23,7 @@ import {
   OrderAccessError,
   OrderNotFoundError,
   OutOfStockError,
+  ShippingQuoteChangedError,
 } from "../../../shared/errors/domain.errors.js";
 import { findOwnerUserIdByConfirmToken } from "../../profile/repositories/customer-identity.repository.js";
 import {
@@ -46,6 +47,7 @@ import {
   markProcessing,
   recordStatusHistory,
   saveShippingInfo,
+  setShippingChoice,
   type OrderRow,
 } from "../repositories/order-lifecycle.repository.js";
 import {
@@ -71,7 +73,16 @@ import {
   insertAddress,
   updateAddress,
 } from "../../shipping/repositories/shipment.repository.js";
-import type { ConfirmOrderInput, SetOrderAddressInput } from "../schemas/order.schema.js";
+import {
+  ShippingQuoteService,
+  type ShippingOption,
+} from "../../shipping/services/shipping-quote.service.js";
+import type { ShippingAddress } from "../../shipping/carriers/shipping-carrier.js";
+import type {
+  ConfirmOrderInput,
+  SetOrderAddressInput,
+  ShippingOptionsInput,
+} from "../schemas/order.schema.js";
 import type { Order, OrderStatus } from "../types/order.types.js";
 
 /**
@@ -86,7 +97,68 @@ const SUA_DUOC_DIA_CHI = new Set<OrderStatus>(["AWAITING_PAYMENT", "CONFIRMED", 
 export type ShippingInfo = ConfirmOrderInput;
 
 export class OrderLifecycleService {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    // Báo giá đi qua module shipping trong cùng tiến trình, không đụng
+    // bảng của nhau: order chỉ cần "hãng này, địa chỉ này, bao nhiêu".
+    private readonly shippingQuotes: ShippingQuoteService = new ShippingQuoteService()
+  ) {}
+
+  /**
+   * Bảng giá vận chuyển cho khách chọn trước khi xác nhận.
+   *
+   * Cùng token và cùng kiểm tra chủ đơn như lúc mở link. Khối lượng là
+   * ước tính (mỗi món một mức cấu hình): shop cân thật lúc tạo vận đơn,
+   * phần chênh nếu có là của shop, khách đã trả theo giá họ thấy.
+   */
+  async quoteShippingOptions(
+    token: string,
+    input: ShippingOptionsInput,
+    viewerUserId: number | null = null
+  ): Promise<{ weightGram: number; items: ShippingOption[] }> {
+    const client = await this.pool.connect();
+    let order: Order;
+    try {
+      const row = await findOrderByConfirmToken(client, token);
+      if (!row) throw new OrderNotFoundError(`token ${token.slice(0, 8)}…`);
+      await this.requireViewer(client, token, viewerUserId);
+      order = await loadOrder(client, row.id);
+    } finally {
+      client.release();
+    }
+
+    const ward = findCurrentWard(input.provinceName, input.wardCode);
+    if (!ward) throw new Error("Invalid selected ward");
+    const to: ShippingAddress = {
+      recipientName: order.recipientName ?? "Khách",
+      recipientPhone: order.recipientPhone ?? "",
+      provinceName: input.provinceName,
+      districtName: null,
+      wardName: ward.name,
+      streetLine: input.streetLine,
+      isNewFormat: true,
+    };
+    const weightGram = this.uocKhoiLuong(order);
+    const items = await this.shippingQuotes.quoteOptions({
+      to,
+      weightGram,
+      // Tiền hàng chưa gồm ship: lúc này phí còn chưa chọn.
+      codAmount: input.paymentMethod === "ONLINE" ? "0" : this.tienHang(order),
+      insuranceValue: "0",
+    });
+    return { weightGram, items };
+  }
+
+  /** Mỗi món một mức cấu hình, chặn trần 50 kg là giới hạn chung của các hãng. */
+  private uocKhoiLuong(order: Order): number {
+    const soMon = order.items.reduce((tong, item) => tong + item.quantity, 0);
+    return Math.min(50_000, Math.max(1, soMon) * config.shippingQuoteWeightGram);
+  }
+
+  /** Tiền hàng = tổng trừ phí ship đã ghi (0 khi chưa chọn). */
+  private tienHang(order: Order): string {
+    return String(Math.max(0, Number(order.totalAmount) - Number(order.shippingFee ?? "0")));
+  }
 
   /**
    * Khách mở link xác nhận.
@@ -209,6 +281,54 @@ export class OrderLifecycleService {
       // được hưởng giá tốt nhất, nếu không họ sẽ huỷ rồi chốt lại — mà
       // lần chốt lại có thể không còn hàng.
       await applyBestPrice(client, order.id);
+
+      // Dịch vụ vận chuyển khách chọn: báo giá LẠI ở server rồi mới ghi.
+      // Con số client gửi chỉ để đối chiếu — lệch là từ chối, khách
+      // thấy bảng giá mới và chọn lại. Ghi TRƯỚC khoản thu để số tiền
+      // khoản thu (đọc lại bên dưới) đã gồm phí ship.
+      if (shipping.shippingOption) {
+        if (!address.daChuanHoa) {
+          throw new ShippingQuoteChangedError(
+            shipping.shippingOption.carrier,
+            shipping.shippingOption.serviceCode,
+            shipping.shippingOption.fee,
+            "không báo giá được vì địa chỉ chưa chuẩn hoá"
+          );
+        }
+        const truocShip = await loadOrder(client, order.id);
+        const quote = await this.shippingQuotes.quoteOne(
+          shipping.shippingOption.carrier,
+          shipping.shippingOption.serviceCode,
+          {
+            to: {
+              recipientName: shipping.recipientName,
+              recipientPhone: shipping.recipientPhone,
+              provinceName: address.provinceName ?? "",
+              districtName: address.districtName,
+              wardName: address.wardName ?? "",
+              streetLine: address.streetLine ?? shippingAddress,
+              isNewFormat: address.isNewFormat,
+            },
+            weightGram: this.uocKhoiLuong(truocShip),
+            codAmount: shipping.paymentMethod === "ONLINE" ? "0" : this.tienHang(truocShip),
+            insuranceValue: "0",
+          }
+        );
+        if (Number(quote.fee) !== Number(shipping.shippingOption.fee)) {
+          throw new ShippingQuoteChangedError(
+            quote.carrier,
+            quote.serviceCode,
+            shipping.shippingOption.fee,
+            quote.fee
+          );
+        }
+        await setShippingChoice(client, {
+          orderId: order.id,
+          carrier: quote.carrier,
+          serviceCode: quote.serviceCode,
+          fee: quote.fee,
+        });
+      }
 
       // Chọn trả online: chưa giữ tồn, đơn chờ tiền về (AWAITING_PAYMENT).
       // COD (hay không chọn): giữ tồn ngay như trước.

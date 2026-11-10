@@ -78,6 +78,21 @@ const ConfirmBase = {
      * bên gọi không hề yêu cầu.
      */
     paymentMethod: z.enum(["COD", "ONLINE"]).optional(),
+    /**
+     * Dịch vụ vận chuyển khách chọn từ bảng giá server đưa ra.
+     *
+     * `fee` là con số khách ĐÃ THẤY, không phải con số sẽ ghi: server
+     * báo giá lại và từ chối nếu lệch, để không ai trả theo giá cũ hay
+     * giá tự gõ. Bỏ trống = chưa chọn, shop tự quyết như trước.
+     */
+    shippingOption: z
+      .object({
+        carrier: z.string().trim().min(1).max(30),
+        serviceCode: z.string().trim().min(1).max(50),
+        fee: z.string().regex(/^\d+(\.\d{1,2})?$/, { message: "fee must be a money string" }),
+      })
+      .strict()
+      .optional(),
 };
 
 const ConfirmLegacyAddressSchema = z.object({
@@ -106,6 +121,30 @@ const ConfirmSelectedAddressSchema = z.object({
     message: "Phường/xã không thuộc tỉnh/thành đã chọn.",
   });
 });
+
+/**
+ * Khách xin bảng giá vận chuyển trước khi xác nhận: chỉ cần địa chỉ
+ * đã chọn (cùng dạng với lúc xác nhận) và cách trả, vì COD làm phí
+ * của vài hãng khác đi.
+ */
+export const ShippingOptionsRequestSchema = z
+  .object({
+    provinceName: z.enum(TINH_THANH),
+    wardCode: z.string().regex(/^\d{5}$/, { message: "wardCode is invalid" }),
+    streetLine: z.string().trim().min(3).max(200),
+    paymentMethod: z.enum(["COD", "ONLINE"]).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (findCurrentWard(value.provinceName, value.wardCode)) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["wardCode"],
+      message: "Phường/xã không thuộc tỉnh/thành đã chọn.",
+    });
+  });
+
+export type ShippingOptionsInput = z.infer<typeof ShippingOptionsRequestSchema>;
 
 /** Keep the existing free-text request valid for older clients. */
 export const ConfirmOrderRequestSchema = z.union([

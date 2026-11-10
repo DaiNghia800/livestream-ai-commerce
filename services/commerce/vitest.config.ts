@@ -90,6 +90,9 @@ export default defineConfig({
       GHN_TOKEN: "ghn-token-gia",
       GHN_SHOP_ID: "123456",
       GHN_WEBHOOK_SECRET: "ghn-webhook-secret-gia",
+      // Khách chỉ được báo giá bằng cổng giả và shop tự giao: không có
+      // test nào được gọi ra sandbox của hãng thật.
+      SHIPPING_QUOTE_CARRIERS: "mock,self",
     },
     coverage: {
       provider: "v8",
