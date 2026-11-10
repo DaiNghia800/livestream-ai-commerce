@@ -1,0 +1,5 @@
+# Gitleaks ignore list
+# Bỏ qua false positives cho các fixture / unit test token giả đã commit trong lịch sử
+793f1fd43a0abf9a94877dd9e337988373443a15:services/commerce/tests/unit/orders/ai-results-consumer.job.test.ts:generic-api-key:157
+793f1fd43a0abf9a94877dd9e337988373443a15:services/commerce/tests/unit/orders/ai-results-consumer.job.test.ts:generic-api-key:197
+

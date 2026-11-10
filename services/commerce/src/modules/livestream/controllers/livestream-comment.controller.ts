@@ -1,0 +1,143 @@
+import { Request, Response } from "express";
+import {
+  LivestreamCommentService,
+  LivestreamNotFoundError,
+  InvalidLivestreamStatusError,
+  ProhibitedCommentError,
+  UnauthorizedRoleClaimError,
+} from "../services/livestream-comment.service.js";
+import {
+  createCommentSchema,
+  getCommentsQuerySchema,
+} from "../schemas/livestream-comment.schema.js";
+import { createCommentConfirmationReceipt } from "../../order/services/comment-confirmation-receipt.js";
+
+export class LivestreamCommentController {
+  constructor(private readonly service: LivestreamCommentService) {}
+
+  getComments = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const queryParsed = getCommentsQuerySchema.safeParse(req.query);
+
+      if (!queryParsed.success) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: "Invalid query parameters",
+          details: queryParsed.error.issues,
+        });
+        return;
+      }
+
+      const comments = await this.service.getComments(id, {
+        limit: queryParsed.data.limit,
+        before: queryParsed.data.before,
+      });
+
+      if (comments === null) {
+        res.status(404).json({
+          error: "NotFound",
+          message: `Livestream ${id} not found`,
+        });
+        return;
+      }
+
+      res.status(200).json({
+        data: comments,
+      });
+    } catch (error) {
+      if (error instanceof LivestreamNotFoundError) {
+        res.status(404).json({
+          error: "NotFound",
+          message: error.message,
+        });
+        return;
+      }
+      console.error("[LivestreamCommentController] getComments error:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to fetch comments",
+      });
+    }
+  };
+
+  createComment = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const bodyParsed = createCommentSchema.safeParse(req.body);
+
+      if (!bodyParsed.success) {
+        res.status(400).json({
+          error: "ValidationError",
+          message: "Invalid comment payload",
+          details: bodyParsed.error.issues,
+        });
+        return;
+      }
+
+      const merchantId = req.header ? req.header("X-Merchant-Id") : req.merchantId;
+      const comment = await this.service.addComment(
+        id,
+        bodyParsed.data,
+        merchantId
+      );
+
+      if (comment === null) {
+        res.status(404).json({
+          error: "NotFound",
+          message: `Livestream ${id} not found`,
+        });
+        return;
+      }
+
+      res.status(201).json({
+        data: comment,
+        ...(comment.role === "buyer" && {
+          confirmationReceipt: createCommentConfirmationReceipt(
+            comment.id,
+            comment.userId,
+            id
+          ),
+        }),
+      });
+    } catch (error) {
+      if (error instanceof LivestreamNotFoundError) {
+        res.status(404).json({
+          error: "NotFound",
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof InvalidLivestreamStatusError) {
+        res.status(400).json({
+          error: "InvalidLivestreamStatus",
+          message: error.message,
+        });
+        return;
+      }
+
+            if (error instanceof UnauthorizedRoleClaimError) {
+        res.status(403).json({
+          error: "Forbidden",
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof ProhibitedCommentError) {
+        res.status(400).json({
+          error: "ProhibitedContent",
+          message: error.message,
+        });
+        return;
+      }
+
+      console.error("[LivestreamCommentController] createComment error:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Failed to create comment",
+      });
+    }
+  };
+}

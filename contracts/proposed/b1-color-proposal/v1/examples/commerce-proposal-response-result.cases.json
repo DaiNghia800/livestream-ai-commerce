@@ -1,0 +1,304 @@
+{
+  "contract_status": "PROPOSED / NOT IMPLEMENTED",
+  "synthetic_only": true,
+  "description": "Fixture-only payloads, not runtime output, real catalog data, identity mappings or implemented endpoints.",
+  "cases": [
+    {
+      "id": "base",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "REJECTED",
+        "reason_code": "CUSTOMER_REJECTED",
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      }
+    },
+    {
+      "id": "accepted",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "ACCEPTED",
+        "reason_code": "CUSTOMER_ACCEPTED",
+        "order_id": "66666666-6666-4666-8666-666666666666",
+        "confirmed_at": "2026-10-19T10:01:00Z",
+        "inventory_reserved": true,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      }
+    },
+    {
+      "id": "expired",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "EXPIRED",
+        "reason_code": "EXPIRED",
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      }
+    },
+    {
+      "id": "unavailable",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "INVALIDATED",
+        "reason_code": "STOCK_UNAVAILABLE",
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      }
+    },
+    {
+      "id": "price-changed",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "INVALIDATED",
+        "reason_code": "PRICE_CHANGED",
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      }
+    },
+    {
+      "id": "context-invalid",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "INVALIDATED",
+        "reason_code": "CONTEXT_INVALID",
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      }
+    },
+    {
+      "id": "technical-failure",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "TECHNICAL_FAILURE",
+          "retryable": true
+        }
+      }
+    },
+    {
+      "id": "wrong-customer",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "FORBIDDEN",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "stale-proposal-version",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "VERSION_CONFLICT",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "reused-idempotency-key",
+      "valid": true,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "IDEMPOTENCY_CONFLICT",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "technical-error-with-order",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": "66666666-6666-4666-8666-666666666666",
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "TECHNICAL_FAILURE",
+          "retryable": true
+        }
+      },
+      "expected_keyword": "const"
+    },
+    {
+      "id": "accepted-without-order",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "ACCEPTED",
+        "reason_code": "CUSTOMER_ACCEPTED",
+        "order_id": null,
+        "confirmed_at": "2026-10-19T10:01:00Z",
+        "inventory_reserved": true,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      },
+      "expected_keyword": "type"
+    },
+    {
+      "id": "accepted-without-consent-time",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "ok",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": "ACCEPTED",
+        "reason_code": "CUSTOMER_ACCEPTED",
+        "order_id": "66666666-6666-4666-8666-666666666666",
+        "confirmed_at": null,
+        "inventory_reserved": true,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": null
+      },
+      "expected_keyword": "type"
+    },
+    {
+      "id": "raw-sdk-error-leak",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "TECHNICAL_FAILURE",
+          "retryable": true,
+          "raw_sdk_response": "private remote detail"
+        }
+      },
+      "expected_keyword": "additionalProperties"
+    },
+    {
+      "id": "auth-error-automatically-retryable",
+      "valid": false,
+      "payload": {
+        "schema_name": "b1.commerce-proposal-response-result",
+        "schema_version": 1,
+        "status": "error",
+        "proposal_id": "55555555-5555-4555-8555-555555555555",
+        "proposal_version": 1,
+        "outcome": null,
+        "reason_code": null,
+        "order_id": null,
+        "confirmed_at": null,
+        "inventory_reserved": false,
+        "processed_at": "2026-10-19T10:01:00Z",
+        "error": {
+          "code": "FORBIDDEN",
+          "retryable": true
+        }
+      },
+      "expected_keyword": "const"
+    }
+  ]
+}

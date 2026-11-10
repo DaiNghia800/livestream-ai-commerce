@@ -1,0 +1,404 @@
+// =====================================================================
+// ERD — Live Commerce (Đơn nháp & Giữ hàng)
+// Nguồn chính của schema. Sửa file này TRƯỚC, rồi mới sinh hình và DDL.
+//
+// Xem hình   : dán toàn bộ file vào https://dbdiagram.io/d
+// Xuất PNG   : Export > PNG/PDF  → lưu vào diagrams/
+// Xuất DDL   : Export > PostgreSQL → dùng cho migration T2
+//
+// Thiết kế   : ../design/draft-order-reservation/README.md
+// Thay đổi   : erd-changes.md  (cùng thư mục)
+// Cập nhật   : 2026-09-22
+// =====================================================================
+
+Project live_commerce {
+  database_type: 'PostgreSQL'
+  Note: '''
+    Bán hàng qua livestream. Commerce và Realtime tách schema, tách tài
+    khoản DB. Bảng `comment` thuộc schema realtime, còn lại thuộc commerce.
+
+    TTL giữ hàng 2 tầng (QĐ-1): 5 phút giữ mềm → 15 phút khi khách mở
+    link xác nhận → trần cứng 30 phút.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Enum
+// ---------------------------------------------------------------------
+
+Enum order_status {
+  DRAFT                [note: 'Đơn nháp còn mở trong phiên, gộp thêm được. Đã giữ tồn']
+  PENDING_CONFIRMATION [note: 'Khách đã mở link xác nhận, TTL gia hạn lên 15 phút']
+  CONFIRMED            [note: 'Đã xác nhận. Không trả tồn, không trừ tồn, chỉ gỡ đồng hồ']
+  PROCESSING           [note: 'Đang đóng gói / tạo vận đơn']
+  COMPLETED            [note: 'Đã xuất kho. Lúc này mới trừ on_hand_qty']
+  CANCELLED            [note: 'Khách hoặc shop hủy']
+  EXPIRED              [note: 'Hết TTL, job quét tự hủy']
+}
+
+Enum reservation_status {
+  HELD      [note: 'Đang giữ tồn']
+  COMMITTED [note: 'Đã xuất kho, trừ cả on_hand lẫn held']
+  RELEASED  [note: 'Trả tồn do hủy hoặc nhân viên từ chối']
+  EXPIRED   [note: 'Trả tồn do hết TTL']
+}
+
+Enum inventory_change_type {
+  HOLD
+  RELEASE
+  EXPIRE
+  COMMIT
+  RESTOCK
+  ADJUST
+}
+
+// ---------------------------------------------------------------------
+// Tài khoản & sản phẩm
+// ---------------------------------------------------------------------
+
+Table account {
+  id               uuid    [pk]
+  role             varchar [not null, note: 'customer | shop']
+  full_name        varchar
+  phone            varchar [note: 'Khách cũ có sẵn thì bỏ qua bước hỏi']
+  address          varchar
+  platform_user_id varchar [unique, note: 'MỚI — ID trên Facebook/TikTok, map bình luận về CRM']
+  risk_score       int     [default: 0, note: 'MỚI — 0..100, điểm rủi ro bom hàng (BẪY-08)']
+  order_count      int     [default: 0, note: 'MỚI']
+  reject_count     int     [default: 0, note: 'MỚI — số lần từ chối nhận hàng, đầu vào tính risk_score']
+
+  Note: 'Tài khoản dùng chung cho khách và shop, phân biệt qua role'
+}
+
+Table product {
+  id      uuid    [pk]
+  shop_id uuid    [not null]
+  name    varchar [not null]
+  status  varchar [not null, note: 'active | archived | discontinued']
+
+  Note: 'Giữ nguyên so với ERD cũ'
+}
+
+Table sku {
+  id         uuid    [pk]
+  product_id uuid    [not null]
+  code       varchar [not null, unique, note: 'Mã host đọc trên live, vd A01']
+  price      decimal(12,0) [not null, note: 'Giá niêm yết hiện tại']
+  size       varchar [note: 'MỚI — tách từ variant, để khớp bình luận "size L"']
+  color      varchar [note: 'MỚI — tách từ variant, để khớp bình luận "màu đen"']
+  alias      varchar [note: 'MỚI — mã tắt / cách đọc khác host hay dùng']
+  status     varchar [not null, default: 'active', note: 'MỚI — archived thì không cho chốt']
+
+  Note: '''
+    Tách `variant` thành size + color vì bình luận thật là
+    "cho e 1 cai mau den sz L". Để một chuỗi "đen, M" thì phải
+    parse ngược, sai nhiều.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Tồn kho
+// ---------------------------------------------------------------------
+
+Table inventory {
+  sku_id       uuid [pk]
+  on_hand_qty  int  [not null, default: 0, note: 'ĐỔI TÊN từ available_qty — tồn THỰC TẾ trong kho']
+  held_qty     int  [not null, default: 0, note: 'Tồn đang giữ chỗ']
+  sellable_qty int  [note: 'MỚI — GENERATED ALWAYS AS (on_hand_qty - held_qty) STORED. Tồn KHẢ DỤNG']
+  version      int  [not null, default: 0, note: 'MỚI — đếm số lần đổi, phục vụ debug']
+  updated_at   timestamptz [not null, default: `now()`]
+
+  Note: '''
+    CHECK ck_inv_nonneg  : on_hand_qty >= 0 AND held_qty >= 0
+    CHECK ck_inv_held_le : held_qty <= on_hand_qty
+
+    Hai CHECK là lưới an toàn cuối cùng. Code có bug oversell thì DB ném
+    lỗi thay vì để tồn âm âm thầm.
+
+    Đổi tên available_qty vì UC Quản lý tồn kho phân biệt 3 khái niệm:
+    tồn thực tế / đang giữ chỗ / khả dụng. Tên cũ nghĩa là "khả dụng"
+    nhưng lại mang giá trị "thực tế" — nguồn gây lỗi cho cả người đọc
+    lẫn người code.
+  '''
+}
+
+Table inventory_ledger {
+  id            bigint [pk, increment]
+  sku_id        uuid   [not null]
+  change_type   inventory_change_type [not null]
+  delta_on_hand int    [not null, default: 0]
+  delta_held    int    [not null, default: 0]
+  on_hand_after int    [not null, note: 'Giá trị sau biến động, để đối soát không cần cộng dồn']
+  held_after    int    [not null]
+  ref_type      varchar [note: 'reservation | order | adjustment']
+  ref_id        varchar
+  actor         varchar [note: 'system | job | account_id của nhân viên']
+  note          varchar
+  created_at    timestamptz [not null, default: `now()`]
+
+  Note: '''
+    BẢNG MỚI — nhật ký biến động kho, append-only.
+    UC Quản lý tồn kho yêu cầu "Ghi lịch sử biến động kho".
+
+    Mọi hàm đụng tới inventory đều PHẢI ghi vào đây trong CÙNG
+    transaction. Thiếu một chỗ là mất khả năng đối soát.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Phiên livestream
+// ---------------------------------------------------------------------
+
+Table live_session {
+  id                uuid    [pk]
+  shop_id           uuid    [not null]
+  status            varchar [not null, note: 'DRAFT | STARTING | LIVE | PAUSED | ENDED']
+  started_at        timestamptz
+  ended_at          timestamptz [note: 'MỚI']
+  hold_ttl_seconds  int [not null, default: 300, note: 'MỚI — TTL giữ mềm (QĐ-1). KHÔNG hard-code trong code']
+
+  Note: 'Thiếu hold_ttl_seconds thì TTL bị hard-code, trái QĐ-1'
+}
+
+Table pinned_product {
+  id          uuid [pk]
+  session_id  uuid [not null]
+  sku_id      uuid [not null]
+  pinned_at   timestamptz [not null, note: 'MỚI — mốc bắt đầu cửa sổ ghim']
+  unpinned_at timestamptz [note: 'MỚI — NULL nghĩa là đang ghim']
+  live_price  decimal(12,0) [note: 'MỚI — giá công bố trong phiên, có thể khác sku.price (flash sale, BẪY-07)']
+
+  Indexes {
+    (session_id, pinned_at) [name: 'idx_pinned_window']
+  }
+
+  Note: '''
+    ĐÂY LÀ NGUỒN CONTEXT để hiểu bình luận không có mã sản phẩm.
+
+    Không có pinned_at/unpinned_at thì khi khách gõ "2 cái size L" hệ
+    thống KHÔNG BIẾT lúc đó host đang bán gì. Toàn bộ nhánh "khách không
+    gõ mã" chết, mà đó lại là phần lớn bình luận thật.
+
+    SELECT sku_id FROM pinned_product
+     WHERE session_id = :sid
+       AND pinned_at <= :commented_at
+       AND (unpinned_at IS NULL
+            OR unpinned_at >= :commented_at - interval \'30 seconds\');
+
+    Trả về >= 2 dòng → mơ hồ → đẩy hàng đợi duyệt (BẪY-02).
+    Lùi 30 giây để bắt trường hợp khách đang gõ dở thì host đổi ghim.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bình luận & đề nghị đơn
+// ---------------------------------------------------------------------
+
+Table comment {
+  id                 uuid    [pk]
+  session_id         uuid    [not null]
+  account_id         uuid    [not null]
+  client_message_id  varchar [not null, note: 'Khóa idempotency phía client']
+  content            varchar [not null]
+  author_platform_id varchar [note: 'MỚI']
+  is_from_shop       boolean [not null, default: false, note: 'MỚI — true thì KHÔNG parse thành đơn (BẪY-03)']
+  intent             varchar [note: 'MỚI — buy | ask_price | ask_size | cancel | spam | other']
+  confidence         decimal(4,3) [note: 'MỚI — quyết định 3 nhánh ở QĐ-3']
+  commented_at       timestamptz [not null, note: 'MỚI — mốc GỐC từ nền tảng, không phải now() lúc nhận webhook']
+
+  Indexes {
+    (session_id, account_id, client_message_id) [unique, name: 'uq_comment_dedupe']
+  }
+
+  Note: '''
+    Thuộc schema REALTIME, không phải commerce.
+
+    commented_at phải lấy từ nền tảng chứ không phải now() lúc nhận
+    webhook — webhook có thể đến trễ vài giây, đủ để map nhầm sang sản
+    phẩm ghim kế tiếp.
+
+    uq_comment_dedupe là tầng 1 trong 5 tầng chống trùng.
+  '''
+}
+
+Table purchase_request {
+  id            uuid    [pk]
+  comment_id    uuid    [not null, unique, note: 'Tầng 2 chống trùng — 1 bình luận sinh tối đa 1 đề nghị']
+  status        varchar [not null, note: 'pending | approved | rejected']
+  ai_result     json    [note: 'Kết quả trích xuất ý định / SKU / số lượng']
+  confidence    decimal(4,3) [note: 'MỚI — điểm tin cậy tổng hợp']
+  reviewed_by   uuid    [note: 'MỚI — nhân viên nào duyệt']
+  reviewed_at   timestamptz [note: 'MỚI']
+  reject_reason varchar [note: 'MỚI']
+  created_at    timestamptz [not null, default: `now()`]
+
+  Note: 'Đây chính là HÀNG ĐỢI DUYỆT ở QĐ-3, cho bình luận có confidence 0.5–0.85'
+}
+
+// ---------------------------------------------------------------------
+// Đơn hàng
+// ---------------------------------------------------------------------
+
+Table orders {
+  id                  uuid    [pk]
+  code                varchar [not null, unique, note: 'MỚI — mã đọc được: LIVE-20260922-0042']
+  shop_id             uuid    [not null]
+  session_id          uuid    [not null, note: 'NOT NULL — mọi đơn đều thuộc một phiên']
+  account_id          uuid    [not null]
+  status              order_status [not null, default: 'DRAFT']
+  purchase_request_id uuid    [note: 'Nullable — đơn có thể tạo trực tiếp không qua đề nghị']
+  source              varchar [not null, note: 'MỚI — COMMENT_AI | COMMENT_SYNTAX | BUY_BUTTON | MANUAL']
+  confirm_token       varchar [unique, note: 'MỚI — token cho link xác nhận public (BẪY-09)']
+  hold_expires_at     timestamptz [note: 'MỚI — hạn sớm nhất trong các reservation, để job quét nhanh']
+  total_amount        decimal(12,0) [not null, default: 0, note: 'MỚI']
+  created_at          timestamptz [not null, default: `now()`]
+  confirmed_at        timestamptz [note: 'MỚI']
+  cancelled_at        timestamptz [note: 'MỚI']
+  cancel_reason       varchar [note: 'MỚI']
+
+  Note: '''
+    ĐÃ BỎ hai cột sku_id và quantity — chuyển sang order_item (QĐ-2).
+
+    Lý do bỏ: 1 khách mua 3 món mà tách 3 đơn thì tạo 3 vận đơn, shop
+    trả 3 lần phí (~30-50k/vận đơn). Đối soát VietQR cũng gãy vì khách
+    chuyển 1 lần 1 số tiền với 1 mã đơn.
+
+    PARTIAL UNIQUE INDEX (dbdiagram không diễn đạt được, viết tay trong
+    migration):
+
+      CREATE UNIQUE INDEX uq_open_draft ON orders (session_id, account_id)
+        WHERE status = \'DRAFT\';
+      -- nền tảng của GỘP ĐƠN: 1 khách tối đa 1 đơn nháp mở trong 1 phiên
+
+      CREATE UNIQUE INDEX uq_order_pr ON orders (purchase_request_id)
+        WHERE purchase_request_id IS NOT NULL;
+      -- tầng 3 chống trùng: duyệt 2 lần không ra 2 đơn
+
+      CREATE INDEX idx_orders_expiry ON orders (hold_expires_at)
+        WHERE status IN (\'DRAFT\',\'PENDING_CONFIRMATION\');
+  '''
+}
+
+Table order_item {
+  id                uuid [pk]
+  order_id          uuid [not null]
+  sku_id            uuid [not null]
+  quantity          int  [not null, note: 'Số lượng THỰC SỰ giữ được']
+  unit_price        decimal(12,0) [not null, note: 'SNAPSHOT giá lúc chốt, không join lại sku khi đọc']
+  requested_qty     int  [note: 'Số khách thực sự muốn']
+  is_partial        boolean [not null, default: false, note: 'true khi quantity < requested_qty (BẪY-06)']
+  suspected_dup     boolean [not null, default: false, note: 'Nghi bình luận lặp, để shop tự xử']
+  source_comment_id uuid [note: 'Truy vết bình luận nào sinh ra dòng này']
+  created_at        timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (order_id, sku_id) [unique, name: 'uq_item_per_sku']
+  }
+
+  Note: '''
+    BẢNG MỚI — hệ quả của QĐ-2.
+    CHECK: quantity > 0
+    uq_item_per_sku: cùng SKU thì CỘNG DỒN quantity, không thêm dòng mới.
+  '''
+}
+
+Table reservation {
+  id                  uuid [pk]
+  sku_id              uuid [not null, note: 'MỚI — trước đây phải join ngược qua order']
+  quantity            int  [not null, note: 'MỚI']
+  status              reservation_status [not null, default: 'HELD', note: 'MỚI — BẮT BUỘC, xem Note']
+  purchase_request_id uuid [note: 'MỚI — chủ sở hữu lúc chờ duyệt (QĐ-3)']
+  order_id            uuid [note: 'Chủ sở hữu sau khi có đơn']
+  order_item_id       uuid [note: 'MỚI — dòng hàng cụ thể']
+  expires_at          timestamptz [not null, note: 'NULL hóa sau khi đơn CONFIRMED']
+  created_at          timestamptz [not null, default: `now()`]
+  released_at         timestamptz [note: 'MỚI']
+  release_reason      varchar [note: 'MỚI — TTL_EXPIRED | CUSTOMER_CANCEL | SHOP_CANCEL | REJECTED_BY_STAFF | FULFILLED']
+
+  Note: '''
+    THAY ĐỔI NHIỀU NHẤT so với ERD cũ, vốn chỉ có (id, order_id, expires_at).
+
+    ⚠️ Cột `status` là BẮT BUỘC. Thiếu nó thì job quét hết hạn chạy 2 lần
+    sẽ TRẢ TỒN 2 LẦN, và không có cách nào phân biệt "đã trả rồi" với
+    "chưa trả". Đây là bug chắc chắn xảy ra khi chạy nhiều worker.
+
+    CHECK ck_res_owner:
+      purchase_request_id IS NOT NULL
+      OR (order_id IS NOT NULL AND order_item_id IS NOT NULL)
+
+    PARTIAL UNIQUE INDEX (viết tay trong migration):
+      CREATE UNIQUE INDEX uq_active_hold_item ON reservation (order_item_id)
+        WHERE status = \'HELD\' AND order_item_id IS NOT NULL;
+      CREATE UNIQUE INDEX uq_active_hold_pr ON reservation (purchase_request_id, sku_id)
+        WHERE status = \'HELD\' AND purchase_request_id IS NOT NULL;
+      CREATE INDEX idx_res_sweep ON reservation (expires_at) WHERE status = \'HELD\';
+
+    Khi nhân viên duyệt đề nghị: CHUYỂN CHỦ SỞ HỮU (UPDATE order_id,
+    order_item_id), TUYỆT ĐỐI không release rồi hold lại — giữa hai thao
+    tác đó có khe hở để người khác cướp mất món hàng khách đã chờ.
+  '''
+}
+
+// ---------------------------------------------------------------------
+// Bảng kỹ thuật — không vẽ vào ERD nghiệp vụ
+// ---------------------------------------------------------------------
+
+Table outbox {
+  id             bigint  [pk, increment]
+  aggregate_type varchar
+  aggregate_id   varchar
+  event_type     varchar [not null, note: 'order.drafted | order.expired | inventory.changed']
+  payload        json    [not null]
+  created_at     timestamptz [not null, default: `now()`]
+  published_at   timestamptz
+
+  Note: '''
+    BẢNG MỚI (kỹ thuật). Transactional outbox: ghi sự kiện trong CÙNG
+    transaction với thay đổi nghiệp vụ, publisher đọc sau.
+    INDEX idx_outbox_unpub ON outbox (id) WHERE published_at IS NULL;
+    Giao at-least-once — phía nhận phải chịu được nhận trùng.
+  '''
+}
+
+Table idempotency_key {
+  key           varchar [pk]
+  scope         varchar [not null]
+  request_hash  varchar [not null]
+  status        varchar [not null, note: 'IN_PROGRESS | DONE']
+  response_code int
+  response_body json
+  created_at    timestamptz [not null, default: `now()`]
+  expires_at    timestamptz [not null]
+
+  Note: 'BẢNG MỚI (kỹ thuật). Tầng 4 chống trùng, pattern của Stripe'
+}
+
+// ---------------------------------------------------------------------
+// Quan hệ
+// ---------------------------------------------------------------------
+
+Ref: product.shop_id            > account.id            // 1 shop - n sản phẩm
+Ref: live_session.shop_id       > account.id            // 1 shop - n phiên
+Ref: comment.account_id         > account.id            // 1 khách - n bình luận
+Ref: orders.account_id          > account.id            // 1 khách - n đơn
+Ref: orders.shop_id             > account.id
+Ref: purchase_request.reviewed_by > account.id
+
+Ref: sku.product_id             > product.id            // 1 sản phẩm - n biến thể
+Ref: inventory.sku_id           - sku.id                // 1 SKU - 1 dòng tồn
+Ref: inventory_ledger.sku_id    > sku.id                // MỚI
+Ref: pinned_product.sku_id      > sku.id
+Ref: order_item.sku_id          > sku.id                // THAY cho orders.sku_id
+Ref: reservation.sku_id         > sku.id                // MỚI
+
+Ref: pinned_product.session_id  > live_session.id
+Ref: comment.session_id         > live_session.id
+Ref: orders.session_id          > live_session.id
+
+Ref: purchase_request.comment_id - comment.id           // 1 bình luận - tối đa 1 đề nghị
+Ref: orders.purchase_request_id  - purchase_request.id  // duyệt thành đơn
+Ref: reservation.purchase_request_id > purchase_request.id  // MỚI — giữ tồn khi chờ duyệt
+
+Ref: order_item.order_id        > orders.id             // MỚI — 1 đơn n dòng
+Ref: reservation.order_id       > orders.id
+Ref: reservation.order_item_id  > order_item.id         // MỚI

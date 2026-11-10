@@ -1,0 +1,361 @@
+/*
+ * Bộ dựng điều kiện lọc.
+ *
+ * Bố cục theo kiểu bảng lọc nâng cao của LeetCode: mỗi dòng là một
+ * điều kiện (trường · phép so · giá trị), thêm bớt được, kèm lựa chọn
+ * khớp TẤT CẢ hay BẤT KỲ.
+ *
+ * Bảng gốc dùng nền tối; ở đây đổi sang hệ màu sáng của dự án để
+ * không lạc lõng giữa các trang còn lại.
+ *
+ * CSS module nên tên lớp được băm theo file — không thể đụng trang của
+ * người khác.
+ */
+
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-subtle);
+  /* KHÔNG đặt overflow: hidden ở đây. Menu "Thêm điều kiện" mở ngược
+     lên trên và ô chọn giá trị mở xuống dưới — cả hai tràn ra ngoài
+     khung, cắt đi là chúng bị khuất một nửa và bấm không trúng. */
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  /* Cũng không cuộn trong đây: vùng cuộn sẽ cắt mất ô chọn giá trị.
+     Tối đa bảy điều kiện nên danh sách không bao giờ dài tới mức cần. */
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 148px 128px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  min-width: 0;
+}
+
+.fieldName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.control:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+select.control {
+  cursor: pointer;
+}
+
+.range {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.rangeDash {
+  color: var(--color-muted);
+}
+
+/* ── Ô chọn nhiều giá trị ───────────────────────────────────────── */
+
+.multi {
+  position: relative;
+  min-width: 0;
+}
+
+.multiTrigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.multiTrigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+.multiPlaceholder {
+  color: var(--color-muted);
+}
+
+.multiValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 220px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px rgb(19 27 46 / 14%);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.option:hover {
+  background: var(--color-subtle);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.optionOn {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ── Nút bỏ dòng và thêm dòng ───────────────────────────────────── */
+
+.remove,
+.add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.remove:hover {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.add {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border-color: var(--color-border);
+}
+
+.add:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.add:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.remove:focus-visible,
+.add:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.addWrap {
+  position: relative;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.addMenu {
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 4px);
+  left: var(--space-4);
+  min-width: 220px;
+  /* Đủ cao cho cả bảy trường: cắt mất mục cuối trông như lỗi dựng
+     giao diện chứ không như danh sách cuộn được. */
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px rgb(19 27 46 / 14%);
+}
+
+/* ── Chân bảng ──────────────────────────────────────────────────── */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px);
+  background: var(--color-surface);
+}
+
+.footNote {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  margin-right: auto;
+}
+
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.ghost:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.ghost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ghost:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 720px) {
+  /*
+   * Xếp dọc trên màn hình hẹp.
+   *
+   * Phải gán grid-area cho CẢ BỐN ô. Bỏ sót hai ô thì chúng bị đẩy
+   * xuống các hàng ngầm phía sau vùng đã đặt tên, tràn ra ngoài thẻ
+   * và che mất phần bên trên — ô chọn giá trị khi đó bấm không trúng.
+   */
+  .row {
+    grid-template-columns: 1fr 32px;
+    grid-template-areas:
+      "field  remove"
+      "op     op"
+      "value  value";
+    row-gap: var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .row > :nth-child(1) {
+    grid-area: field;
+  }
+
+  .row > :nth-child(2) {
+    grid-area: op;
+  }
+
+  .row > :nth-child(3) {
+    grid-area: value;
+  }
+
+  .row > :nth-child(4) {
+    grid-area: remove;
+    justify-self: end;
+  }
+}
+
+
+@media (max-width: 720px) {
+  /*
+   * Trong tấm trượt có cuộn, một popover `absolute` sẽ bị vùng cuộn
+   * cắt mất. Cho nó chảy theo dòng và đẩy nội dung xuống thay vì nổi
+   * đè lên.
+   */
+  .popover,
+  .addMenu {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    margin-top: var(--space-2);
+    max-height: 220px;
+    box-shadow: none;
+  }
+}
