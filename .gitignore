@@ -43,3 +43,8 @@ docs/test
 # Local agent skills and workflow docs - keep local only
 agents/
 workflows/
+
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
