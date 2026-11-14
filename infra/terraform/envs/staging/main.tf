@@ -50,3 +50,13 @@ module "data" {
   redis_sg_id     = module.security.redis_sg_id
   redis_tls       = true # doi false neu client Redis khong tao tu URL
 }
+
+data "aws_caller_identity" "current" {}
+
+module "platform" {
+  source        = "../../modules/platform"
+  name          = "liveorder-staging"
+  account_id    = data.aws_caller_identity.current.account_id
+  region        = "ap-southeast-1"
+  db_secret_arn = module.data.db_secret_arn
+}
