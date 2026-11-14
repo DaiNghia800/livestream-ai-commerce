@@ -60,3 +60,23 @@ module "platform" {
   region        = "ap-southeast-1"
   db_secret_arn = module.data.db_secret_arn
 }
+
+module "compute" {
+  source                 = "../../modules/compute"
+  name                   = "liveorder-staging"
+  region                 = "ap-southeast-1"
+  vpc_id                 = module.network.vpc_id
+  app_subnet_ids         = module.network.app_subnet_ids
+  ecs_sg_id              = module.security.ecs_sg_id
+  execution_role_arn     = module.platform.execution_role_arn
+  commerce_task_role_arn = module.platform.commerce_task_role_arn
+  realtime_task_role_arn = module.platform.realtime_task_role_arn
+  ecr_urls               = module.platform.ecr_urls
+  db_address             = module.data.db_address
+  db_port                = module.data.db_port
+  db_name                = module.data.db_name
+  db_secret_arn          = module.data.db_secret_arn
+  redis_url              = module.data.redis_url
+  secret_arns            = module.platform.commerce_secret_arns
+  desired_count          = 0 # mai doi thanh 1 CUNG LUC voi enable_nat = true
+}
