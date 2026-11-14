@@ -48,3 +48,4 @@ workflows/
 *.tfstate*
 *.tfplan
 *.tfvars
+tfplan
