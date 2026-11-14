@@ -34,3 +34,10 @@ module "network" {
   azs        = ["ap-southeast-1a", "ap-southeast-1b"]
   enable_nat = false
 }
+
+module "security" {
+  source    = "../../modules/security"
+  name      = "liveorder-staging"
+  vpc_id    = module.network.vpc_id
+  app_ports = [8000, 3002]
+}
