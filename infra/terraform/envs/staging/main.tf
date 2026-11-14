@@ -80,3 +80,15 @@ module "compute" {
   secret_arns            = module.platform.commerce_secret_arns
   desired_count          = 0 # mai doi thanh 1 CUNG LUC voi enable_nat = true
 }
+
+module "edge" {
+  source                = "../../modules/edge"
+  name                  = "liveorder-staging"
+  app_subnet_ids        = module.network.app_subnet_ids
+  vpclink_sg_id         = module.security.vpclink_sg_id
+  cloudmap_service_arns = module.compute.cloudmap_service_arns
+}
+
+output "api_url" {
+  value = module.edge.api_url
+}
