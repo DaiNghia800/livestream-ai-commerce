@@ -140,3 +140,60 @@ resource "aws_iam_role_policy" "realtime_exec_channel" {
   role   = aws_iam_role.realtime_task.id
   policy = data.aws_iam_policy_document.exec_channel.json
 }
+
+data "aws_iam_policy_document" "commerce_app" {
+  statement {
+    sid       = "SendComments"
+    actions   = ["sqs:SendMessage", "sqs:GetQueueUrl"]
+    resources = [var.sqs_comments_arn]
+  }
+  statement {
+    sid = "ConsumeAiResults"
+    actions = [
+      "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes",
+      "sqs:ChangeMessageVisibility", "sqs:GetQueueUrl",
+    ]
+    resources = [var.sqs_ai_results_arn]
+  }
+  statement {
+    sid       = "ImageObjects"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${var.s3_images_arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "commerce_app" {
+  name   = "sqs-s3"
+  role   = aws_iam_role.commerce_task.id
+  policy = data.aws_iam_policy_document.commerce_app.json
+}
+
+data "aws_iam_policy_document" "commerce_ivs" {
+  statement {
+    sid = "IvsChannels"
+    actions = [
+      "ivs:CreateChannel", "ivs:GetChannel", "ivs:DeleteChannel",
+      "ivs:StopStream", "ivs:ListStreamKeys", "ivs:GetStreamKey",
+      "ivs:TagResource",
+    ]
+    resources = [
+      "arn:aws:ivs:${var.ivs_region}:${var.account_id}:channel/*",
+      "arn:aws:ivs:${var.ivs_region}:${var.account_id}:stream-key/*",
+    ]
+  }
+  statement {
+    sid = "IvsChat"
+    actions = [
+      "ivschat:CreateRoom", "ivschat:GetRoom", "ivschat:DeleteRoom",
+      "ivschat:CreateChatToken", "ivschat:SendEvent",
+      "ivschat:TagResource",
+    ]
+    resources = ["arn:aws:ivschat:${var.ivs_region}:${var.account_id}:room/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "commerce_ivs" {
+  name   = "ivs"
+  role   = aws_iam_role.commerce_task.id
+  policy = data.aws_iam_policy_document.commerce_ivs.json
+}

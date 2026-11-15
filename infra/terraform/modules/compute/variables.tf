@@ -82,3 +82,13 @@ variable "desired_count" {
   type    = number
   default = 0
 }
+
+variable "ai_results_queue_url" {
+  type    = string
+  default = ""
+}
+
+variable "s3_bucket_name" {
+  type    = string
+  default = ""
+}

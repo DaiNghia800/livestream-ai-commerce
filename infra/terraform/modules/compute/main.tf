@@ -47,6 +47,8 @@ locals {
     ],
     var.public_base_url != "" ? [{ name = "PUBLIC_BASE_URL", value = var.public_base_url }] : [],
     var.web_base_url != "" ? [{ name = "WEB_BASE_URL", value = var.web_base_url }] : [],
+    var.ai_results_queue_url != "" ? [{ name = "SQS_AI_RESULTS_QUEUE_URL", value = var.ai_results_queue_url }] : [],
+    var.s3_bucket_name != "" ? [{ name = "S3_BUCKET_NAME", value = var.s3_bucket_name }] : [],
   )
 
   commerce_secrets = [

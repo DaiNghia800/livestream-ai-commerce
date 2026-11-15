@@ -54,11 +54,14 @@ module "data" {
 data "aws_caller_identity" "current" {}
 
 module "platform" {
-  source        = "../../modules/platform"
-  name          = "liveorder-staging"
-  account_id    = data.aws_caller_identity.current.account_id
-  region        = "ap-southeast-1"
-  db_secret_arn = module.data.db_secret_arn
+  source             = "../../modules/platform"
+  name               = "liveorder-staging"
+  account_id         = data.aws_caller_identity.current.account_id
+  region             = "ap-southeast-1"
+  db_secret_arn      = module.data.db_secret_arn
+  sqs_comments_arn   = data.aws_sqs_queue.comments.arn
+  sqs_ai_results_arn = data.aws_sqs_queue.ai_results.arn
+  s3_images_arn      = data.aws_s3_bucket.images.arn
 }
 
 module "compute" {
@@ -80,6 +83,9 @@ module "compute" {
   secret_arns            = module.platform.commerce_secret_arns
   desired_count          = 1 # mai doi thanh 1 CUNG LUC voi enable_nat = true
   public_base_url        = "https://rylmt4pnyk.execute-api.ap-southeast-1.amazonaws.com"
+  web_base_url           = "https://dev.d220orcvb6awpu.amplifyapp.com"
+  ai_results_queue_url   = data.aws_sqs_queue.ai_results.url
+  s3_bucket_name         = data.aws_s3_bucket.images.bucket
 }
 
 module "edge" {
