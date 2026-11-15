@@ -32,7 +32,7 @@ module "network" {
   name       = "liveorder-staging"
   region     = "ap-southeast-1"
   azs        = ["ap-southeast-1a", "ap-southeast-1b"]
-  enable_nat = false
+  enable_nat = true
 }
 
 module "security" {
@@ -78,7 +78,8 @@ module "compute" {
   db_secret_arn          = module.data.db_secret_arn
   redis_url              = module.data.redis_url
   secret_arns            = module.platform.commerce_secret_arns
-  desired_count          = 0 # mai doi thanh 1 CUNG LUC voi enable_nat = true
+  desired_count          = 1 # mai doi thanh 1 CUNG LUC voi enable_nat = true
+  public_base_url        = "https://rylmt4pnyk.execute-api.ap-southeast-1.amazonaws.com"
 }
 
 module "edge" {
