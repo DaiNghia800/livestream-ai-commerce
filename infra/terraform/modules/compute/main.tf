@@ -151,6 +151,10 @@ resource "aws_ecs_service" "commerce" {
   launch_type            = "FARGATE"
   enable_execute_command = true
 
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
   # 1 task: dung task cu truoc, roi moi bat task moi (tranh 2 task cung migrate)
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
@@ -175,6 +179,10 @@ resource "aws_ecs_service" "realtime" {
   desired_count          = var.desired_count
   launch_type            = "FARGATE"
   enable_execute_command = true
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
