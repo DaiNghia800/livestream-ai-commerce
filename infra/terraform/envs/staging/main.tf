@@ -94,6 +94,7 @@ module "edge" {
   app_subnet_ids        = module.network.app_subnet_ids
   vpclink_sg_id         = module.security.vpclink_sg_id
   cloudmap_service_arns = module.compute.cloudmap_service_arns
+  cors_origins          = ["https://dev.d220orcvb6awpu.amplifyapp.com"]
 }
 
 output "api_url" {

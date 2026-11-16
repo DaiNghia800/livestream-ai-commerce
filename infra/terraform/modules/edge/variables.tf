@@ -15,6 +15,5 @@ variable "cloudmap_service_arns" {
 }
 
 variable "cors_origins" {
-  type    = list(string)
-  default = ["*"]
+  type = list(string)
 }
