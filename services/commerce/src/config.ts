@@ -178,11 +178,16 @@ if (
   throw new Error("Production requires SECRET_KEY with at least 32 characters.");
 }
 
+const dbFromParts = process.env.DB_HOST
+  ? `postgresql://${encodeURIComponent(process.env.DB_USER ?? "")}:${encodeURIComponent(process.env.DB_PASSWORD ?? "")}@${process.env.DB_HOST}:${process.env.DB_PORT ?? "5432"}/${process.env.DB_NAME ?? "commerce_db"}`
+  : undefined;
+
 export const config: AppConfig = {
   port,
-  // Hierarchy: COMMERCE_DATABASE_URL -> DATABASE_URL -> local fallback
+    // Hierarchy: COMMERCE_DATABASE_URL -> DB_* parts -> DATABASE_URL -> local fallback
   databaseUrl:
     process.env.COMMERCE_DATABASE_URL ||
+    dbFromParts ||
     process.env.DATABASE_URL ||
     "postgresql://postgres:postgres@localhost:5432/commerce_db",
   apiPrefix: process.env.API_PREFIX || "/api",
