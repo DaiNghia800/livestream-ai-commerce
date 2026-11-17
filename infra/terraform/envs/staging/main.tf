@@ -100,3 +100,19 @@ module "edge" {
 output "api_url" {
   value = module.edge.api_url
 }
+
+module "cicd" {
+  source        = "../../modules/cicd"
+  name          = "liveorder-staging"
+  github_repo   = "DaiNghia800/livestream-ai-commerce"
+  github_branch = "dev"
+  passrole_arns = [
+    module.platform.execution_role_arn,
+    module.platform.commerce_task_role_arn,
+    module.platform.realtime_task_role_arn,
+  ]
+}
+
+output "cicd_role_arn" {
+  value = module.cicd.deploy_role_arn
+}
