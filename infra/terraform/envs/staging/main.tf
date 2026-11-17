@@ -104,7 +104,7 @@ output "api_url" {
 module "cicd" {
   source        = "../../modules/cicd"
   name          = "liveorder-staging"
-  github_repo   = "DaiNghia800/livestream-ai-commerce"
+  github_repo   = "DaiNghia800@169574430/livestream-ai-commerce@1369108752"
   github_branch = "dev"
   passrole_arns = [
     module.platform.execution_role_arn,
