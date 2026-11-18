@@ -22,6 +22,8 @@ import {
   updateLivestream,
 } from "../../api/get-livestreams";
 import { formatScheduledAt } from "../../api/create-livestream";
+import { requestCoverPresign } from "../../api/request-cover-presign";
+import { uploadFileToS3 } from "../../api/upload-file-to-s3";
 import {
   addLivestreamProduct,
   removeLivestreamProduct,
@@ -80,7 +82,7 @@ export function LivestreamEditForm({ livestreamId }: LivestreamEditFormProps) {
           hoặc đã bị xóa khỏi hệ thống.
         </p>
         <Link
-          href="/shop/livestream"
+          href="/admin/livestream"
           className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-primary-container"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -143,6 +145,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
   const [coverImage, setCoverImage] = useState<string | null>(initialCoverImage);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [startDate, setStartDate] = useState(initialStartDate);
   const [startTime, setStartTime] = useState(initialStartTime);
   const [products, setProducts] = useState<LiveProductItem[]>(initialProducts);
@@ -162,6 +165,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
   const isDirty = useMemo(() => {
     if (title !== initialTitle) return true;
     if (description !== initialDescription) return true;
+    if (coverFile !== null) return true;
     if (coverImage !== initialCoverImage) return true;
     if (startDate !== initialStartDate) return true;
     if (startTime !== initialStartTime) return true;
@@ -174,6 +178,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     initialTitle,
     description,
     initialDescription,
+    coverFile,
     coverImage,
     initialCoverImage,
     startDate,
@@ -240,10 +245,10 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
         "Bạn có các thay đổi chưa lưu. Bạn có chắc muốn hủy và quay lại danh sách phiên?"
       );
       if (confirmed) {
-        router.push("/shop/livestream");
+        router.push("/admin/livestream");
       }
     } else {
-      router.push("/shop/livestream");
+      router.push("/admin/livestream");
     }
   };
 
@@ -263,13 +268,36 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
 
     if (isBackendSession) {
       try {
+        let finalCoverImageKey: string | null | undefined = undefined;
+
+        if (coverFile) {
+          // Người dùng đã chọn ảnh mới: upload lên S3 qua presigned URL
+          const presignRes = await requestCoverPresign({
+            fileName: coverFile.name,
+            contentType: coverFile.type,
+            fileSize: coverFile.size,
+          });
+
+          await uploadFileToS3(presignRes.uploadUrl, coverFile, coverFile.type);
+          finalCoverImageKey = presignRes.objectKey;
+        } else if (coverImage === null) {
+          // Người dùng bấm xóa ảnh bìa
+          finalCoverImageKey = null;
+        } else if (coverImage !== initialCoverImage) {
+          // Chuỗi ảnh bị thay đổi thủ công (fallback)
+          finalCoverImageKey = coverImage;
+        } else {
+          // Không thay đổi ảnh bìa: giữ nguyên coverImageKey hiện tại hoặc undefined
+          finalCoverImageKey = session.coverImageKey !== undefined ? session.coverImageKey : undefined;
+        }
+
         const scheduledAt = formatScheduledAt(startDate, startTime);
 
         // 1. Update livestream metadata on backend
         await updateLivestream(session.id, {
           title: title.trim(),
           description: description.trim() || null,
-          coverImageKey: coverImage || null,
+          coverImageKey: finalCoverImageKey,
           scheduledAt,
         });
 
@@ -342,7 +370,7 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
     );
 
     setTimeout(() => {
-      router.push("/shop/livestream");
+      router.push("/admin/livestream");
     }, 800);
   };
 
@@ -401,8 +429,9 @@ function LivestreamEditContent({ session }: { session: Livestream }) {
             description={description}
             onDescriptionChange={setDescription}
             coverImage={coverImage}
-            onCoverImageChange={(v) => {
+            onCoverImageChange={(v, f) => {
               setCoverImage(v);
+              setCoverFile(f || null);
               if (errors.coverImage) setErrors((prev) => ({ ...prev, coverImage: undefined }));
             }}
             startDate={startDate}

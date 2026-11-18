@@ -45,7 +45,7 @@ export function AdminPortal() {
       localStorage.removeItem("admin_auth_user");
       localStorage.removeItem("user_role");
       setToken("");
-      router.replace("/admin");
+      router.replace("/admin/login");
       return;
     }
     if (!response.ok) throw new Error("Không thể tải lời mời shop.");
@@ -56,12 +56,15 @@ export function AdminPortal() {
 
   useEffect(() => {
     if (localStorage.getItem("user_role") !== "admin") {
-      router.replace(localStorage.getItem("user_role") === "shop_owner" ? "/shop" : "/admin");
+      router.replace(localStorage.getItem("user_role") === "shop_owner" ? "/admin" : "/admin/login");
       return;
     }
-    const savedToken = localStorage.getItem("admin_access_token") ?? "";
+    const savedToken =
+      localStorage.getItem("admin_access_token") ??
+      localStorage.getItem("access_token") ??
+      "";
     if (savedToken.length === 0) {
-      router.replace("/admin");
+      router.replace("/admin/login");
       return;
     }
     let active = true;
@@ -77,7 +80,7 @@ export function AdminPortal() {
           localStorage.removeItem("admin_auth_user");
           localStorage.removeItem("user_role");
           if (active) {
-            router.replace("/admin");
+            router.replace("/admin/login");
           }
           return;
         }

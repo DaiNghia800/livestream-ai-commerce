@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -934,7 +934,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           </p>
           <div className="mt-6">
             <Link
-              href="/shop/livestream"
+              href="/admin/livestream"
               className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition"
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -964,7 +964,7 @@ export function BroadcastStudio({ livestreamId }: BroadcastStudioProps) {
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <Link
-              href="/shop/livestream"
+              href="/admin/livestream"
               className="px-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg hover:bg-slate-700 transition"
             >
               Quay về danh sách

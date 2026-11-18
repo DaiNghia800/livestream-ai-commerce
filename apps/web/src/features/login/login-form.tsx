@@ -58,31 +58,31 @@ export function LoginForm() {
       }
 
       const data = await res.json();
-      if (data.user?.role === "admin") {
-        setErrors({
-          general: "Tài khoản quản trị viên cần đăng nhập riêng tại cổng /admin.",
-        });
-        return;
-      }
+      const role = data.user?.role;
 
-      // A shop/customer login must not keep a previous admin session in this browser.
-      localStorage.removeItem("admin_access_token");
-      localStorage.removeItem("admin_refresh_token");
-      localStorage.removeItem("admin_auth_user");
       localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("admin_access_token", data.access_token);
       if (data.user) {
-        localStorage.setItem(
-          "auth_user",
-          JSON.stringify({ full_name: data.user.full_name, email: data.user.email })
-        );
+        const userJson = JSON.stringify({
+          id: data.user.id,
+          full_name: data.user.full_name,
+          email: data.user.email,
+          role: data.user.role,
+        });
+        localStorage.setItem("auth_user", userJson);
+        localStorage.setItem("admin_auth_user", userJson);
       }
-      if (data.user?.role) {
-        localStorage.setItem("user_role", data.user.role);
+      if (role) {
+        localStorage.setItem("user_role", role);
       }
       if (data.refresh_token) {
         localStorage.setItem("refresh_token", data.refresh_token);
+        localStorage.setItem("admin_refresh_token", data.refresh_token);
       }
-      router.push(data.user?.role === "shop_owner" ? "/shop" : "/");
+      window.dispatchEvent(new Event("storage"));
+
+      const isStaffOrAdmin = role === "admin" || role === "shop_owner";
+      router.push(isStaffOrAdmin ? "/admin" : "/");
     } catch {
       setErrors({
         general: "Không thể kết nối đến server. Vui lòng thử lại.",

@@ -1,54 +1,143 @@
+"use client";
+
 import {
   Calendar,
   Clock,
   User,
-  Radio,
+  ShoppingBag,
+  Sparkles,
   FileText,
   Image as ImageIcon,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
-import { formatFriendlyIvsChannel } from "../../api/get-livestreams";
+import { useNow } from "@/lib/use-now";
 
 interface DetailSessionInfoProps {
   session: Livestream;
 }
 
-function formatScheduleDateTime(dateStr?: string, timeStr?: string): string {
-  if (!dateStr && !timeStr) return "Chưa thiết lập";
-  if (dateStr && timeStr) {
-    const parts = dateStr.split("-");
-    const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
-    return `${timeStr} ngày ${formattedDate}`;
+/**
+ * Format ngày giờ thân thiện theo chuẩn Việt Nam (HH:mm, DD/MM/YYYY)
+ * Tự động chuẩn hóa chuỗi ISO datetime, ngày YYYY-MM-DD và cắt bỏ giây (:00)
+ */
+function formatSessionDateTime(
+  dateOrIso?: string | null,
+  timeStr?: string | null
+): string {
+  if (!dateOrIso && !timeStr) return "Chưa thiết lập";
+
+  // 1. Nếu dateOrIso là chuỗi ISO datetime (chứa 'T' hoặc độ dài > 10)
+  if (dateOrIso && (dateOrIso.includes("T") || dateOrIso.length > 10)) {
+    const d = new Date(dateOrIso);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${hours}:${minutes}, ${day}/${month}/${year}`;
+    }
   }
-  if (dateStr) {
-    const parts = dateStr.split("-");
-    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+
+  // 2. Nếu timeStr là chuỗi ISO datetime
+  if (timeStr && (timeStr.includes("T") || timeStr.length > 10)) {
+    const d = new Date(timeStr);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${hours}:${minutes}, ${day}/${month}/${year}`;
+    }
   }
-  return timeStr || "Chưa thiết lập";
+
+  // 3. Chuẩn hóa chuỗi giờ (cắt bỏ giây nếu có dạng HH:mm:ss -> HH:mm)
+  let cleanTime = "";
+  if (timeStr && timeStr.trim()) {
+    const t = timeStr.trim();
+    const parts = t.split(":");
+    if (parts.length >= 2) {
+      cleanTime = `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+    } else {
+      cleanTime = t;
+    }
+  }
+
+  // 4. Chuẩn hóa chuỗi ngày (YYYY-MM-DD -> DD/MM/YYYY)
+  let cleanDate = "";
+  if (dateOrIso && dateOrIso.trim()) {
+    const d = dateOrIso.trim();
+    if (d.includes("-")) {
+      const parts = d.split("-");
+      if (parts.length === 3) {
+        const [y, m, day] = parts;
+        cleanDate = `${day.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+      } else {
+        cleanDate = d;
+      }
+    } else {
+      cleanDate = d;
+    }
+  }
+
+  // Ghép theo format chuẩn: HH:mm, DD/MM/YYYY
+  if (cleanTime && cleanDate) {
+    return `${cleanTime}, ${cleanDate}`;
+  }
+  if (cleanDate) {
+    return cleanDate;
+  }
+  return cleanTime || "Chưa thiết lập";
 }
 
 export function DetailSessionInfo({ session }: DetailSessionInfoProps) {
-  const isStarted = session.status === "LIVE" || session.status === "ENDED" || session.status === "STARTING";
+  const isLive = session.status === "LIVE";
+  const isStarted = isLive || session.status === "ENDED" || session.status === "STARTING";
   const isEnded = session.status === "ENDED";
+  const now = useNow(isLive);
 
-  const scheduledStart = formatScheduleDateTime(session.startDate, session.startTime);
+  const scheduledStart = formatSessionDateTime(
+    session.scheduledAt || session.startDate,
+    session.startTime
+  );
   const scheduledEnd = session.endDate || session.endTime
-    ? formatScheduleDateTime(session.endDate, session.endTime)
+    ? formatSessionDateTime(session.endDate || session.startDate, session.endTime)
     : "Chưa thiết lập";
 
   const actualStart = isStarted
-    ? session.startedAt
-      ? `${session.startedAt}${session.startDate ? ` ngày ${formatScheduleDateTime(session.startDate)}` : ""}`
-      : session.timeDisplay || "Đang phát sóng"
+    ? formatSessionDateTime(
+        session.startedAt || session.startDate,
+        session.startedAt && !session.startedAt.includes("T") ? session.startedAt : session.startTime
+      )
     : "Chưa bắt đầu";
 
   const actualEnd = isEnded
-    ? session.endedAt
-      ? `${session.endedAt}${session.endDate ? ` ngày ${formatScheduleDateTime(session.endDate)}` : ""}`
-      : session.subTimeDisplay || "Đã kết thúc"
+    ? formatSessionDateTime(
+        session.endedAt || session.endDate,
+        session.endedAt && !session.endedAt.includes("T") ? session.endedAt : session.endTime
+      )
     : isStarted
       ? "Đang diễn ra"
       : "Chưa bắt đầu";
+
+  // Tính thời gian live an toàn (tránh placeholder "Giờ Việt Nam (GMT+7)")
+  let liveDurationDisplay = "Đang phát sóng";
+  if (session.startedAt) {
+    const startMs = new Date(session.startedAt).getTime();
+    if (!isNaN(startMs) && now > 0) {
+      const diffSec = Math.max(0, Math.floor((now - startMs) / 1000));
+      const hours = Math.floor(diffSec / 3600);
+      const minutes = Math.floor((diffSec % 3600) / 60);
+      const seconds = diffSec % 60;
+      liveDurationDisplay = [hours, minutes, seconds].map((v) => String(v).padStart(2, "0")).join(":");
+    }
+  }
+  if (liveDurationDisplay === "Đang phát sóng" && session.subTimeDisplay) {
+    if (!session.subTimeDisplay.includes("GMT") && !session.subTimeDisplay.includes("Việt Nam")) {
+      liveDurationDisplay = session.subTimeDisplay.replace("Đã live ", "").trim();
+    }
+  }
 
   return (
     <section
@@ -92,88 +181,88 @@ export function DetailSessionInfo({ session }: DetailSessionInfoProps) {
             </p>
           </div>
 
-          {/* Metadata Grid */}
+          {/* Metadata Grid by Status */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 pt-2 border-t border-outline-variant/40">
-            {/* 1. Bắt đầu dự kiến */}
+            {/* Box 1: Thời gian */}
             <div className="p-2.5 rounded-lg bg-surface-container-low/40 border border-outline-variant/30">
               <span className="text-[11px] font-medium text-on-surface-variant flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                Bắt đầu dự kiến
+                {session.status === "ENDED" ? "Bắt đầu lúc" : session.status === "LIVE" ? "Đang phát từ" : "Lịch hẹn phát"}
               </span>
-              <p className="text-xs font-semibold text-on-surface mt-1 truncate" title={scheduledStart}>
-                {scheduledStart}
+              <p className="text-xs font-semibold text-on-surface mt-1 truncate" title={isStarted ? actualStart : scheduledStart}>
+                {isStarted ? actualStart : scheduledStart}
               </p>
             </div>
 
-            {/* 2. Kết thúc dự kiến */}
-            <div className="p-2.5 rounded-lg bg-surface-container-low/40 border border-outline-variant/30">
-              <span className="text-[11px] font-medium text-on-surface-variant flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-                Kết thúc dự kiến
-              </span>
-              <p
-                className={`text-xs font-semibold mt-1 truncate ${
-                  scheduledEnd === "Chưa thiết lập" ? "text-outline font-normal" : "text-on-surface"
-                }`}
-                title={scheduledEnd}
-              >
-                {scheduledEnd}
-              </p>
-            </div>
-
-            {/* 3. Bắt đầu thực tế */}
+            {/* Box 2: Thời lượng / Kết thúc */}
             <div className="p-2.5 rounded-lg bg-surface-container-low/40 border border-outline-variant/30">
               <span className="text-[11px] font-medium text-on-surface-variant flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                Bắt đầu thực tế
+                {session.status === "ENDED"
+                  ? "Kết thúc lúc"
+                  : session.status === "LIVE"
+                    ? "Thời gian đã live"
+                    : scheduledEnd !== "Chưa thiết lập"
+                      ? "Dự kiến kết thúc"
+                      : "Trạng thái phiên"}
               </span>
               <p
-                className={`text-xs font-semibold mt-1 truncate ${
-                  actualStart === "Chưa bắt đầu" ? "text-outline font-normal" : "text-emerald-700"
-                }`}
-                title={actualStart}
+                className="text-xs font-semibold text-on-surface mt-1 truncate"
+                title={
+                  session.status === "ENDED"
+                    ? actualEnd
+                    : session.status === "LIVE"
+                      ? liveDurationDisplay
+                      : scheduledEnd !== "Chưa thiết lập"
+                        ? scheduledEnd
+                        : "Đã lên lịch sẵn sàng"
+                }
               >
-                {actualStart}
+                {session.status === "ENDED"
+                  ? actualEnd
+                  : session.status === "LIVE"
+                    ? liveDurationDisplay
+                    : scheduledEnd !== "Chưa thiết lập"
+                      ? scheduledEnd
+                      : "Đã lên lịch sẵn sàng"}
               </p>
             </div>
 
-            {/* 4. Kết thúc thực tế */}
+            {/* Box 3: Người dẫn phiên (Host) */}
             <div className="p-2.5 rounded-lg bg-surface-container-low/40 border border-outline-variant/30">
               <span className="text-[11px] font-medium text-on-surface-variant flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5 text-secondary" aria-hidden="true" />
-                Kết thúc thực tế
+                <User className="h-3.5 w-3.5 text-secondary" aria-hidden="true" />
+                Host phụ trách
               </span>
-              <p
-                className={`text-xs font-semibold mt-1 truncate ${
-                  actualEnd === "Chưa bắt đầu" || actualEnd === "Chưa thiết lập"
-                    ? "text-outline font-normal"
-                    : "text-on-surface"
-                }`}
-                title={actualEnd}
-              >
-                {actualEnd}
+              <p className="text-xs font-semibold text-on-surface mt-1 truncate">
+                {session.hostName || "Chưa phân công"}
+              </p>
+            </div>
+
+            {/* Box 4: Danh mục sản phẩm */}
+            <div className="p-2.5 rounded-lg bg-surface-container-low/40 border border-outline-variant/30">
+              <span className="text-[11px] font-medium text-on-surface-variant flex items-center gap-1.5">
+                <ShoppingBag className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                Sản phẩm trong phiên
+              </span>
+              <p className="text-xs font-semibold text-on-surface mt-1 truncate">
+                {session.productCount || (session.products?.length ?? 0)} sản phẩm
               </p>
             </div>
           </div>
 
-          {/* Sub-bar: Host & Channel info */}
+          {/* Sub-bar: Hướng dẫn chốt đơn cho Host & Người xem */}
           <div className="flex items-center gap-4 flex-wrap text-xs text-on-surface-variant pt-1">
             <div className="flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-              <span>Host:</span>
-              <strong className="text-on-surface font-semibold">
-                {session.hostName || "Chưa phân công"}
+              <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              <span>Cú pháp chốt đơn AI:</span>
+              <strong className="text-primary font-semibold font-mono bg-primary/5 px-2 py-0.5 rounded border border-primary/20">
+                [Mã chốt] + SĐT
               </strong>
             </div>
             <div className="h-3 w-px bg-outline-variant" aria-hidden="true" />
-            <div className="flex items-center gap-1.5">
-              <Radio className="h-3.5 w-3.5 text-secondary" aria-hidden="true" />
-              <span>Kênh phát:</span>
-              <strong className="text-on-surface font-semibold font-mono">
-                {session.ivsChannel
-                  ? `${formatFriendlyIvsChannel(session.ivsChannel)} (${session.resolution || "1080p60"})`
-                  : session.channelName || "Chưa cấu hình IVS"}
-              </strong>
+            <div className="flex items-center gap-1.5 text-slate-500">
+              <span>Độ phân giải: 1080p HD</span>
             </div>
           </div>
         </div>

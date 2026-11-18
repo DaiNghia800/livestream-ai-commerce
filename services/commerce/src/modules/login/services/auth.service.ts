@@ -21,7 +21,11 @@ function createSession(user: User, metadata: RequestMetadata): RefreshSession {
   };
 }
 
-function createAuthResponse(user: User, refreshToken: string): AuthResponse {
+function createAuthResponse(
+  user: User,
+  refreshToken: string,
+  permissions?: string[]
+): AuthResponse {
   return {
     access_token: createAccessToken(user),
     refresh_token: refreshToken,
@@ -31,6 +35,7 @@ function createAuthResponse(user: User, refreshToken: string): AuthResponse {
       email: user.email,
       full_name: user.fullName,
       role: user.role,
+      permissions: permissions ?? [],
     },
   };
 }
@@ -79,7 +84,8 @@ export class AuthService {
 
     const session = createSession(user, metadata);
     await this.repository.createSession(user.id, session);
-    return createAuthResponse(user, session.refreshToken);
+    const permissions = await this.repository.getRolePermissions(user.role);
+    return createAuthResponse(user, session.refreshToken, permissions);
   }
 
   acceptShopInvitation(

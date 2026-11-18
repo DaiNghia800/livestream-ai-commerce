@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import {
@@ -37,24 +37,20 @@ export function DeleteLivestreamModal({
   const isSingle = sessions.length === 1;
   const singleSession = isSingle ? sessions[0] : null;
 
-  // Phân loại phiên: có thể xóa vs cần bảo lưu
-  const deletableSessions = sessions.filter(
-    (s) =>
-      s.status !== "LIVE" &&
-      s.status !== "STARTING" &&
-      (!s.aiOrderCount || s.aiOrderCount === 0)
-  );
-  const protectedSessions = sessions.filter(
-    (s) =>
-      (s.aiOrderCount && s.aiOrderCount > 0) ||
-      s.status === "LIVE" ||
-      s.status === "STARTING"
-  );
+  // Phân loại phiên: có thể xóa vs cần bảo lưu (chỉ bảo lưu khi phiên đang phát hoặc ĐÃ CÓ ĐƠN ĐẶT HÀNG THỰC TẾ)
+  const isSessionProtected = (s: Livestream) =>
+    s.status === "LIVE" ||
+    s.status === "STARTING" ||
+    Boolean(s.hasConfirmedOrders) ||
+    Boolean(s.confirmedOrderCount && s.confirmedOrderCount > 0);
+
+  const deletableSessions = sessions.filter((s) => !isSessionProtected(s));
+  const protectedSessions = sessions.filter((s) => isSessionProtected(s));
 
   // Trạng thái hiển thị
   const isBlocked =
     Boolean(errorMessage) ||
-    (isSingle && Boolean(singleSession?.aiOrderCount && singleSession.aiOrderCount > 0)) ||
+    (isSingle && singleSession ? isSessionProtected(singleSession) : false) ||
     (sessions.length > 0 && deletableSessions.length === 0);
 
   const isMixed =
@@ -103,7 +99,9 @@ export function DeleteLivestreamModal({
   };
 
   const renderSessionItem = (s: Livestream, showReason = false) => {
-    const hasOrders = Boolean(s.aiOrderCount && s.aiOrderCount > 0);
+    const hasConfirmedOrders = Boolean(
+      s.hasConfirmedOrders || (s.confirmedOrderCount && s.confirmedOrderCount > 0)
+    );
     return (
       <div
         key={s.id}
@@ -124,10 +122,10 @@ export function DeleteLivestreamModal({
           </div>
           <div className="flex items-center gap-2 text-[11px] text-outline mt-0.5 font-mono">
             <span className="truncate">#{s.id.slice(0, 8)}...</span>
-            {hasOrders && (
+            {hasConfirmedOrders && (
               <span className="inline-flex items-center gap-1 font-sans font-semibold text-[10.5px] text-emerald-700 bg-emerald-500/10 px-1.5 py-0.2 rounded">
                 <ShoppingBag className="w-3 h-3" />
-                {s.aiOrderCount} đơn
+                {s.confirmedOrderCount || 1} đơn đã đặt
               </span>
             )}
           </div>
@@ -135,9 +133,9 @@ export function DeleteLivestreamModal({
 
         <div className="shrink-0 flex items-center gap-1.5">
           {getStatusBadge(s.status)}
-          {showReason && hasOrders && (
+          {showReason && hasConfirmedOrders && (
             <span
-              title="Đã phát sinh đơn hàng (Được bảo lưu)"
+              title="Đã phát sinh đơn đặt hàng thực tế (Được bảo lưu)"
               className="text-primary hover:text-primary/80"
             >
               <Lock className="w-3.5 h-3.5" />

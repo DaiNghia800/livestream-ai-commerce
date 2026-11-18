@@ -35,7 +35,7 @@ test("danh sách vận đơn hiện đủ thông tin shop cần nhìn lướt", 
   const mucMenu = page
     .getByRole("navigation", { name: "Điều hướng chủ shop" })
     .getByRole("link", { name: "Vận chuyển" });
-  await expect(mucMenu).toHaveAttribute("href", "/shop/shipping");
+  await expect(mucMenu).toHaveAttribute("href", /\/(shop|admin)\/shipping/);
   await expect(mucMenu).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "GHN7728491" })).toBeVisible();
   await expect(page.getByText("Giao Hàng Nhanh").first()).toBeVisible();

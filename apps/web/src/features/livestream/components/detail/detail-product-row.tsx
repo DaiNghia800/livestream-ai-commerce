@@ -51,17 +51,22 @@ export function DetailProductRow({ product, index }: DetailProductRowProps) {
         </div>
       </td>
 
-      {/* 3. Mã chốt đơn (Product code) */}
+      {/* 3. Cú pháp chốt đơn AI */}
       <td className="py-3 px-4 text-center">
-        <span
-          className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs tracking-wider border shadow-xs ${
-            isPinned
-              ? "bg-primary text-white border-primary"
-              : "bg-surface-container-high text-on-surface border-outline-variant/70"
-          }`}
-        >
-          {product.id}
-        </span>
+        <div className="inline-flex flex-col items-center">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs tracking-wider border shadow-2xs ${
+              isPinned
+                ? "bg-primary text-white border-primary"
+                : "bg-indigo-50 text-indigo-700 border-indigo-200"
+            }`}
+          >
+            {product.sku || product.id}
+          </span>
+          <span className="text-[10px] text-on-surface-variant font-medium mt-0.5">
+            + SĐT
+          </span>
+        </div>
       </td>
 
       {/* 4. Giá bán Live */}

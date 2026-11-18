@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { ChevronRight, Package, Plus, Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ export function MerchantLiveDetail() {
       <header className={styles.pageHeader}>
         <div>
           <nav className={styles.breadcrumb} aria-label="Đường dẫn trang">
-            <Link href="/shop">Tổng quan</Link>
+            <Link href="/admin">Tổng quan</Link>
             <ChevronRight size={14} aria-hidden="true" />
             <span>Chi tiết phiên #{liveSession.id}</span>
           </nav>

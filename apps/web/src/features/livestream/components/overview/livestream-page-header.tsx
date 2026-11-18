@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { CalendarDays, ChevronRight, CirclePlus } from "lucide-react";
 
-export function LivestreamPageHeader() {
+export function LivestreamPageHeader({
+  onOpenSchedule,
+}: {
+  onOpenSchedule?: () => void;
+} = {}) {
   return (
     <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div>
@@ -31,14 +35,15 @@ export function LivestreamPageHeader() {
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 text-sm font-medium text-on-surface shadow-xs transition-colors hover:bg-surface-container-low active:bg-surface-container"
+          onClick={onOpenSchedule}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 text-sm font-medium text-on-surface shadow-xs transition-colors hover:bg-surface-container-low active:bg-surface-container cursor-pointer"
         >
           <CalendarDays className="h-4 w-4 text-on-surface-variant" aria-hidden="true" />
           <span>Lịch phát sóng</span>
         </button>
 
         <Link
-          href="/shop/livestream/create"
+          href="/admin/livestream/create"
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-white hover:text-white shadow-xs transition-all hover:bg-primary-container active:scale-[0.98]"
         >
           <CirclePlus className="h-4 w-4" aria-hidden="true" />

@@ -100,7 +100,7 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
 
   return (
     <div className={styles.page}>
-      <Link className={styles.back} href="/shop/shipping">
+      <Link className={styles.back} href="/admin/shipping">
         <ArrowLeft size={16} /> Danh sách vận đơn
       </Link>
 
@@ -112,7 +112,7 @@ export function MerchantShipmentDetail({ shipmentId }: { shipmentId: string }) {
           </div>
           <p className={styles.sub}>
             Đơn{" "}
-            <Link href={`/shop/orders/${vd.orderCode}`}>{vd.orderCode}</Link> ·{" "}
+            <Link href={`/admin/orders/${vd.orderCode}`}>{vd.orderCode}</Link> ·{" "}
             {tenHang(vd.carrier, vd.serviceCode)} · tạo lúc{" "}
             {formatDateTime(vd.createdAt)}
           </p>

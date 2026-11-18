@@ -513,23 +513,47 @@ describe("LivestreamRepository - Unit Tests", () => {
     });
 
     it("REPO-PG-018 - delete returns true when row is deleted", async () => {
-      const poolQuerySpy = vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rowCount: 1,
-        rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
-      } as any);
+      const poolQuerySpy = vi
+        .spyOn(pool, "query")
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] } as any)
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] } as any)
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] } as any)
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ id: "11111111-1111-4111-8111-111111111111" }],
+        } as any);
 
       const result = await repo.delete("11111111-1111-4111-8111-111111111111");
-      expect(poolQuerySpy).toHaveBeenCalledTimes(1);
+      expect(poolQuerySpy).toHaveBeenCalledTimes(4);
       expect(result).toBe(true);
     });
 
-    it("REPO-PG-019 - delete returns false when row is not found", async () => {
+    it("REPO-PG-018b - delete throws foreign key error when session has confirmed customer orders", async () => {
       vi.spyOn(pool, "query").mockResolvedValueOnce({
-        rowCount: 0,
-        rows: [],
+        rowCount: 1,
+        rows: [{ "?column?": 1 }],
       } as any);
 
-      const result = await repo.delete("missing-id");
+      await expect(
+        repo.delete("11111111-1111-4111-8111-111111111111")
+      ).rejects.toThrow(
+        "violates foreign key constraint 'fk_orders_livestream'"
+      );
+    });
+
+    it("REPO-PG-019 - delete returns false when row is not found", async () => {
+      const poolQuerySpy = vi
+        .spyOn(pool, "query")
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] } as any)
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] } as any)
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] } as any)
+        .mockResolvedValueOnce({
+          rowCount: 0,
+          rows: [],
+        } as any);
+
+      const result = await repo.delete("11111111-1111-4111-8111-111111111111");
+      expect(poolQuerySpy).toHaveBeenCalledTimes(4);
       expect(result).toBe(false);
     });
 

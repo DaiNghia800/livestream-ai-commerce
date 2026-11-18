@@ -239,7 +239,7 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
         })),
         document?.id,
       );
-      router.push("/shop/inventory");
+      router.push("/admin/inventory");
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : "Không thể lưu điều chỉnh tồn kho.");
     } finally {
@@ -273,7 +273,7 @@ export function InventoryAdjustment({ initialSkuId }: { initialSkuId?: string })
               <Printer size={14} aria-hidden="true" />
               In phiếu kiểm kê
             </button>
-            <Link className={styles.cancelButton} href="/shop/inventory">
+            <Link className={styles.cancelButton} href="/admin/inventory">
               <X size={14} aria-hidden="true" />
               Hủy bỏ
             </Link>

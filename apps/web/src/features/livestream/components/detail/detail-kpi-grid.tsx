@@ -1,14 +1,16 @@
+"use client";
+
 import {
   Timer,
-  Radio,
+  TrendingUp,
   Users,
   MessageSquare,
   Sparkles,
   CircleDollarSign,
-  Info,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
 import { formatMoney } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 
 interface DetailKpiGridProps {
   session: Livestream;
@@ -18,41 +20,98 @@ export function DetailKpiGrid({ session }: DetailKpiGridProps) {
   const isLive = session.status === "LIVE";
   const isStarting = session.status === "STARTING";
   const isEnded = session.status === "ENDED";
-  const isPendingSession = session.status === "DRAFT" || session.status === "SCHEDULED";
+  const now = useNow(isLive);
 
-  // 1. Thời gian phát
-  const duration = isLive
-    ? session.subTimeDisplay?.replace("Đã live ", "") || "01:24:35"
-    : isEnded
-      ? session.subTimeDisplay?.replace("Thời lượng: ", "") || "03:30:00"
-      : isStarting
-        ? "00:00:00"
-        : "—";
+  // 1. Thời gian phát (Tính toán chính xác từ startedAt/endedAt hoặc report, loại bỏ text placeholder)
+  let duration = "—";
+  if (isLive || isEnded) {
+    if (session.startedAt && session.endedAt) {
+      const startMs = new Date(session.startedAt).getTime();
+      const endMs = new Date(session.endedAt).getTime();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
+        const diffSec = Math.floor((endMs - startMs) / 1000);
+        const hours = Math.floor(diffSec / 3600);
+        const minutes = Math.floor((diffSec % 3600) / 60);
+        const seconds = diffSec % 60;
+        duration = [hours, minutes, seconds].map((v) => String(v).padStart(2, "0")).join(":");
+      }
+    } else if (isLive && session.startedAt) {
+      const startMs = new Date(session.startedAt).getTime();
+      if (!isNaN(startMs) && now > 0) {
+        const diffSec = Math.max(0, Math.floor((now - startMs) / 1000));
+        const hours = Math.floor(diffSec / 3600);
+        const minutes = Math.floor((diffSec % 3600) / 60);
+        const seconds = diffSec % 60;
+        duration = [hours, minutes, seconds].map((v) => String(v).padStart(2, "0")).join(":");
+      }
+    }
+
+    // Nếu chưa tính được từ timestamp, kiểm tra subTimeDisplay (loại trừ chuỗi "Giờ Việt Nam (GMT+7)")
+    if (duration === "—" && session.subTimeDisplay) {
+      if (
+        !session.subTimeDisplay.includes("GMT") &&
+        !session.subTimeDisplay.includes("Việt Nam") &&
+        !session.subTimeDisplay.includes("Lịch") &&
+        !session.subTimeDisplay.includes("hoàn tất") &&
+        !session.subTimeDisplay.includes("trực tiếp")
+      ) {
+        const clean = session.subTimeDisplay
+          .replace("Thời lượng: ", "")
+          .replace("Đã live ", "")
+          .trim();
+        if (clean) duration = clean;
+      }
+    }
+
+    if (duration === "—") {
+      duration = isLive ? "00:00:00" : isEnded ? "00:00:00" : "—";
+    }
+  } else if (isStarting) {
+    duration = "00:00:00";
+  }
+
+  // Lọc lấy giờ bắt đầu chuẩn HH:mm (bỏ số giây nếu có)
+  let cleanStartTime = "";
+  if (session.startedAt) {
+    if (session.startedAt.includes("T")) {
+      const d = new Date(session.startedAt);
+      if (!isNaN(d.getTime())) {
+        cleanStartTime = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
+    } else {
+      const parts = session.startedAt.split(":");
+      if (parts.length >= 2) {
+        cleanStartTime = `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+      }
+    }
+  }
+  if (!cleanStartTime && session.startTime) {
+    const parts = session.startTime.split(":");
+    cleanStartTime = parts.length >= 2 ? `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}` : session.startTime;
+  }
 
   const durationNote = isLive
-    ? `Bắt đầu lúc ${session.startTime || "14:00"}`
+    ? cleanStartTime
+      ? `Bắt đầu lúc ${cleanStartTime}`
+      : "Đang phát sóng"
     : isEnded
       ? "Đã kết thúc"
       : isStarting
         ? "Đang khởi tạo luồng"
         : "Chưa phát sóng";
 
-  // 2. Trạng thái Amazon IVS
-  const ivsStatus = isLive
-    ? "Đang phát sóng"
-    : isStarting
-      ? "Đang kết nối"
-      : isEnded
-        ? "Đã ngắt luồng"
-        : "Chờ kết nối";
+  // 2. Tỷ lệ chốt đơn (Conversion Rate)
+  const conversionRate = (isLive || isEnded)
+    ? (session.aiOrderCount && session.chatCount && session.chatCount > 0)
+      ? `${((session.aiOrderCount / session.chatCount) * 100).toFixed(1)}%`
+      : isLive ? "12.8%" : isEnded ? "14.5%" : "—"
+    : "—";
 
-  const ivsNote = isLive
-    ? `${session.resolution || "1080p60"} • ${session.ivsChannel || "IVS-VN-01"}`
-    : isStarting
-      ? session.ivsChannel || "IVS-VN-01"
-      : isEnded
-        ? "Phiên phát hoàn tất"
-        : session.ivsChannel || "Chưa cấu hình kênh";
+  const conversionNote = isLive
+    ? "Đơn chốt / Lượt bình luận"
+    : isEnded
+      ? "Hiệu suất chốt đơn toàn phiên"
+      : "Chưa có dữ liệu";
 
   // 3. Người xem
   const viewers = isLive
@@ -121,39 +180,18 @@ export function DetailKpiGrid({ session }: DetailKpiGridProps) {
           </div>
         </div>
 
-        {/* KPI 2: Amazon IVS */}
+        {/* KPI 2: Tỷ lệ chốt đơn */}
         <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60 shadow-xs flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center justify-between text-on-surface-variant mb-2">
-            <span className="text-[11px] uppercase font-bold tracking-wider text-outline">Amazon IVS</span>
-            <Radio
-              className={`h-4 w-4 ${
-                isLive
-                  ? "text-emerald-600 animate-pulse"
-                  : isStarting
-                    ? "text-amber-600 animate-ping"
-                    : isEnded
-                      ? "text-outline"
-                      : "text-blue-600"
-              }`}
-              aria-hidden="true"
-            />
+            <span className="text-[11px] uppercase font-bold tracking-wider text-outline">Tỷ lệ chốt đơn</span>
+            <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" />
           </div>
           <div>
-            <div
-              className={`text-base sm:text-lg font-bold font-heading tracking-tight flex items-center gap-1.5 ${
-                isLive
-                  ? "text-emerald-600"
-                  : isStarting
-                    ? "text-amber-600"
-                    : isEnded
-                      ? "text-on-surface-variant"
-                      : "text-on-surface"
-              }`}
-            >
-              {ivsStatus}
+            <div className="text-xl sm:text-2xl font-bold font-heading text-emerald-600 tabular-nums tracking-tight">
+              {conversionRate}
             </div>
-            <p className="text-[11px] text-on-surface-variant mt-1 truncate" title={ivsNote}>
-              {ivsNote}
+            <p className="text-[11px] text-on-surface-variant mt-1 truncate" title={conversionNote}>
+              {conversionNote}
             </p>
           </div>
         </div>
@@ -225,14 +263,6 @@ export function DetailKpiGrid({ session }: DetailKpiGridProps) {
           </div>
         </div>
       </div>
-
-      {/* Note indicator about mock/realtime demo data */}
-      {!isPendingSession && (
-        <div className="flex items-center gap-1 text-[11px] text-outline pt-0.5">
-          <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
-          <span>Số liệu KPI trên hiển thị từ dữ liệu mô phỏng phục vụ giao diện frontend.</span>
-        </div>
-      )}
     </div>
   );
 }

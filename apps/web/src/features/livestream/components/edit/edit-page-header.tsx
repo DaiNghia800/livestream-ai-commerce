@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import type { LivestreamStatus } from "../../types/livestream";
 
@@ -54,11 +54,11 @@ export function EditPageHeader({ sessionId, status }: EditPageHeaderProps) {
     <div className="mb-6 flex flex-col gap-2">
       {/* Breadcrumb Hierarchy */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-        <Link href="/shop/livestream" className="transition-colors hover:text-primary">
+        <Link href="/admin/livestream" className="transition-colors hover:text-primary">
           Livestream
         </Link>
         <ChevronRight className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-        <Link href="/shop/livestream" className="transition-colors hover:text-primary">
+        <Link href="/admin/livestream" className="transition-colors hover:text-primary">
           Danh sách phiên
         </Link>
         <ChevronRight className="h-3.5 w-3.5 text-outline" aria-hidden="true" />

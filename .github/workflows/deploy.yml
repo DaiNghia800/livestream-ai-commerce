@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev]
+    paths:
+      - "services/commerce/**"
+      - "services/realtime/**"
+      - ".github/workflows/deploy.yml"
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  CLUSTER: liveorder-staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [commerce, realtime]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        id: img
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/liveorder-staging/${{ matrix.service }}:${{ github.sha }}"
+          docker build -t "$IMAGE" services/${{ matrix.service }}
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      # Lay revision MOI NHAT cua family (Terraform tao khi doi env), chi thay image
+      - name: Fetch latest task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition liveorder-staging-${{ matrix.service }} \
+            --query taskDefinition > taskdef.json
+
+      - id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: taskdef.json
+          container-name: ${{ matrix.service }}
+          image: ${{ steps.img.outputs.image }}
+
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ matrix.service }}
+          cluster: ${{ env.CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10

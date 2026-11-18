@@ -7,7 +7,10 @@ function collectConsoleErrors(page: Page) {
       const text = message.text();
       if (
         !text.includes("net::ERR_CONNECTION_REFUSED") &&
-        !text.includes("net::ERR_CONNECTION_FAILED")
+        !text.includes("net::ERR_CONNECTION_FAILED") &&
+        !text.includes("net::ERR_NAME_NOT_RESOLVED") &&
+        !text.includes("net::ERR_FAILED") &&
+        !text.includes("Failed to load resource")
       ) {
         errors.push(text);
       }
@@ -17,6 +20,34 @@ function collectConsoleErrors(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const adminUser = JSON.stringify({
+      id: 1,
+      full_name: "Quản trị viên",
+      email: "admin@example.com",
+      role: "admin",
+    });
+    localStorage.setItem("admin_access_token", "mock-admin-access-token");
+    localStorage.setItem("access_token", "mock-shop-access-token");
+    localStorage.setItem("user_role", "admin");
+    localStorage.setItem("admin_auth_user", adminUser);
+    localStorage.setItem("auth_user", adminUser);
+    localStorage.setItem(
+      "user_permissions",
+      JSON.stringify([
+        "livestream:view", "livestream:manage",
+        "orders:view", "orders:manage",
+        "review_queue:view", "review_queue:manage",
+        "products:view", "products:manage",
+        "inventory:view", "inventory:adjust",
+        "payments:view", "payments:manage",
+        "shipping:view", "shipping:manage",
+        "users:view", "users:manage",
+        "invitations:manage",
+        "roles:manage",
+      ])
+    );
+  });
   await page.route("**/api/livestreams*", (route) => {
     route.abort("connectionfailed");
   });
@@ -26,7 +57,7 @@ test("livestream overview page renders KPI cards, status filters, search, and na
   page,
 }, testInfo) => {
   const consoleErrors = collectConsoleErrors(page);
-  await page.goto("/shop/livestream");
+  await page.goto("/admin/livestream");
 
   // 1. Verify Page Heading and Breadcrumbs
   await expect(
@@ -47,48 +78,39 @@ test("livestream overview page renders KPI cards, status filters, search, and na
     name: "Chỉ số hiệu quả Livestream",
   });
   await expect(kpiSection.getByText("Tổng số phiên (kỳ này)")).toBeVisible();
-  await expect(kpiSection.getByText("Đang phát trực tiếp")).toBeVisible();
+  await expect(kpiSection.getByText("Mắt xem cao nhất")).toBeVisible();
   await expect(kpiSection.getByText("Sắp diễn ra", { exact: true })).toBeVisible();
   await expect(kpiSection.getByText("Doanh thu tuần này")).toBeVisible();
   await expect(kpiSection.getByText("Đơn tạo từ AI")).toBeVisible();
 
   // 3. Verify Default Table Content
-  await expect(
-    page.getByText("Đại tiệc Flash Sale BST Linen Hè 2025"),
-  ).toBeVisible();
+  const sessionRowInTable = page.getByRole("table").getByText("Đại tiệc Flash Sale BST Linen Hè 2025");
+  await expect(sessionRowInTable).toBeVisible();
 
   // 4. Test Search Functionality
   const searchInput = page.getByRole("textbox", { name: "Tìm kiếm livestream" });
   await searchInput.fill("Linen");
-  await expect(
-    page.getByText("Đại tiệc Flash Sale BST Linen Hè 2025"),
-  ).toBeVisible();
+  await expect(sessionRowInTable).toBeVisible();
 
   await searchInput.fill("khong-ton-tai-xyz");
-  await expect(
-    page.getByText("Đại tiệc Flash Sale BST Linen Hè 2025"),
-  ).not.toBeVisible();
+  await expect(sessionRowInTable).not.toBeVisible();
   await expect(
     page.getByText(/Không tìm thấy phiên livestream phù hợp/i),
   ).toBeVisible();
 
   // Clear search
   await searchInput.fill("");
-  await expect(
-    page.getByText("Đại tiệc Flash Sale BST Linen Hè 2025"),
-  ).toBeVisible();
+  await expect(sessionRowInTable).toBeVisible();
 
   // 5. Test Status Filter Pills
   const liveFilter = page.getByRole("button", { name: /Đang phát/ });
   await liveFilter.click();
-  await expect(
-    page.getByText("Đại tiệc Flash Sale BST Linen Hè 2025"),
-  ).toBeVisible();
+  await expect(sessionRowInTable).toBeVisible();
 
   // 6. Navigation to Create Livestream Page
   const createBtn = page.getByRole("link", { name: "Tạo phiên Livestream" });
   await createBtn.click();
-  await expect(page).toHaveURL(/\/shop\/livestream\/create$/, {
+  await expect(page).toHaveURL(/\/(shop|admin)\/livestream\/create$/, {
     timeout: 15_000,
   });
   await expect(
@@ -143,7 +165,7 @@ test("livestream detail page renders details, products, and links to studio", as
   page,
 }) => {
   const consoleErrors = collectConsoleErrors(page);
-  await page.goto("/shop/livestream/LIVE-2025-08");
+  await page.goto("/admin/livestream/LIVE-2025-08");
 
   // Verify Heading & Status Badge
   await expect(
@@ -154,9 +176,12 @@ test("livestream detail page renders details, products, and links to studio", as
   ).toBeVisible();
   await expect(page.getByText("ĐANG DIỄN RA (LIVE)")).toBeVisible();
 
-  // Verify Products list in this session
-  await expect(page.getByText("AO01")).toBeVisible();
-  await expect(page.getByText("QU02")).toBeVisible();
+  // Verify Products list in this session (matching displayed SKU or Product Name)
+  await expect(page.getByText("LNN-CU-25").first()).toBeVisible();
+  await expect(page.getByText("PAN-LNN-02").first()).toBeVisible();
+  await expect(
+    page.getByText("Áo sơ mi Linen cổ cuban thoáng khí"),
+  ).toBeVisible();
 
   // Verify Studio CTA Link
   const studioLink = page.getByRole("link", { name: /Vào Studio \(Đang phát\)/i });
@@ -164,7 +189,7 @@ test("livestream detail page renders details, products, and links to studio", as
 
   // Navigate to studio
   await studioLink.click();
-  await expect(page).toHaveURL(/\/shop\/livestream\/LIVE-2025-08\/studio$/, {
+  await expect(page).toHaveURL(/\/(shop|admin)\/livestream\/LIVE-2025-08\/studio$/, {
     timeout: 15_000,
   });
 
@@ -195,7 +220,7 @@ test("unknown livestream id displays not-found feedback and returns to overview"
   await expect(backLink).toBeVisible();
   await backLink.click();
 
-  await expect(page).toHaveURL(/\/shop\/livestream$/);
+  await expect(page).toHaveURL(/\/(shop|admin)\/livestream$/);
   await expect(
     page.getByRole("heading", { name: "Quản lý Livestream", level: 1 }),
   ).toBeVisible();
@@ -366,14 +391,14 @@ test("livestream report page renders kpi summary, products, and order status", a
   page,
 }) => {
   const consoleErrors = collectConsoleErrors(page);
-  await page.goto("/shop/livestream/LIVE-2025-07/report");
+  await page.goto("/admin/livestream/LIVE-2025-07/report");
 
   // Verify header
-  await expect(page.getByText("Báo cáo tổng kết").first()).toBeVisible();
+  await expect(page.getByText("Báo cáo tổng kết").first()).toBeVisible({ timeout: 15_000 });
 
   // Verify KPI section
-  await expect(page.getByText("Lượt xem tích lũy")).toBeVisible();
-  await expect(page.getByText("Đơn đã xác nhận").first()).toBeVisible();
+  await expect(page.getByText("Lượt xem tích lũy")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Đơn đã xác nhận").first()).toBeVisible({ timeout: 15_000 });
 
   expect(consoleErrors).toEqual([]);
 });

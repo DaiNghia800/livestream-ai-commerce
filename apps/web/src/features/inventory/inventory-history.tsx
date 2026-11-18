@@ -241,7 +241,7 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
             <FileSpreadsheet size={15} aria-hidden="true" />
             Xuất dữ liệu Excel
           </button>
-          <Link className={styles.historyPrimaryButton} href="/shop/inventory/adjustment">
+          <Link className={styles.historyPrimaryButton} href="/admin/inventory/adjustment">
             <FilePlus2 size={15} aria-hidden="true" />
             Tạo phiếu điều chỉnh
           </Link>
@@ -514,7 +514,7 @@ export function InventoryHistory({ initialSkuId }: { initialSkuId?: string }) {
       </section>
 
       <div className={styles.historyBackLink}>
-        <Link href="/shop/inventory"><ArrowLeft size={14} aria-hidden="true" /> Quay lại quản lý tồn kho</Link>
+        <Link href="/admin/inventory"><ArrowLeft size={14} aria-hidden="true" /> Quay lại quản lý tồn kho</Link>
       </div>
     </div>
   );

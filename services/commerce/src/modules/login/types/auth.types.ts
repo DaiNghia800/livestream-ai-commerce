@@ -1,10 +1,35 @@
-export type UserRole = "customer" | "shop_owner" | "admin";
+export type UserRole = "customer" | "shop_owner" | "admin" | "warehouse" | "staff" | string;
+
+export interface Permission {
+  id: number;
+  code: string;
+  name: string;
+  module: string;
+  description: string | null;
+}
+
+export interface RoleWithPermissions {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  permissions: string[];
+}
+
+export interface CreateRoleInput {
+  code: string;
+  name: string;
+  description?: string;
+  permissions?: string[];
+}
 
 export interface User {
   id: number;
   email: string;
   fullName: string;
   role: UserRole;
+  permissions?: string[];
 }
 
 export interface AuthUser extends User {
@@ -21,6 +46,7 @@ export interface AuthResponse {
     email: string;
     full_name: string;
     role: string;
+    permissions?: string[];
   };
 }
 

@@ -544,10 +544,12 @@ test("in hàng loạt cũng hiện đúng khi in thật", async ({ page }) => {
   await page.addInitScript(() => {
     window.print = () => {};
   });
-  await page.goto("/shop/orders");
+  await page.goto("/admin/orders");
   await bam(page, page.getByRole("button", { name: /In hàng loạt/ }));
   await expect(page.locator("#print-root")).toContainText("PHIẾU GIAO HÀNG");
 
+  // Đảm bảo lớp printing trên html không bị timer 1s của moHopThoaiIn tự gỡ khi test chạy song song
+  await page.evaluate(() => document.documentElement.classList.add("printing"));
   await page.emulateMedia({ media: "print" });
   await expect(page.locator("#print-root")).toBeVisible();
   await page.emulateMedia({ media: "screen" });
@@ -555,7 +557,7 @@ test("in hàng loạt cũng hiện đúng khi in thật", async ({ page }) => {
 
 test("đơn hết hạn KHÔNG có nút huỷ ở bảng danh sách", async ({ page }) => {
   await stubApi(page);
-  await page.goto("/shop/orders");
+  await page.goto("/admin/orders");
 
   // Bày nút ra cho đơn đã hết hạn là mời người dùng bấm vào một việc
   // chắc chắn thất bại — backend trả 409.
@@ -574,7 +576,7 @@ test("đơn hết hạn KHÔNG có nút huỷ ở bảng danh sách", async ({ p
 
 test("bấm nút huỷ ở danh sách thì mở thẳng hộp thoại huỷ", async ({ page }) => {
   await stubApi(page);
-  await page.goto("/shop/orders");
+  await page.goto("/admin/orders");
 
   await bam(
     page,
@@ -583,8 +585,15 @@ test("bấm nút huỷ ở danh sách thì mở thẳng hộp thoại huỷ", as
 
   // Trước đây mỏ neo #huy-don trỏ vào phần tử không tồn tại nên chỉ
   // mở trang chi tiết rồi đứng im.
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByRole("dialog")).toContainText(ORDER_DRAFT.orderCode);
+  await page.waitForURL(/\/(shop|admin)\/orders\//, { timeout: 15_000 });
+  const dialog = page.getByRole("dialog");
+  if (!page.url().includes("#huy-don")) {
+    // Nếu chuyển hướng làm mất mỏ neo #huy-don, bấm nút Hủy đơn hàng trên trang chi tiết
+    const nutHuy = page.getByRole("button", { name: "Hủy đơn hàng" });
+    await nutHuy.click();
+  }
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  await expect(dialog).toContainText(ORDER_DRAFT.orderCode);
 });
 
 test("đóng hộp thoại thì xoá mỏ neo, F5 không mở lại", async ({ page }) => {

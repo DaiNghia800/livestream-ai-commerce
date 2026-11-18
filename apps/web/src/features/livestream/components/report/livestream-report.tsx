@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -164,7 +164,7 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
         </div>
         <div className="pt-2">
           <Link
-            href="/shop/livestream"
+            href="/admin/livestream"
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-container transition-all active:scale-[0.98] shadow-xs"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -239,7 +239,7 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
             <span>Xem thông tin phiên</span>
           </Link>
           <Link
-            href="/shop/livestream"
+            href="/admin/livestream"
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container transition"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -277,7 +277,7 @@ export function LivestreamReport({ livestreamId }: LivestreamReportProps) {
             <span>Tiếp tục chỉnh sửa phiên</span>
           </Link>
           <Link
-            href="/shop/livestream"
+            href="/admin/livestream"
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container transition"
           >
             <ArrowLeft className="h-3.5 w-3.5" />

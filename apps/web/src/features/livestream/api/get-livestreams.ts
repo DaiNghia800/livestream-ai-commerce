@@ -133,7 +133,7 @@ export function formatTimeDisplay(dateString?: string | null): {
   });
 
   return {
-    timeDisplay: `${timeFormatted} ${dateFormatted}`,
+    timeDisplay: `${timeFormatted}, ${dateFormatted}`,
     subTimeDisplay: "Giờ Việt Nam (GMT+7)",
   };
 }
@@ -154,6 +154,9 @@ export function formatCoverImageUrl(
   if (!coverImageKey || !coverImageKey.trim()) return undefined;
   const cleanKey = coverImageKey.trim().replace(/^\/+/, "");
   if (cleanKey.startsWith("http://") || cleanKey.startsWith("https://")) {
+    return cleanKey;
+  }
+  if (cleanKey.startsWith("blob:") || cleanKey.startsWith("data:")) {
     return cleanKey;
   }
   const normalizedKey = cleanKey.startsWith("public/")
@@ -187,6 +190,42 @@ export function mapBackendLivestreamToFrontend(
     item.scheduledAt || item.startedAt || item.createdAt
   );
 
+  let computedSubTimeDisplay = subTimeDisplay;
+  if (item.status === "ended") {
+    if (item.startedAt && item.endedAt) {
+      const startMs = new Date(item.startedAt).getTime();
+      const endMs = new Date(item.endedAt).getTime();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
+        const diffSec = Math.floor((endMs - startMs) / 1000);
+        const hours = Math.floor(diffSec / 3600);
+        const minutes = Math.floor((diffSec % 3600) / 60);
+        const seconds = diffSec % 60;
+        computedSubTimeDisplay = `Thời lượng: ${[hours, minutes, seconds].map((v) => String(v).padStart(2, "0")).join(":")}`;
+      } else {
+        computedSubTimeDisplay = "Phát sóng hoàn tất";
+      }
+    } else {
+      computedSubTimeDisplay = "Phát sóng hoàn tất";
+    }
+  } else if (item.status === "live") {
+    if (item.startedAt) {
+      const startMs = new Date(item.startedAt).getTime();
+      if (!isNaN(startMs)) {
+        const diffSec = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+        const hours = Math.floor(diffSec / 3600);
+        const minutes = Math.floor((diffSec % 3600) / 60);
+        const seconds = diffSec % 60;
+        computedSubTimeDisplay = `Đã live ${[hours, minutes, seconds].map((v) => String(v).padStart(2, "0")).join(":")}`;
+      } else {
+        computedSubTimeDisplay = "Đang phát trực tiếp";
+      }
+    } else {
+      computedSubTimeDisplay = "Đang phát trực tiếp";
+    }
+  } else if (item.status === "scheduled") {
+    computedSubTimeDisplay = "Đã lên lịch";
+  }
+
   let startDate: string | undefined = undefined;
   let startTime: string | undefined = undefined;
   if (item.scheduledAt) {
@@ -207,6 +246,7 @@ export function mapBackendLivestreamToFrontend(
     title: item.title,
     status: mapBackendStatusToFrontend(item.status),
     thumbnail: formatCoverImageUrl(item.coverImageKey),
+    coverImageKey: item.coverImageKey || undefined,
     description: item.description || undefined,
     channelName: item.channelArn ? "AWS IVS HD" : "LiveOrder RTMP",
     ivsChannel: formatFriendlyIvsChannel(item.channelArn),
@@ -215,16 +255,27 @@ export function mapBackendLivestreamToFrontend(
     productCount:
       item.productCount || (Array.isArray(item.products) ? item.products.length : 0),
     products: Array.isArray(item.products)
-      ? item.products.map((p) => ({
-          id: p.productId || p.id,
-          sku: p.skuCode || p.productCode || p.productId,
-          name: p.productName || `Sản phẩm #${p.productId}`,
-          price: typeof p.price === "number" ? p.price : 0,
-          originalPrice: undefined,
-          stock: 100,
-          image: p.imageUrl || undefined,
-          isPinned: Boolean(p.isFeatured),
-        }))
+      ? item.products.map((p) => {
+          let stock = 0;
+          if (Array.isArray(p.variants) && p.variants.length > 0) {
+            stock = p.variants.reduce(
+              (sum, v) => sum + (typeof v.availableStock === "number" ? v.availableStock : 0),
+              0
+            );
+          } else {
+            stock = 100;
+          }
+          return {
+            id: p.productId || p.id,
+            sku: p.skuCode || p.productCode || p.productId,
+            name: p.productName || `Sản phẩm #${p.productId}`,
+            price: typeof p.price === "number" ? p.price : 0,
+            originalPrice: undefined,
+            stock,
+            image: p.imageUrl || undefined,
+            isPinned: Boolean(p.isFeatured),
+          };
+        })
       : undefined,
     scheduledAt: item.scheduledAt || undefined,
     startedAt: item.startedAt || undefined,
@@ -233,7 +284,7 @@ export function mapBackendLivestreamToFrontend(
     startDate,
     startTime,
     timeDisplay,
-    subTimeDisplay,
+    subTimeDisplay: computedSubTimeDisplay,
     currentViewers: item.status === "live" ? 0 : 0,
     peakViewers: 0,
     revenue: 0,

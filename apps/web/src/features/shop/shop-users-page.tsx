@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -15,7 +16,13 @@ import {
 } from "lucide-react";
 import styles from "./shop-users-page.module.css";
 
-type UserRole = "customer" | "shop_owner" | "admin";
+type UserRole = string;
+
+interface RoleOption {
+  id?: number;
+  code: string;
+  name: string;
+}
 
 interface ManagedUser {
   id: number;
@@ -31,11 +38,13 @@ interface UserPageResponse {
   total: number;
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  customer: "Khách hàng",
-  shop_owner: "Chủ shop",
-  admin: "Quản trị viên",
-};
+const DEFAULT_ROLE_OPTIONS: RoleOption[] = [
+  { code: "customer", name: "Khách hàng" },
+  { code: "shop_owner", name: "Chủ shop / Quản lý" },
+  { code: "warehouse", name: "Thủ kho" },
+  { code: "staff", name: "Nhân viên bán hàng" },
+  { code: "admin", name: "Quản trị viên hệ thống" },
+];
 
 const PAGE_SIZE = 100;
 const API_BASE =
@@ -44,52 +53,68 @@ const API_BASE =
 export function ShopUsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [roles, setRoles] = useState<RoleOption[]>(DEFAULT_ROLE_OPTIONS);
   const [total, setTotal] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
 
   useEffect(() => {
     async function loadUsers() {
       if (localStorage.getItem("user_role") !== "admin") {
-        router.replace(localStorage.getItem("user_role") === "shop_owner" ? "/shop" : "/admin");
+        router.replace(localStorage.getItem("user_role") === "shop_owner" ? "/admin" : "/admin/login");
         return;
       }
-      const token = localStorage.getItem("admin_access_token");
+      const token =
+        localStorage.getItem("admin_access_token") ||
+        localStorage.getItem("access_token");
       if (!token) {
-        router.replace("/admin");
+        router.replace("/admin/login");
         return;
       }
 
       try {
-        const response = await fetch(
-          `${API_BASE}/api/admin/users?limit=${PAGE_SIZE}&offset=0`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (response.status === 401) {
+        const [usersRes, rolesRes] = await Promise.all([
+          fetch(`${API_BASE}/api/admin/users?limit=${PAGE_SIZE}&offset=0`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_BASE}/api/admin/roles`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (usersRes.status === 401 || rolesRes.status === 401) {
           localStorage.removeItem("admin_access_token");
           localStorage.removeItem("admin_refresh_token");
+          localStorage.removeItem("access_token");
           localStorage.removeItem("user_role");
-          router.replace("/admin");
+          router.replace("/admin/login");
           return;
         }
-        if (response.status === 403) {
+        if (usersRes.status === 403) {
           setError("Tài khoản của bạn không có quyền quản lý người dùng.");
           return;
         }
-        if (!response.ok) {
+        if (!usersRes.ok) {
           throw new Error("Không thể tải danh sách người dùng.");
         }
 
-        const data = (await response.json()) as UserPageResponse & {
+        const data = (await usersRes.json()) as UserPageResponse & {
           currentUserId: number;
         };
         setUsers(data.users);
         setTotal(data.total);
         setCurrentUserId(data.currentUserId);
+
+        if (rolesRes.ok) {
+          const rolesData = await rolesRes.json();
+          if (Array.isArray(rolesData.roles) && rolesData.roles.length > 0) {
+            setRoles(rolesData.roles);
+          }
+        }
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -108,9 +133,11 @@ export function ShopUsersPage() {
     userId: number,
     update: { role?: UserRole; is_active?: boolean }
   ) {
-    const token = localStorage.getItem("admin_access_token");
+    const token =
+      localStorage.getItem("admin_access_token") ||
+      localStorage.getItem("access_token");
     if (!token) {
-      router.replace("/admin");
+      router.replace("/admin/login");
       return;
     }
 
@@ -208,6 +235,36 @@ export function ShopUsersPage() {
           <p className={styles.description}>
             Theo dõi tài khoản và phân quyền truy cập trên toàn hệ thống.
           </p>
+          <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+            <Link
+              href="/admin/users"
+              style={{
+                padding: "7px 14px",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: 600,
+                background: "#6366f1",
+                color: "white",
+                textDecoration: "none",
+              }}
+            >
+              Danh sách tài khoản ({users.length})
+            </Link>
+            <Link
+              href="/admin/roles"
+              style={{
+                padding: "7px 14px",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: 600,
+                background: "#f1f5f9",
+                color: "#475569",
+                textDecoration: "none",
+              }}
+            >
+              Phân quyền
+            </Link>
+          </div>
         </div>
         <div className={styles.headerHint}>
           <ShieldHalf size={18} aria-hidden="true" />
@@ -283,14 +340,12 @@ export function ShopUsersPage() {
               <select
                 aria-label="Lọc theo vai trò"
                 value={roleFilter}
-                onChange={(event) =>
-                  setRoleFilter(event.target.value as UserRole | "all")
-                }
+                onChange={(event) => setRoleFilter(event.target.value)}
               >
                 <option value="all">Tất cả vai trò</option>
-                {Object.entries(ROLE_LABELS).map(([role, label]) => (
-                  <option key={role} value={role}>
-                    {label}
+                {roles.map((r) => (
+                  <option key={r.code} value={r.code}>
+                    {r.name}
                   </option>
                 ))}
               </select>
@@ -376,15 +431,18 @@ export function ShopUsersPage() {
                             disabled={isSelf || isSaving}
                             onChange={(event) =>
                               void updateUser(user.id, {
-                                role: event.target.value as UserRole,
+                                role: event.target.value,
                               })
                             }
                           >
-                            {Object.entries(ROLE_LABELS).map(([role, label]) => (
-                              <option key={role} value={role}>
-                                {label}
+                            {roles.map((r) => (
+                              <option key={r.code} value={r.code}>
+                                {r.name}
                               </option>
                             ))}
+                            {!roles.some((r) => r.code === user.role) && (
+                              <option value={user.role}>{user.role}</option>
+                            )}
                           </select>
                           <ChevronDown size={14} aria-hidden="true" />
                         </label>
@@ -402,9 +460,8 @@ export function ShopUsersPage() {
                             }
                           />
                           <span
-                            className={`${styles.statusBadge} ${
-                              user.isActive ? styles.statusActive : styles.statusInactive
-                            }`}
+                            className={`${styles.statusBadge} ${user.isActive ? styles.statusActive : styles.statusInactive
+                              }`}
                           >
                             <span className={styles.statusDot} />
                             {user.isActive ? "Hoạt động" : "Đã khóa"}
