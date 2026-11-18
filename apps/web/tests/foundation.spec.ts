@@ -13,6 +13,37 @@ function collectConsoleErrors(page: Page) {
   return errors;
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const adminUser = JSON.stringify({
+      id: 1,
+      full_name: "Quản trị viên",
+      email: "admin@example.com",
+      role: "admin",
+    });
+    localStorage.setItem("admin_access_token", "mock-admin-access-token");
+    localStorage.setItem("access_token", "mock-shop-access-token");
+    localStorage.setItem("user_role", "admin");
+    localStorage.setItem("admin_auth_user", adminUser);
+    localStorage.setItem("auth_user", adminUser);
+    localStorage.setItem(
+      "user_permissions",
+      JSON.stringify([
+        "livestream:view", "livestream:manage",
+        "orders:view", "orders:manage",
+        "review_queue:view", "review_queue:manage",
+        "products:view", "products:manage",
+        "inventory:view", "inventory:adjust",
+        "payments:view", "payments:manage",
+        "shipping:view", "shipping:manage",
+        "users:view", "users:manage",
+        "invitations:manage",
+        "roles:manage",
+      ])
+    );
+  });
+});
+
 test("customer dialog supports Escape and restores keyboard focus", async ({
   page,
 }) => {

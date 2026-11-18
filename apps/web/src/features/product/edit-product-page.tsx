@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -50,7 +50,7 @@ import {
 
 interface EditProductPageProps {
   productId: string;
-  returnTo?: "/shop/products" | "/shop/inventory";
+  returnTo?: "/admin/products" | "/admin/inventory";
 }
 
 type ProductStatus = BackendProduct["status"];
@@ -149,7 +149,7 @@ function formatHistoryValue(field: string, value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : JSON.stringify(value);
 }
 
-export function EditProductPage({ productId, returnTo = "/shop/products" }: EditProductPageProps) {
+export function EditProductPage({ productId, returnTo = "/admin/products" }: EditProductPageProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [product, setProduct] = useState<BackendProduct | null>(null);
@@ -415,7 +415,7 @@ export function EditProductPage({ productId, returnTo = "/shop/products" }: Edit
           <AlertCircle className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
           <p>{error || "Không thể tải sản phẩm."}</p>
         </div>
-        <Link className="mt-4 inline-flex text-label-md font-semibold text-primary hover:underline" href="/shop/products">
+        <Link className="mt-4 inline-flex text-label-md font-semibold text-primary hover:underline" href="/admin/products">
           Quay lại danh sách sản phẩm
         </Link>
       </div>
@@ -438,9 +438,9 @@ export function EditProductPage({ productId, returnTo = "/shop/products" }: Edit
         <div className="mx-auto flex max-w-[1440px] flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div className="min-w-0">
             <nav aria-label="Breadcrumb" className="mb-1 flex flex-wrap items-center gap-1.5 text-label-sm text-on-surface-variant">
-              <Link className="hover:text-primary" href="/shop/products">Sản phẩm</Link>
+              <Link className="hover:text-primary" href="/admin/products">Sản phẩm</Link>
               <ChevronRight size={14} aria-hidden="true" />
-              <Link className="hover:text-primary" href="/shop/products">Quản lý sản phẩm</Link>
+              <Link className="hover:text-primary" href="/admin/products">Quản lý sản phẩm</Link>
               <ChevronRight size={14} aria-hidden="true" />
               <span className="font-semibold text-on-surface">{product.code}</span>
             </nav>
@@ -469,7 +469,7 @@ export function EditProductPage({ productId, returnTo = "/shop/products" }: Edit
             </button>
             <Link
               className={`${buttonClass} border border-primary/20 bg-surface-container-low text-primary hover:bg-surface-container`}
-              href="/shop/livestream"
+              href="/admin/livestream"
             >
               <Eye size={16} aria-hidden="true" /> Xem trên Livestream
             </Link>

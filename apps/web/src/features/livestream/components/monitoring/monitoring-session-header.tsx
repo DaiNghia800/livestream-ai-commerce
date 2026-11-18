@@ -85,7 +85,7 @@ export function MonitoringSessionHeader({
           </div>
         )}
 
-        {/* Session Title & Code */}
+        {/* Session Title */}
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
           <h1
             className="m-0 text-xs sm:text-sm font-headline-md font-bold text-slate-900 tracking-tight truncate"
@@ -93,17 +93,6 @@ export function MonitoringSessionHeader({
           >
             {sessionTitle}
           </h1>
-          <span
-            className="text-[10px] sm:text-[11px] font-mono px-1.5 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200/60 shrink-0"
-            title={sessionId}
-          >
-            #{sessionId.length > 12 ? `${sessionId.slice(0, 8)}...` : sessionId}
-          </span>
-          {channelName && (
-            <span className="hidden 2xl:inline text-[11px] text-slate-500 shrink-0">
-              • Kênh: <strong className="text-slate-700 font-medium">{channelName}</strong>
-            </span>
-          )}
         </div>
       </div>
 

@@ -19,7 +19,35 @@ export const LoginRequestSchema = z.object({
 export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 
-export const UserRoleSchema = z.enum(["customer", "shop_owner", "admin"]);
+export const UserRoleSchema = z
+  .string()
+  .trim()
+  .min(2, "Mã vai trò tối thiểu 2 ký tự")
+  .max(64, "Mã vai trò tối đa 64 ký tự");
+
+export const CreateRoleSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .min(2, "Mã vai trò tối thiểu 2 ký tự")
+      .max(64, "Mã vai trò tối đa 64 ký tự")
+      .regex(/^[a-z0-9_]+$/, "Mã vai trò chỉ chứa chữ thường, số và dấu gạch dưới")
+      .optional(),
+    name: z.string().trim().min(2, "Tên vai trò tối thiểu 2 ký tự").max(128),
+    description: z.string().trim().max(255).optional(),
+    permissions: z.array(z.string().trim()).optional().default([]),
+  })
+  .strict();
+
+export const UpdateRolePermissionsSchema = z
+  .object({
+    permissions: z.array(z.string().trim()),
+  })
+  .strict();
+
+export type CreateRoleInputDto = z.infer<typeof CreateRoleSchema>;
+export type UpdateRolePermissionsDto = z.infer<typeof UpdateRolePermissionsSchema>;
 
 export const ManagedUsersQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),

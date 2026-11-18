@@ -6,6 +6,7 @@ import { AlertCircle, ArrowLeft } from "lucide-react";
 import { mockLivestreams } from "../../mocks/livestream.mock";
 import {
   getLivestreamDetail,
+  getLivestreamReport,
   mapBackendLivestreamToFrontend,
 } from "../../api/get-livestreams";
 import type { Livestream } from "../../types/livestream";
@@ -31,6 +32,28 @@ export function LivestreamDetail({ livestreamId }: LivestreamDetailProps) {
         const detail = await getLivestreamDetail(livestreamId);
         if (!isMounted) return;
         const mapped = mapBackendLivestreamToFrontend(detail);
+
+        if (detail.status === "ended" || detail.status === "live") {
+          try {
+            const report = await getLivestreamReport(livestreamId);
+            if (isMounted && report) {
+              if (report.orderStatusSummary) {
+                mapped.revenue = report.orderStatusSummary.confirmedRevenue || mapped.revenue;
+                mapped.revenueDisplay = `${(mapped.revenue || 0).toLocaleString("vi-VN")} ₫`;
+                mapped.aiOrderCount = report.orderStatusSummary.totalPendingCreated || mapped.aiOrderCount;
+              }
+              if (Array.isArray(report.commentLogs)) {
+                mapped.chatCount = report.commentLogs.length;
+              }
+              if (report.durationDisplay) {
+                mapped.subTimeDisplay = `Thời lượng: ${report.durationDisplay}`;
+              }
+            }
+          } catch {
+            // Report not available yet or optional
+          }
+        }
+
         setSession(mapped);
       } catch (err) {
         console.warn("[LivestreamDetail] Could not load detail from API:", err);
@@ -69,7 +92,7 @@ export function LivestreamDetail({ livestreamId }: LivestreamDetailProps) {
         </p>
         <div className="mt-6">
           <Link
-            href="/shop/livestream"
+            href="/admin/livestream"
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-container transition-all active:scale-[0.98] shadow-xs"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

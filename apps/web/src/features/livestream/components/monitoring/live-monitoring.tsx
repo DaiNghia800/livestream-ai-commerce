@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
@@ -625,7 +625,7 @@ export function LiveMonitoring({ livestreamId }: LiveMonitoringProps) {
             </p>
           </div>
           <Link
-            href="/shop/livestream"
+            href="/admin/livestream"
             className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-primary text-on-primary font-semibold text-xs shadow-sm hover:bg-primary/90 transition"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />

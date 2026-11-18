@@ -160,7 +160,7 @@ function OrderDetailView({
       <div className="page-head">
         <div>
           <nav className="breadcrumb" aria-label="Đường dẫn trang">
-            <Link href="/shop/orders">Đơn hàng</Link>
+            <Link href="/admin/orders">Đơn hàng</Link>
             <ChevronRight size={14} aria-hidden="true" />
             <span>{order.orderCode}</span>
           </nav>

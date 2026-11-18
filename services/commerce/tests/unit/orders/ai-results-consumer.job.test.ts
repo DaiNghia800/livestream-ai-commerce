@@ -1331,4 +1331,207 @@ describe("AiResultsConsumerJob - Unit Tests", () => {
       })
     );
   });
+
+  it("hiển thị đúng 'Mã 999' thay vì 'SP0999' khi khách chốt mã không có trong giỏ live", async () => {
+    const sessionId = "a1111111-1111-4111-8111-111111111111";
+    const customerId = "c0000000-0000-0000-0000-000000000099";
+    const chatRoomArn = "arn:room-livestream-999";
+
+    // 1. Tìm phiên live
+    mockPool.query
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ id: sessionId, merchant_id: "m-1", chat_room_arn: chatRoomArn, status: "live" }],
+      })
+      // 2. Tìm product theo code 'Mã 999' -> 0 row
+      .mockResolvedValueOnce({
+        rowCount: 0,
+        rows: [],
+      })
+      // 3. Tìm product theo index offset (999 - 1 = 998) -> 0 row
+      .mockResolvedValueOnce({
+        rowCount: 0,
+        rows: [],
+      });
+
+    const job = new AiResultsConsumerJob(
+      mockPool as unknown as Pool,
+      mockDraftOrderService as unknown as DraftOrderService,
+      mockIvsChatService,
+      {
+        queueUrl: "https://sqs.ap-southeast-1.amazonaws.com/123/ai-results",
+        customClient: mockSqsClient as unknown as SQSClient,
+      }
+    );
+
+    await job.processSingleMessage({
+      session_id: sessionId,
+      customer_id: customerId,
+      username: "Minh Hằng",
+      content: "chốt mã 999",
+      intent: {
+        has_intent: false,
+        decision: "needs_clarification",
+        raw: "chốt mã 999",
+      },
+    });
+
+    expect(mockDraftOrderService.createDraftOrder).not.toHaveBeenCalled();
+    expect(mockIvsChatService.sendEvent).toHaveBeenCalledWith(
+      chatRoomArn,
+      "app:order_needs_clarification",
+      expect.objectContaining({
+        customerName: "Minh Hằng",
+        displayCode: "Mã 999",
+        displayIndex: "999",
+        productCode: "Mã 999",
+        message: "@Minh Hằng ơi, Mã 999 hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã sản phẩm trên màn hình nhé!",
+        reviewReason: "Mã 999 không có trong giỏ live",
+      })
+    );
+  });
+
+  it("thông báo rõ ràng khi size khách chốt bị hết hàng trong kho", async () => {
+    const sessionId = "a1111111-1111-4111-8111-111111111111";
+    const customerId = "c0000000-0000-0000-0000-000000000099";
+    const chatRoomArn = "arn:room-livestream-stock";
+
+    // 1. Tìm phiên live
+    mockPool.query
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ id: sessionId, merchant_id: "m-1", chat_room_arn: chatRoomArn, status: "live" }],
+      })
+      // 2. Tìm product theo code 'Mã 1' -> 0 row
+      .mockResolvedValueOnce({
+        rowCount: 0,
+        rows: [],
+      })
+      // 3. Tìm product theo offset (1 - 1 = 0) -> rowCount: 1
+      .mockResolvedValueOnce({
+        rowCount: 1,
+        rows: [{ id: "prod-10", name: "Áo Polo Nam", code: "POLO10" }],
+      })
+      // 4. Tìm SKUs với stock: Size S hết hàng (stock = 0), Size M còn hàng (stock = 5)
+      .mockResolvedValueOnce({
+        rowCount: 2,
+        rows: [
+          { id: "sku-s", sku_code: "POLO-S", variant_name: "Xanh - S", price: 150000, stock: 0 },
+          { id: "sku-m", sku_code: "POLO-M", variant_name: "Xanh - M", price: 150000, stock: 5 },
+        ],
+      });
+
+    const job = new AiResultsConsumerJob(
+      mockPool as unknown as Pool,
+      mockDraftOrderService as unknown as DraftOrderService,
+      mockIvsChatService,
+      {
+        queueUrl: "https://sqs.ap-southeast-1.amazonaws.com/123/ai-results",
+        customClient: mockSqsClient as unknown as SQSClient,
+      }
+    );
+
+    await job.processSingleMessage({
+      session_id: sessionId,
+      customer_id: customerId,
+      username: "Minh Hằng",
+      content: "Chốt mã 1 size S 1 cái",
+      intent: {
+        has_intent: false,
+        decision: "needs_clarification",
+        raw: "Chốt mã 1 size S 1 cái",
+      },
+    });
+
+    expect(mockDraftOrderService.createDraftOrder).not.toHaveBeenCalled();
+    expect(mockIvsChatService.sendEvent).toHaveBeenCalledWith(
+      chatRoomArn,
+      "app:order_needs_clarification",
+      expect.objectContaining({
+        customerName: "Minh Hằng",
+        displayCode: "Mã 1",
+        displayIndex: "1",
+        reviewReason: "Hết hàng",
+        message: expect.stringMatching(/Áo Polo Nam.*size S.*hiện đã hết hàng rồi ạ!/i),
+      })
+    );
+  });
+
+  it("fallback reviewReason về 'Cần bổ sung chi tiết' khi reasonCodes không thuộc các mã định sẵn", async () => {
+    const sessionId = "a1111111-1111-4111-8111-111111111111";
+    const customerId = "c0000000-0000-0000-0000-000000000099";
+    const chatRoomArn = "arn:room-livestream-fallback";
+
+    mockPool.query.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ id: sessionId, merchant_id: "m-1", chat_room_arn: chatRoomArn, status: "live" }],
+    });
+
+    const job = new AiResultsConsumerJob(
+      mockPool as unknown as Pool,
+      mockDraftOrderService as unknown as DraftOrderService,
+      mockIvsChatService,
+      {
+        queueUrl: "https://sqs.ap-southeast-1.amazonaws.com/123/ai-results",
+        customClient: mockSqsClient as unknown as SQSClient,
+      }
+    );
+
+    await job.processSingleMessage({
+      session_id: sessionId,
+      customer_id: customerId,
+      username: "Minh Hằng",
+      content: "Chốt gì đó",
+      intent: {
+        has_intent: false,
+        decision: "needs_clarification",
+        reason_codes: ["unrecognized_reason_code"],
+      },
+    });
+
+    expect(mockIvsChatService.sendEvent).toHaveBeenCalledWith(
+      chatRoomArn,
+      "app:order_needs_clarification",
+      expect.objectContaining({
+        reviewReason: "Cần bổ sung chi tiết",
+      })
+    );
+  });
+
+  it("xử lý nhẹ nhàng khi ivsChatService.sendEvent ném lỗi trong handleNeedsClarification", async () => {
+    const sessionId = "a1111111-1111-4111-8111-111111111111";
+    const customerId = "c0000000-0000-0000-0000-000000000099";
+    const chatRoomArn = "arn:room-livestream-fail";
+
+    mockPool.query.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ id: sessionId, merchant_id: "m-1", chat_room_arn: chatRoomArn, status: "live" }],
+    });
+
+    mockIvsChatService.sendEvent.mockRejectedValueOnce(new Error("IVS Chat WebSocket Down"));
+
+    const job = new AiResultsConsumerJob(
+      mockPool as unknown as Pool,
+      mockDraftOrderService as unknown as DraftOrderService,
+      mockIvsChatService,
+      {
+        queueUrl: "https://sqs.ap-southeast-1.amazonaws.com/123/ai-results",
+        customClient: mockSqsClient as unknown as SQSClient,
+      }
+    );
+
+    // Không được quăng exception ra ngoài (graceful non-blocking)
+    await expect(
+      job.processSingleMessage({
+        session_id: sessionId,
+        customer_id: customerId,
+        username: "Minh Hằng",
+        content: "chốt",
+        intent: {
+          has_intent: false,
+          decision: "needs_clarification",
+        },
+      })
+    ).resolves.not.toThrow();
+  });
 });

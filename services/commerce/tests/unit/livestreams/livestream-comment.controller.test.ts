@@ -172,6 +172,41 @@ describe("LivestreamCommentController Unit Tests", () => {
       // để chính người đó mở được link xác nhận đơn sinh ra từ bình luận.
       expect(jsonSpy).toHaveBeenCalledWith({
         data: createdComment,
+        warning: null,
+        filterReason: null,
+        confirmationReceipt: expect.any(String),
+      });
+    });
+
+    it("trả về 201 kèm warning và filterReason khi comment bị dính anti-flood duplicate", async () => {
+      const commentWithWarning = {
+        id: "c-dup",
+        livestreamId: "live-1",
+        userId: "u-1",
+        username: "tester",
+        content: "Hello",
+        role: "buyer" as const,
+        createdAt: new Date().toISOString(),
+        warning: "@tester ơi, bạn gửi bình luận trùng lặp quá nhanh! Vui lòng chờ 5 giây để hệ thống hoàn tất lượt chốt trước đó nhé!",
+        filterReason: "duplicate_flood",
+      };
+      mockReq = {
+        params: { id: "live-1" },
+        body: {
+          userId: "u-1",
+          username: "tester",
+          content: "Hello",
+        },
+      };
+      mockService.addComment.mockResolvedValueOnce(commentWithWarning as any);
+
+      await controller.createComment(mockReq as Request, mockRes as Response);
+
+      expect(statusSpy).toHaveBeenCalledWith(201);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        data: commentWithWarning,
+        warning: commentWithWarning.warning,
+        filterReason: "duplicate_flood",
         confirmationReceipt: expect.any(String),
       });
     });

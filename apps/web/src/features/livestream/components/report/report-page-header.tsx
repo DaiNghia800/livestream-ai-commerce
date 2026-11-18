@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -77,7 +77,7 @@ export function ReportPageHeader({
         <div className="space-y-1.5">
           {/* Breadcrumb Hierarchy */}
           <nav aria-label="Đường dẫn trang" className="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium flex-wrap">
-            <Link href="/shop/livestream" className="hover:text-primary transition-colors">
+            <Link href="/admin/livestream" className="hover:text-primary transition-colors">
               Livestream
             </Link>
             <ChevronRight className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
@@ -104,7 +104,7 @@ export function ReportPageHeader({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Back to list */}
           <Link
-            href="/shop/livestream"
+            href="/admin/livestream"
             className="inline-flex items-center gap-1.5 h-9 px-3 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container transition-all active:scale-[0.98] shadow-xs"
           >
             <ArrowLeft className="h-3.5 w-3.5 text-outline" aria-hidden="true" />

@@ -188,7 +188,7 @@ export function InventoryManagement() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <Link className={styles.secondaryButton} href="/shop/inventory/history">
+          <Link className={styles.secondaryButton} href="/admin/inventory/history">
             <History size={15} aria-hidden="true" />
             Nhật ký biến động
           </Link>
@@ -196,7 +196,7 @@ export function InventoryManagement() {
             <Download size={15} aria-hidden="true" />
             Xuất file kiểm kê
           </button>
-          <Link className={styles.adjustButton} href="/shop/inventory/adjustment">
+          <Link className={styles.adjustButton} href="/admin/inventory/adjustment">
             <Settings2 size={15} aria-hidden="true" />
             Điều chỉnh tồn kho
           </Link>

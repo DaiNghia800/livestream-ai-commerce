@@ -14,6 +14,10 @@ function collectConsoleErrors(page: Page) {
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __IS_E2E__?: boolean }).__IS_E2E__ = true;
+    localStorage.setItem("is_e2e_test", "1");
+  });
   if (!testInfo.title.includes("guest user")) {
     await page.addInitScript(() => {
       localStorage.setItem(

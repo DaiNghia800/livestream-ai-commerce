@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { LivestreamPageHeader } from "@/features/livestream/components/overview/livestream-page-header";
 import { LivestreamOverview } from "@/features/livestream/components/overview/livestream-overview";
 
 export const metadata: Metadata = {
@@ -8,10 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function LivestreamPage() {
-  return (
-    <div>
-      <LivestreamPageHeader />
-      <LivestreamOverview />
-    </div>
-  );
+  return <LivestreamOverview />;
 }

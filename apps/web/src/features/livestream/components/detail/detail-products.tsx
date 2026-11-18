@@ -35,7 +35,7 @@ export function DetailProducts({ session }: DetailProductsProps) {
         {/* Quick action: Chỉnh sửa nếu là phiên nháp / sắp diễn ra */}
         {isEditable && (
           <Link
-            href={`/shop/livestream/${session.id}/edit`}
+            href={`/admin/livestream/${session.id}/edit`}
             className="inline-flex items-center gap-1.5 h-8 px-3 bg-white border border-outline-variant hover:bg-surface-container rounded-md text-xs font-medium text-on-surface transition-colors shadow-2xs"
           >
             <Plus className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
@@ -53,7 +53,7 @@ export function DetailProducts({ session }: DetailProductsProps) {
                 <tr className="bg-surface-container-low/80 border-b border-outline-variant font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider">
                   <th scope="col" className="py-2.5 px-4 w-12 text-center">STT</th>
                   <th scope="col" className="py-2.5 px-4">Sản phẩm & SKU</th>
-                  <th scope="col" className="py-2.5 px-4 text-center">Mã chốt đơn</th>
+                  <th scope="col" className="py-2.5 px-4 text-center">Cú pháp chốt đơn</th>
                   <th scope="col" className="py-2.5 px-4 text-right">Giá bán</th>
                   <th scope="col" className="py-2.5 px-4 text-right">Tồn khả dụng</th>
                   <th scope="col" className="py-2.5 px-4 text-right">Đơn tạo từ chat</th>
@@ -105,7 +105,7 @@ export function DetailProducts({ session }: DetailProductsProps) {
           </p>
           {isEditable && (
             <Link
-              href={`/shop/livestream/${session.id}/edit`}
+              href={`/admin/livestream/${session.id}/edit`}
               className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary-container transition-colors shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />

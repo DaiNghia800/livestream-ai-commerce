@@ -421,6 +421,44 @@ describe("LivestreamCommentService Unit Tests", () => {
       expect(result).not.toBeNull();
       expect(mockSqsService.sendCommentCreatedEvent).not.toHaveBeenCalled();
     });
+
+    it("phát sự kiện app:order_needs_clarification khi buyer bình luận trùng lặp quá nhanh (duplicate_flood)", async () => {
+      const live = await livestreamRepo.create({
+        merchantId: "m-1",
+        title: "Active Live Flood",
+        status: "live",
+      });
+      await livestreamRepo.updateIvsChatRoom(
+        live.id,
+        "arn:aws:ivschat:room/test-flood",
+        "room-flood"
+      );
+
+      // Lần 1: Bình luận chốt đơn hợp lệ
+      await service.addComment(live.id, {
+        userId: "buyer-rapid-1",
+        username: "Minh Hằng",
+        content: "Chốt mã 4 màu hồng",
+        role: "buyer",
+      });
+
+      // Lần 2: Gửi ngay lập tức nội dung y hệt -> kích hoạt duplicate_flood
+      await service.addComment(live.id, {
+        userId: "buyer-rapid-1",
+        username: "Minh Hằng",
+        content: "Chốt mã 4 màu hồng",
+        role: "buyer",
+      });
+
+      expect(mockIvsChatService.sendEvent).toHaveBeenCalledWith(
+        "arn:aws:ivschat:room/test-flood",
+        "app:order_needs_clarification",
+        expect.objectContaining({
+          customerName: "Minh Hằng",
+          reviewReason: "Thao tác quá nhanh (Trùng lặp 5s)",
+        })
+      );
+    });
   });
 
   describe("Redis In-Memory Caching", () => {

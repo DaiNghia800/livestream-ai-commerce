@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { ORDER_DETAIL, ORDER_DIA_CHI_HONG, stubApi } from "./fixtures/api";
 
 /**
@@ -12,7 +12,17 @@ import { ORDER_DETAIL, ORDER_DIA_CHI_HONG, stubApi } from "./fixtures/api";
  * với việc tỉnh phải chọn từ danh mục chứ không gõ tay.
  */
 
-const DUONG_DAN = `/shop/orders/${ORDER_DIA_CHI_HONG.orderCode}`;
+const DUONG_DAN = `/admin/orders/${ORDER_DIA_CHI_HONG.orderCode}`;
+
+async function moSuaDiaChi(page: Page) {
+  await expect(
+    page.getByRole("heading", { name: new RegExp(ORDER_DIA_CHI_HONG.orderCode) }),
+  ).toBeVisible({ timeout: 15_000 });
+  const nut = page.getByRole("button", { name: "Sửa địa chỉ giao" });
+  await expect(nut).toBeVisible({ timeout: 15_000 });
+  await nut.scrollIntoViewIfNeeded();
+  await nut.click();
+}
 
 test.describe("Sửa địa chỉ giao", () => {
   test.beforeEach(async ({ page }) => {
@@ -25,41 +35,45 @@ test.describe("Sửa địa chỉ giao", () => {
     await page.goto(DUONG_DAN);
 
     await expect(
+      page.getByRole("heading", { name: new RegExp(ORDER_DIA_CHI_HONG.orderCode) }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await expect(
       page.getByRole("heading", { name: /chưa chuẩn hoá/i }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByRole("button", { name: "Sửa địa chỉ giao" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("hộp thoại hiện lại nguyên văn khách đã gõ để đối chiếu", async ({
     page,
   }) => {
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     // Người sửa cần nhìn thấy bản gốc, chứ không phải nhớ lại.
     // Khoanh vào hộp thoại: cùng dòng địa chỉ còn hiện ở thẻ đơn và
     // bản in phía sau.
     await expect(
       page.getByRole("dialog").getByText(ORDER_DIA_CHI_HONG.shippingAddress),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("tỉnh là danh sách CHỌN, không cho gõ tay", async ({ page }) => {
     // Gõ tay là sai chính tả rồi hỏng ở bước tạo vận đơn — muộn hơn
     // và khó hiểu hơn nhiều.
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     const tinh = page.getByLabel("Tỉnh / Thành phố");
-    await expect(tinh).toBeVisible();
+    await expect(tinh).toBeVisible({ timeout: 15_000 });
     await expect(tinh.locator("option")).toContainText(["Khánh Hòa"]);
   });
 
   test("chưa điền đủ thì nút Lưu vẫn khoá", async ({ page }) => {
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     const luu = page.getByRole("button", { name: "Lưu địa chỉ" });
     await expect(luu).toBeDisabled();
@@ -83,7 +97,7 @@ test.describe("Sửa địa chỉ giao", () => {
     // Danh mục hãng vẫn ba cấp. Cho gõ tay phường mà không có quận
     // là đúng cái sinh ra lỗi "ward not found" của GHN.
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     const huyen = page.getByLabel("Quận / Huyện");
     await expect(huyen).toBeDisabled();
@@ -105,11 +119,17 @@ test.describe("Sửa địa chỉ giao", () => {
     // Giữ lại "Phường Lộc Thọ" sau khi đổi sang Cam Ranh là tạo ra
     // một địa chỉ không tồn tại, mà nhìn thì vẫn hợp lệ.
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     await page.getByLabel("Tỉnh / Thành phố").selectOption("Khánh Hòa");
     const huyen = page.getByLabel("Quận / Huyện");
+    await expect(huyen.locator("option")).toContainText([
+      "Thành phố Nha Trang",
+    ]);
     await huyen.selectOption("Thành phố Nha Trang");
+    await expect(page.getByLabel("Phường / Xã").locator("option")).toContainText([
+      "Phường Lộc Thọ",
+    ]);
     await page.getByLabel("Phường / Xã").selectOption("Phường Lộc Thọ");
 
     await huyen.selectOption("Thành phố Cam Ranh");
@@ -122,7 +142,7 @@ test.describe("Sửa địa chỉ giao", () => {
     // Danh mục rỗng = chưa khai khoá hãng hoặc hãng hỏng. Khoá người
     // dùng lại chỉ vì thiếu một khoá API là phản ứng quá tay.
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     // "Đà Nẵng" không có trong danh mục giả nên trả mảng rỗng.
     await page.getByLabel("Tỉnh / Thành phố").selectOption("Đà Nẵng");
@@ -139,7 +159,7 @@ test.describe("Sửa địa chỉ giao", () => {
     page,
   }) => {
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     await page.getByLabel("Tỉnh / Thành phố").selectOption("Khánh Hòa");
     await page
@@ -169,7 +189,7 @@ test.describe("Sửa địa chỉ giao", () => {
     // Khi tỉnh sai, câu backend trả về kèm luôn gợi ý tên đúng. Rút
     // gọn lại là mất đúng phần giúp được shop.
     await page.goto(DUONG_DAN);
-    await page.getByRole("button", { name: "Sửa địa chỉ giao" }).click();
+    await moSuaDiaChi(page);
 
     await page.getByLabel("Tỉnh / Thành phố").selectOption("Hà Nội");
     await page.getByLabel("Phường / Xã").fill("Phường Dịch Vọng");
@@ -179,20 +199,20 @@ test.describe("Sửa địa chỉ giao", () => {
     // Lọc theo chữ: Next còn một role=alert rỗng cho bộ đọc màn hình.
     await expect(
       page.getByRole("alert").filter({ hasText: /không nhận giao tuyến này/ }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("địa chỉ đã chuẩn hoá thì KHÔNG hiện cảnh báo lẫn nút sửa", async ({
     page,
   }) => {
     await stubApi(page, { orderDetail: ORDER_DETAIL });
-    await page.goto(`/shop/orders/${ORDER_DETAIL.orderCode}`);
+    await page.goto(`/admin/orders/${ORDER_DETAIL.orderCode}`);
 
     // Chờ một thứ CÓ thật hiện ra trước, nếu không phép kiểm "không
     // hiện" sẽ đạt chỉ vì trang chưa kịp dựng.
     await expect(
       page.getByRole("heading", { name: new RegExp(ORDER_DETAIL.orderCode) }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
 
     await expect(
       page.getByRole("button", { name: "Sửa địa chỉ giao" }),

@@ -1,5 +1,18 @@
 import { test, expect, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("access_token") && !localStorage.getItem("admin_access_token")) {
+      localStorage.setItem("access_token", "mock-shop-access-token");
+      localStorage.setItem("user_role", "shop_owner");
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({ id: 1, full_name: "Chủ shop", email: "shop@example.com", role: "shop_owner" })
+      );
+    }
+  });
+});
+
 const item = {
   skuId: "11",
   skuCode: "SKU-TEST-1",
@@ -39,6 +52,16 @@ const movement = {
 };
 
 async function mockApi(page: Page) {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("access_token") && !localStorage.getItem("admin_access_token")) {
+      localStorage.setItem("access_token", "mock-shop-access-token");
+      localStorage.setItem("user_role", "shop_owner");
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({ id: 1, full_name: "Chủ shop", email: "shop@example.com", role: "shop_owner" })
+      );
+    }
+  });
   await page.route("**/api/inventory/adjustments/batch", (route) =>
     route.fulfill({ json: { data: [item] } }),
   );

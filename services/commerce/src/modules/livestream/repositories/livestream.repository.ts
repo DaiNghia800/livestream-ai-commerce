@@ -473,6 +473,43 @@ export class PostgresLivestreamRepository implements ILivestreamRepository {
   }
 
   async delete(id: string): Promise<boolean> {
+    // 1. Kiểm tra xem phiên livestream có đơn hàng thực sự đã được đặt / đã xác nhận hay không
+    const checkConfirmedQuery = `
+      SELECT 1 FROM orders
+      WHERE livestream_id = $1
+        AND status IN ('CONFIRMED', 'PROCESSING', 'COMPLETED')
+      LIMIT 1;
+    `;
+    const checkRes = await pool.query(checkConfirmedQuery, [id]);
+    if ((checkRes.rowCount ?? 0) > 0) {
+      // Có đơn hàng thực tế của khách -> kích hoạt lỗi foreign key 23503 để giữ nguyên chính sách bảo vệ dữ liệu TMĐT
+      const fkErr = new Error(
+        "update or delete on table 'livestreams' violates foreign key constraint 'fk_orders_livestream' - session has confirmed customer orders"
+      );
+      (fkErr as any).code = "23503";
+      throw fkErr;
+    }
+
+    // 2. Nếu phiên chỉ có đơn nháp DRAFT, hết hạn hoặc đã hủy (chưa từng xác nhận đặt hàng):
+    // Gỡ liên kết livestream_id và hủy đơn nháp để không vi phạm khóa ngoại ON DELETE RESTRICT
+    await pool.query(
+      `UPDATE orders
+          SET livestream_id = NULL,
+              status = CASE WHEN status IN ('DRAFT', 'PENDING_CONFIRMATION') THEN 'CANCELLED' ELSE status END
+        WHERE livestream_id = $1
+          AND status NOT IN ('CONFIRMED', 'PROCESSING', 'COMPLETED');`,
+      [id]
+    );
+
+    // Gỡ liên kết purchase_requests nếu có
+    await pool.query(
+      `UPDATE purchase_requests
+          SET livestream_id = NULL
+        WHERE livestream_id = $1;`,
+      [id]
+    );
+
+    // 3. Thực hiện xóa phiên livestream
     const query = `DELETE FROM livestreams WHERE id = $1 RETURNING id;`;
     const result = await pool.query(query, [id]);
     return (result.rowCount ?? 0) > 0;

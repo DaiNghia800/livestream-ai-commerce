@@ -258,7 +258,7 @@ export class AiResultsConsumerJob {
         productMatch[0].startsWith("Mã") ||
         productMatch[0].startsWith("#") ||
         productMatch[0].startsWith("số")
-          ? `SP0${productMatch[1]}`
+          ? `Mã ${parseInt(productMatch[1], 10)}`
           : productMatch[0].toUpperCase();
       const qtyMatch =
         rawContent.match(/(?:x\s*|sl\s*[:=]?\s*|số\s+lượng\s*[:=]?\s*)(\d+)/i) ||
@@ -387,6 +387,29 @@ export class AiResultsConsumerJob {
           )
       );
 
+    // Fallback: If username is still not resolved, query user profile by customerId
+    if (
+      !resolvedUsername ||
+      resolvedUsername === "Khách chốt đơn" ||
+      resolvedUsername === "Khách" ||
+      resolvedUsername === "Bạn"
+    ) {
+      const lookupId = resolvedCustomerId || params.customerId;
+      if (lookupId && isValidUuid(lookupId)) {
+        try {
+          const userRes = await this.pool.query<{ full_name: string }>(
+            `SELECT full_name FROM users WHERE id = $1`,
+            [lookupId]
+          );
+          if (userRes.rowCount && userRes.rowCount > 0 && userRes.rows[0].full_name) {
+            resolvedUsername = userRes.rows[0].full_name;
+          }
+        } catch {
+          // Non-blocking in case users table is offline or mocked
+        }
+      }
+    }
+
     const customerId = isValidUuid(resolvedCustomerId || params.customerId)
       ? (resolvedCustomerId || params.customerId)!
       : "c0000000-0000-0000-0000-000000000001";
@@ -437,32 +460,38 @@ export class AiResultsConsumerJob {
       console.warn(
         `[AiResultsConsumerJob] Product with code or index '${productCode}' not found in database.`
       );
+      const friendlyCode = resolvedDisplayIndex
+        ? `Mã ${resolvedDisplayIndex}`
+        : (productCode || "Mã sản phẩm");
       await this.handleNeedsClarification({
         livestream,
         customerId,
         commentId,
-        productCode,
+        productCode: friendlyCode,
         displayIndex: resolvedDisplayIndex ? String(resolvedDisplayIndex) : undefined,
-        displayCode: resolvedDisplayIndex ? `Mã ${resolvedDisplayIndex}` : undefined,
+        displayCode: friendlyCode,
         reasonCodes: ["invalid_product_code"],
         username: resolvedUsername,
-        customTip: `${productCode} hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã sản phẩm trên màn hình nhé!`,
-        customReason: `${productCode} không có trong giỏ live`,
+        customTip: `${friendlyCode} hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã sản phẩm trên màn hình nhé!`,
+        customReason: `${friendlyCode} không có trong giỏ live`,
       });
       return;
     }
 
     const product = productRes.rows[0];
 
-    // 2. Fetch all active SKUs for the product
+    // 2. Fetch all active SKUs for the product with real-time stock
     const skuRes = await this.pool.query<{
       id: string;
       sku_code: string;
       variant_name: string;
       price: number;
+      stock?: number;
     }>(
-      `SELECT ps.id::text, ps.sku_code, ps.variant_name, ps.price
+      `SELECT ps.id::text, ps.sku_code, ps.variant_name, ps.price,
+              GREATEST(0, COALESCE(i.on_hand_quantity - i.held_quantity, 0))::int AS stock
          FROM product_skus ps
+         LEFT JOIN inventory i ON i.sku_id::text = ps.id::text
         WHERE ps.product_id = $1
           AND ps.status = 'active'
         ORDER BY ps.id ASC`,
@@ -490,12 +519,50 @@ export class AiResultsConsumerJob {
 
     const allSkus = skuRes.rows;
 
+    // Kiểm tra nếu sản phẩm đã hết sạch hàng ở tất cả các phân loại
+    const hasAnyInStock = allSkus.some(
+      (s) => s.stock === undefined || Number(s.stock) > 0
+    );
+    if (!hasAnyInStock) {
+      const friendlyCode = resolvedDisplayIndex
+        ? `Mã ${resolvedDisplayIndex}`
+        : (product.code || "Mã SP");
+      await this.handleNeedsClarification({
+        livestream,
+        customerId,
+        commentId,
+        productCode: product.code,
+        displayIndex: resolvedDisplayIndex ? String(resolvedDisplayIndex) : undefined,
+        displayCode: friendlyCode,
+        reasonCodes: ["out_of_stock"],
+        username: resolvedUsername,
+        customTip: `sản phẩm ${product.name} hiện đã hết hàng toàn bộ rồi ạ! Bạn tham khảo các sản phẩm khác trên live nhé!`,
+        customReason: "Sản phẩm hết hàng",
+      });
+      return;
+    }
+
     // Trích xuất size/màu hiệu dụng (kết hợp cả kết quả từ AI và nội dung comment gốc)
     let effectiveSize = (size || "").trim();
     if (!effectiveSize && commentContent) {
       const sizeMatch = commentContent.match(/\b(?:size|sz|cỡ)\s*([a-zA-Z0-9]+)\b/i);
       if (sizeMatch) {
         effectiveSize = sizeMatch[1].toUpperCase();
+      } else {
+        // Khớp token size độc lập (VD: "Chốt mã 1 L 1 cái", "Chốt mã 2 XL")
+        const standaloneSizeMatch = commentContent.match(
+          /(?:^|\s)(XXXL|XXL|2XL|3XL|4XL|XL|XS|S|M|L)(?=$|[\s,.\-x×/])/i
+        );
+        if (standaloneSizeMatch) {
+          const candidate = standaloneSizeMatch[1].toUpperCase();
+          const existsInVariants = allSkus.some((s) => {
+            const vLower = (s.variant_name || "").toLowerCase();
+            return new RegExp(`(?:^|[\\s•\\-_/])${candidate.toLowerCase()}(?:$|[\\s•\\-_/])`).test(vLower);
+          });
+          if (existsInVariants) {
+            effectiveSize = candidate;
+          }
+        }
       }
     }
 
@@ -530,13 +597,14 @@ export class AiResultsConsumerJob {
         return matchColor && matchSize;
       });
 
+      const detailParts: string[] = [];
+      if (effectiveColor) detailParts.push(`màu ${effectiveColor}`);
+      if (effectiveSize) detailParts.push(`size ${effectiveSize.toUpperCase()}`);
+      const invalidDetail =
+        detailParts.length > 0 ? detailParts.join(" ") : "phân loại này";
+
       if (matchedSkus.length === 0) {
-        // Customer requested a size/color that does not exist or is out of stock in product catalog
-        const detailParts: string[] = [];
-        if (effectiveColor) detailParts.push(`màu ${effectiveColor}`);
-        if (effectiveSize) detailParts.push(`size ${effectiveSize.toUpperCase()}`);
-        const invalidDetail =
-          detailParts.length > 0 ? detailParts.join(" ") : "phân loại này";
+        // Customer requested a size/color that does not exist in product catalog
         const availableOptions = allSkus.map((s) => s.variant_name).join(", ");
         await this.handleNeedsClarification({
           livestream,
@@ -552,10 +620,37 @@ export class AiResultsConsumerJob {
         });
         return;
       }
+
+      // Kiểm tra nếu tất cả các SKU khớp với size/màu này ĐÃ HẾT HÀNG TRONG KHO (stock <= 0)
+      const inStockMatched = matchedSkus.filter(
+        (s) => s.stock === undefined || Number(s.stock) > 0
+      );
+      if (matchedSkus.length > 0 && inStockMatched.length === 0) {
+        const availableInStock = allSkus
+          .filter((s) => s.stock === undefined || Number(s.stock) > 0)
+          .map((s) => s.variant_name);
+        const stockTip =
+          availableInStock.length > 0
+            ? ` (Shop còn sẵn: ${availableInStock.join(", ")})`
+            : "";
+        await this.handleNeedsClarification({
+          livestream,
+          customerId,
+          commentId,
+          productCode: product.code,
+          displayIndex: resolvedDisplayIndex ? String(resolvedDisplayIndex) : undefined,
+          displayCode: resolvedDisplayIndex ? `Mã ${resolvedDisplayIndex}` : undefined,
+          reasonCodes: ["out_of_stock"],
+          username: resolvedUsername,
+          customTip: `sản phẩm ${product.name} (${invalidDetail}) hiện đã hết hàng rồi ạ!${stockTip} Bạn chọn lại phân loại giúp shop nhé!`,
+          customReason: "Hết hàng",
+        });
+        return;
+      }
     }
 
-    // Pick best matching SKU (or default to first active SKU if unspecified)
-    let sku = allSkus[0];
+    // Pick best matching SKU (prefer in-stock variant)
+    let sku = allSkus.find((s) => s.stock === undefined || Number(s.stock) > 0) || allSkus[0];
     if (effectiveColor || effectiveSize) {
       const colorLower = effectiveColor.toLowerCase();
       const sizeLower = effectiveSize.toLowerCase();
@@ -654,18 +749,30 @@ export class AiResultsConsumerJob {
       );
       this.customerCooldownMap.set(cooldownKey, now);
     } catch (orderErr: any) {
-      if (
+      const isOutOfStock =
         orderErr instanceof AllLinesOutOfStockError ||
         orderErr?.name === "AllLinesOutOfStockError" ||
-        orderErr?.code === "ALL_LINES_OUT_OF_STOCK"
-      ) {
+        orderErr?.name === "OutOfStockError" ||
+        orderErr?.name === "SkuNotFoundError" ||
+        orderErr?.code === "OUT_OF_STOCK" ||
+        orderErr?.code === "ALL_LINES_OUT_OF_STOCK" ||
+        orderErr?.code === "SKU_NOT_FOUND" ||
+        (typeof orderErr?.message === "string" &&
+          (orderErr.message.includes("Không giữ được") ||
+            orderErr.message.includes("khả dụng") ||
+            orderErr.message.toLowerCase().includes("out of stock")));
+
+      if (isOutOfStock) {
+        const friendlyCode = resolvedDisplayIndex
+          ? `Mã ${resolvedDisplayIndex}`
+          : (product.code || "Mã SP");
         await this.handleNeedsClarification({
           livestream,
           customerId,
           commentId,
           productCode: product.code,
           displayIndex: resolvedDisplayIndex ? String(resolvedDisplayIndex) : undefined,
-          displayCode: resolvedDisplayIndex ? `Mã ${resolvedDisplayIndex}` : undefined,
+          displayCode: friendlyCode,
           reasonCodes: ["out_of_stock"],
           username: resolvedUsername,
           customTip: `sản phẩm ${product.name} (${sku.variant_name}) hiện đã hết hàng rồi ạ!`,
@@ -683,6 +790,19 @@ export class AiResultsConsumerJob {
     // 4. Broadcast Realtime Event to IVS Chat Room
     if (livestream.chat_room_arn && this.ivsChatService) {
       try {
+        const skuParts = (sku.variant_name || "")
+          .split(/[·•/,\-|]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        let broadcastColor = effectiveColor || color || "";
+        let broadcastSize = effectiveSize || size || "";
+        if (skuParts.length >= 2) {
+          if (!broadcastColor) broadcastColor = skuParts[0];
+          if (!broadcastSize) broadcastSize = skuParts[1].replace(/^size\s+/i, "");
+        } else if (skuParts.length === 1 && !broadcastSize && !broadcastColor) {
+          broadcastColor = skuParts[0];
+        }
+
         await this.ivsChatService.sendEvent(
           livestream.chat_room_arn,
           "app:order_detected",
@@ -698,8 +818,8 @@ export class AiResultsConsumerJob {
             displayIndex: resolvedDisplayIndex ? String(resolvedDisplayIndex) : "",
             displayCode: resolvedDisplayIndex ? `Mã ${resolvedDisplayIndex}` : "",
             variantName: sku.variant_name || "",
-            color: effectiveColor || color || "",
-            size: effectiveSize || size || "",
+            color: broadcastColor,
+            size: broadcastSize,
             quantity: String(quantity),
             price: String(sku.price || 0),
             totalAmount: String(draft.totalAmount || Number(sku.price) * quantity),
@@ -765,6 +885,29 @@ export class AiResultsConsumerJob {
       }
     }
 
+    // Fallback: If username is still not resolved, query user profile by customerId
+    if (
+      !resolvedUsername ||
+      resolvedUsername === "Khách chốt đơn" ||
+      resolvedUsername === "Khách" ||
+      resolvedUsername === "Bạn"
+    ) {
+      const lookupId = resolvedCustomerId || params.customerId;
+      if (lookupId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lookupId)) {
+        try {
+          const userRes = await this.pool.query<{ full_name: string }>(
+            `SELECT full_name FROM users WHERE id = $1`,
+            [lookupId]
+          );
+          if (userRes.rowCount && userRes.rowCount > 0 && userRes.rows[0].full_name) {
+            resolvedUsername = userRes.rows[0].full_name;
+          }
+        } catch {
+          // Non-blocking in case users table is offline or mocked
+        }
+      }
+    }
+
     let tip = params.customTip || "bạn vui lòng cho shop biết thêm màu sắc hoặc size nhé!";
     let isInvalidCode = false;
 
@@ -807,12 +950,21 @@ export class AiResultsConsumerJob {
 
         if (!exists && res !== undefined) {
           isInvalidCode = true;
-          tip = `${productCode} hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã sản phẩm trên màn hình nhé!`;
+          const displayNumMatch = (productCode || "").match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
+          const friendlyDisplayCode = displayNumMatch
+            ? `Mã ${parseInt(displayNumMatch[1], 10)}`
+            : (productCode || "Mã sản phẩm");
+          tip = `${friendlyDisplayCode} hiện không có trong giỏ hàng phiên live này ạ! Bạn kiểm tra lại mã sản phẩm trên màn hình nhé!`;
         }
       } catch {
         // Fallback gracefully in case query fails or is mocked in unit tests
       }
     }
+
+    const clarifyNumMatch = (productCode || "").match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
+    const friendlyCode =
+      params.displayCode ||
+      (clarifyNumMatch ? `Mã ${parseInt(clarifyNumMatch[1], 10)}` : (productCode || "Mã SP"));
 
     if (!isInvalidCode && !params.customTip) {
       if (reasonCodes?.includes("missing_quantity")) {
@@ -820,7 +972,7 @@ export class AiResultsConsumerJob {
       } else if (reasonCodes?.includes("missing_product_code")) {
         tip = "bạn vui lòng nhập mã sản phẩm (VD: Mã 1 hoặc Mã 2) để shop giữ hàng nhé!";
       } else if (reasonCodes?.includes("missing_action_keyword")) {
-        tip = `bạn vui lòng bình luận thêm từ "Chốt" hoặc "Lấy" (VD: "Chốt ${productCode || "Mã 1"} 1 cái") để hệ thống tự động giữ hàng nhé!`;
+        tip = `bạn vui lòng bình luận thêm từ "Chốt" hoặc "Lấy" (VD: "Chốt ${friendlyCode} 1 cái") để hệ thống tự động giữ hàng nhé!`;
       } else if (reasonCodes?.includes("invalid_variant")) {
         tip = "phân loại bạn chọn hiện không có hoặc đã hết hàng. Bạn vui lòng chọn lại màu sắc hoặc size nhé!";
       }
@@ -829,7 +981,7 @@ export class AiResultsConsumerJob {
     const reviewReason =
       params.customReason ||
       (isInvalidCode
-        ? `${productCode || "Mã SP"} không có trong giỏ live`
+        ? `${friendlyCode} không có trong giỏ live`
         : reasonCodes?.includes("missing_quantity")
           ? "Thiếu số lượng"
           : reasonCodes?.includes("missing_product_code")
@@ -842,11 +994,10 @@ export class AiResultsConsumerJob {
 
     const messageText = `@${resolvedUsername || "Bạn"} ơi, ${tip}`;
 
-    const clarifyNumMatch = (productCode || "").match(/(?:sp|mã\s*(?:số)?|số|#)?\s*0*(\d+)/i);
     const clarifyDisplayCode =
-      params.displayCode || (clarifyNumMatch ? `Mã ${clarifyNumMatch[1]}` : "");
+      params.displayCode || (clarifyNumMatch ? `Mã ${parseInt(clarifyNumMatch[1], 10)}` : "");
     const clarifyDisplayIndex =
-      params.displayIndex || (clarifyNumMatch ? clarifyNumMatch[1] : "");
+      params.displayIndex || (clarifyNumMatch ? String(parseInt(clarifyNumMatch[1], 10)) : "");
 
     try {
       await this.ivsChatService.sendEvent(
@@ -861,6 +1012,7 @@ export class AiResultsConsumerJob {
           displayIndex: clarifyDisplayIndex,
           message: messageText,
           reviewReason,
+          reasonCodes: reasonCodes ? reasonCodes.join(",") : "",
           isInvalidCode: isInvalidCode ? "true" : "false",
         }
       );

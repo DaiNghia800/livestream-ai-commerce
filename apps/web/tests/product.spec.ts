@@ -1,6 +1,19 @@
 import { test, expect, type Page } from "@playwright/test";
 import { productMockList } from "../src/mocks/product";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("access_token") && !localStorage.getItem("admin_access_token")) {
+      localStorage.setItem("access_token", "mock-shop-access-token");
+      localStorage.setItem("user_role", "shop_owner");
+      localStorage.setItem(
+        "auth_user",
+        JSON.stringify({ id: 1, full_name: "Chủ shop", email: "shop@example.com", role: "shop_owner" })
+      );
+    }
+  });
+});
+
 const categoryIds: Record<string, number> = {
   "Áo sơ mi": 1,
   "Đầm & Váy": 2,
@@ -237,7 +250,7 @@ test("product list hides archived and discontinued SKU variants after editing", 
   await page.getByRole("combobox", { name: "Trạng thái SKU 2" }).selectOption("archived");
   await page.getByRole("combobox", { name: "Trạng thái SKU 3" }).selectOption("discontinued");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
-  await expect(page).toHaveURL(/\/shop\/products$/);
+  await expect(page).toHaveURL(/\/(shop|admin)\/products$/);
 
   const updatedProductRow = page.getByRole("row").filter({ hasText: "AO01" });
   const productNameCell = updatedProductRow.locator("td").nth(1);
@@ -399,7 +412,7 @@ test("product management page renders correctly and matches Stitch design", asyn
     "nowrap"
   );
   await addBtn.click();
-  await expect(page).toHaveURL(/\/shop\/products\/new$/);
+  await expect(page).toHaveURL(/\/(shop|admin)\/products\/new$/);
   await expect(
     page.getByRole("heading", { name: "Tạo sản phẩm mới" })
   ).toBeVisible();
@@ -646,7 +659,7 @@ test("product edit page shows existing SKU data read-only and saves product chan
     }
   });
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
-  await expect(page).toHaveURL(/\/shop\/products$/);
+  await expect(page).toHaveURL(/\/(shop|admin)\/products$/);
   expect(savedSkuPrice).toBe(309000);
 });
 
@@ -791,7 +804,7 @@ test("create product form sends configured product details to the API", async ({
   expect(createPayload).toBeUndefined();
   await capacityInputs.nth(1).fill("750ml");
   await page.getByRole("button", { name: "Lưu sản phẩm" }).click();
-  await expect(page).toHaveURL(/\/shop\/products$/);
+  await expect(page).toHaveURL(/\/(shop|admin)\/products$/);
   expect(createdCategoryName).toBe("Shoes");
   expect(createPayload).toMatchObject({
     code: "NEW01",

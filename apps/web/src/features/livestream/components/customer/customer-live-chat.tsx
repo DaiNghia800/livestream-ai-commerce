@@ -160,6 +160,7 @@ export function CustomerLiveChat({
   const shouldAutoScrollRef = useRef<boolean>(true);
   const internalInputRef = useRef<HTMLInputElement>(null);
   const effectiveInputRef = inputRef || internalInputRef;
+  const lastSentCommentRef = useRef<{ text: string; time: number } | null>(null);
 
   const getOrderDisplayCode = useCallback(
     (code: string, productName?: string) => {
@@ -238,6 +239,9 @@ export function CustomerLiveChat({
 
       const isCurrentCustomer =
         (!attr.customerId && !attr.customerName) ||
+        attr.customerName === "Khách" ||
+        attr.customerName === "Bạn" ||
+        attr.customerName === "Khách chốt đơn" ||
         attr.customerName === "Minh Hằng" ||
         attr.customerName === "Khách hàng" ||
         (currentUser?.id && attr.customerId === currentUser.id) ||
@@ -307,6 +311,9 @@ export function CustomerLiveChat({
 
       const isCurrentCustomer =
         (!attr.customerId && !attr.customerName) ||
+        attr.customerName === "Khách" ||
+        attr.customerName === "Bạn" ||
+        attr.customerName === "Khách chốt đơn" ||
         attr.customerName === "Minh Hằng" ||
         attr.customerName === "Khách hàng" ||
         (currentUser?.id && attr.customerId === currentUser.id) ||
@@ -320,6 +327,25 @@ export function CustomerLiveChat({
           currentCustomerName.toLowerCase().includes((attr.customerName || "").toLowerCase()));
 
       if (isCurrentCustomer) {
+        // Chỉ loại bỏ đơn tạm nếu comment đó THỰC SỰ là đơn tạm bị từ chối, KHÔNG ĐƯỢC xoá đơn tạm trước đó khi bị dính cooldown / thao tác quá nhanh!
+        const isCooldown =
+          attr.reviewReason?.includes("Cooldown") ||
+          attr.reviewReason?.includes("quá nhanh") ||
+          attr.reasonCodes?.includes("order_cooldown") ||
+          attr.reasonCodes?.includes("duplicate_flood");
+
+        if (!isCooldown) {
+          setDetectedOrders((prev) =>
+            prev.filter((o) => {
+              const isCommentMatch = Boolean(attr.commentId && o.id === `comment-${attr.commentId}`);
+              const isCodeMatch =
+                (attr.productCode && o.code?.toLowerCase() === attr.productCode.toLowerCase()) ||
+                (attr.displayCode && o.code?.toLowerCase() === attr.displayCode.toLowerCase());
+              return !isCommentMatch && !isCodeMatch;
+            })
+          );
+        }
+
         const noticeId = `notice-${Date.now()}`;
         setAiNotice({
           id: noticeId,
@@ -357,7 +383,30 @@ export function CustomerLiveChat({
     const cleanText = inputText.trim();
     if (!cleanText || isSubmitting) return;
 
-    setAiNotice(null);
+    const now = Date.now();
+    const isRapidDuplicate =
+      lastSentCommentRef.current &&
+      lastSentCommentRef.current.text === cleanText.toLowerCase() &&
+      now - lastSentCommentRef.current.time < 5000;
+
+    if (isRapidDuplicate) {
+      const noticeId = `notice-${now}`;
+      setAiNotice({
+        id: noticeId,
+        message: `@${currentCustomerName || "Bạn"} ơi, bạn gửi bình luận trùng lặp quá nhanh! Vui lòng chờ 5 giây để hệ thống hoàn tất lượt chốt trước đó nhé!`,
+        isInvalidCode: false,
+      });
+      setTimeout(() => {
+        setAiNotice((cur) => (cur?.id === noticeId ? null : cur));
+      }, 8000);
+    } else {
+      // Chỉ xoá notice nếu nội dung gửi khác với bình luận trước
+      if (lastSentCommentRef.current?.text !== cleanText.toLowerCase()) {
+        setAiNotice(null);
+      }
+    }
+    lastSentCommentRef.current = { text: cleanText.toLowerCase(), time: now };
+
     setIsSubmitting(true);
     try {
       await onSendMessage(cleanText);
@@ -377,7 +426,6 @@ export function CustomerLiveChat({
       onRequestLogin?.();
       return;
     }
-    setAiNotice(null);
     onInputChange(syntax);
     effectiveInputRef.current?.focus();
     // Trigger highlight flash
@@ -440,7 +488,9 @@ export function CustomerLiveChat({
                       >
                         {msg.reviewReason?.includes("Cooldown") || msg.reviewReason?.includes("quá nhanh")
                           ? "Thao tác quá nhanh"
-                          : "Cần bổ sung"}
+                          : msg.reviewReason?.toLowerCase().includes("hết hàng")
+                            ? "Hết hàng"
+                            : "Cần bổ sung"}
                       </span>
                     ) : null}
                   </div>

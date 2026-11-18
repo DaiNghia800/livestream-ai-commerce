@@ -11,6 +11,7 @@ export interface Livestream {
     title: string;
     status: LivestreamStatus;
     thumbnail?: string;
+    coverImageKey?: string | null;
     hostName?: string;
     ivsChannel?: string;
     chatRoomArn?: string;
@@ -27,6 +28,8 @@ export interface Livestream {
     chatCount?: number;
     chatRatePerMinute?: number;
     aiOrderCount?: number;
+    hasConfirmedOrders?: boolean;
+    confirmedOrderCount?: number;
     aiConversionRate?: number;
     revenue?: number;
     timeDisplay?: string;

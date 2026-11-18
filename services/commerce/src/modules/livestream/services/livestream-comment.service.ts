@@ -285,6 +285,36 @@ export class LivestreamCommentService {
       console.log(
         `[CommentFilter] Skipped SQS (reason: ${filterResult.reason}): "${savedComment.content}" (role: ${savedComment.role})`
       );
+
+      // Nếu bị chặn do gửi trùng lặp quá nhanh (anti-flood duplicate trong vòng 5 giây), thông báo tức thời cho người dùng
+      if (filterResult.reason === "duplicate_flood") {
+        (savedComment as any).warning = `@${savedComment.username || "Bạn"} ơi, bạn gửi bình luận trùng lặp quá nhanh! Vui lòng chờ 5 giây để hệ thống hoàn tất lượt chốt trước đó nhé!`;
+        (savedComment as any).filterReason = "duplicate_flood";
+
+        if (livestream.chatRoomArn && this.ivsChatService) {
+          try {
+            await this.ivsChatService.sendEvent(
+              livestream.chatRoomArn,
+              "app:order_needs_clarification",
+              {
+                commentId: savedComment.id,
+                customerId: savedComment.userId,
+                customerName: savedComment.username || "Khách",
+                productCode: "",
+                message: `@${savedComment.username || "Bạn"} ơi, bạn gửi bình luận trùng lặp quá nhanh! Vui lòng chờ 5 giây để hệ thống hoàn tất lượt chốt trước đó nhé!`,
+                reviewReason: "Thao tác quá nhanh (Trùng lặp 5s)",
+                reasonCodes: "duplicate_flood,order_cooldown",
+                isInvalidCode: "false",
+              }
+            );
+          } catch (err) {
+            console.warn(
+              "[LivestreamCommentService] Failed to broadcast duplicate flood notice:",
+              err
+            );
+          }
+        }
+      }
     }
 
     return savedComment;

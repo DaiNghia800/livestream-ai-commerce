@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -622,7 +622,7 @@ export function CreateProductPage() {
         skus,
         images: uploadedImages,
       });
-      router.push("/shop/products");
+      router.push("/admin/products");
     } catch (saveError) {
       if (saveError instanceof ProductApiError && saveError.status === 409) {
         setError("Mã sản phẩm hoặc SKU đã tồn tại. Vui lòng kiểm tra lại.");
@@ -647,7 +647,7 @@ export function CreateProductPage() {
           {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-body-sm font-body-sm text-outline mb-1.5">
             <Link
-              href="/shop/products"
+              href="/admin/products"
               className="hover:text-primary transition-colors flex items-center gap-1 no-underline text-outline"
             >
               <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
@@ -672,7 +672,7 @@ export function CreateProductPage() {
           <button
             className="h-10 px-5 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface font-label-md text-label-md font-semibold hover:bg-surface-container-low transition-all duration-150 cursor-pointer"
             type="button"
-            onClick={() => router.push("/shop/products")}
+            onClick={() => router.push("/admin/products")}
           >
             Hủy
           </button>
