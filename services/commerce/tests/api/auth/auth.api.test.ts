@@ -8,12 +8,15 @@ import {
 } from "../../../src/modules/login/repositories/auth.repository.js";
 import {
   AuthUser,
+  CreateRoleInput,
   CreateShopInvitationInput,
   ManagedUser,
   ManagedUserPage,
   ManagedUserUpdate,
+  Permission,
   RefreshSession,
   RegisterUserInput,
+  RoleWithPermissions,
   ShopInvitation,
   ShopInvitationPage,
   User,
@@ -229,6 +232,47 @@ class InMemoryAuthRepository implements IAuthRepository {
   async createSession(_userId: number, session: RefreshSession): Promise<void> {
     this.sessions.push(session);
   }
+
+  async listPermissions(): Promise<Permission[]> {
+    return [
+      { id: 1, code: "livestream:view", name: "Xem Livestream", module: "livestream", description: null },
+      { id: 2, code: "orders:view", name: "Xem Đơn hàng", module: "orders", description: null },
+    ];
+  }
+
+  async listRoles(): Promise<RoleWithPermissions[]> {
+    return [
+      { id: 1, code: "admin", name: "Quản trị viên", description: null, isSystem: true, permissions: ["livestream:view", "orders:view"] },
+      { id: 2, code: "shop_owner", name: "Chủ shop", description: null, isSystem: true, permissions: ["orders:view"] },
+    ];
+  }
+
+  async createRole(input: CreateRoleInput): Promise<RoleWithPermissions> {
+    return {
+      id: 99,
+      code: input.code,
+      name: input.name,
+      description: input.description ?? null,
+      isSystem: false,
+      permissions: input.permissions ?? [],
+    };
+  }
+
+  async updateRolePermissions(roleId: number, permissionCodes: string[]): Promise<RoleWithPermissions | null> {
+    return {
+      id: roleId,
+      code: "test_role",
+      name: "Test Role",
+      description: null,
+      isSystem: false,
+      permissions: permissionCodes,
+    };
+  }
+
+  async getRolePermissions(roleCode: string): Promise<string[]> {
+    if (roleCode === "admin") return ["livestream:view", "orders:view"];
+    return ["orders:view"];
+  }
 }
 
 describe("Auth API", () => {
@@ -401,7 +445,7 @@ describe("Auth API", () => {
     const forgedRole = await request(app)
       .patch("/api/admin/users/101")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ role: "super_admin" });
+      .send({ role: "x" }); // Mã vai trò tối thiểu 2 ký tự
     expect(forgedRole.status).toBe(400);
 
     const deactivateCustomer = await request(app)
@@ -561,5 +605,72 @@ describe("Auth API", () => {
 
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.detail).toBe("Email đã được sử dụng");
+  });
+
+  it("AUTH-004 - handles dynamic roles and permissions matrix", async () => {
+    const repository = new InMemoryAuthRepository();
+    const app = createApp(undefined, undefined, undefined, undefined, repository);
+    const adminPasswordHash = await hashPassword("admin-secure-password");
+    repository.addUser({
+      id: 999,
+      email: "matrix-admin@example.com",
+      passwordHash: adminPasswordHash,
+      fullName: "Super Admin",
+      role: "admin",
+      isActive: true,
+    });
+
+    const loginRes = await request(app).post("/api/auth/login").send({
+      email: "matrix-admin@example.com",
+      password: "admin-secure-password",
+    });
+    expect(loginRes.status).toBe(200);
+    const token = loginRes.body.access_token;
+    expect(loginRes.body.user.permissions).toContain("livestream:view");
+
+    // 1. Get my permissions
+    const meRes = await request(app)
+      .get("/api/admin/me/permissions")
+      .set("Authorization", `Bearer ${token}`);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.role).toBe("admin");
+    expect(meRes.body.permissions).toContain("livestream:view");
+
+    // 2. List all available permissions
+    const permsRes = await request(app)
+      .get("/api/admin/permissions")
+      .set("Authorization", `Bearer ${token}`);
+    expect(permsRes.status).toBe(200);
+    expect(permsRes.body.permissions.length).toBeGreaterThan(0);
+
+    // 3. List roles
+    const rolesRes = await request(app)
+      .get("/api/admin/roles")
+      .set("Authorization", `Bearer ${token}`);
+    expect(rolesRes.status).toBe(200);
+    expect(rolesRes.body.roles.length).toBe(2);
+
+    // 4. Create new custom role
+    const createRes = await request(app)
+      .post("/api/admin/roles")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        code: "marketing_lead",
+        name: "Trưởng nhóm Marketing",
+        description: "Quản lý livestream và sự kiện",
+        permissions: ["livestream:view"],
+      });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.role.code).toBe("marketing_lead");
+
+    // 5. Update role permissions
+    const updateRes = await request(app)
+      .put("/api/admin/roles/99/permissions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        permissions: ["livestream:view", "orders:view"],
+      });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.role.permissions).toEqual(["livestream:view", "orders:view"]);
   });
 });

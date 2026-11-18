@@ -36,6 +36,11 @@ describe("AdminUserController Unit Tests", () => {
       createShopInvitation: vi.fn(),
       listShopInvitations: vi.fn(),
       revokeShopInvitation: vi.fn(),
+      listPermissions: vi.fn(),
+      listRoles: vi.fn(),
+      createRole: vi.fn(),
+      updateRolePermissions: vi.fn(),
+      getRolePermissions: vi.fn(),
     };
 
     controller = new AdminUserController(mockRepo);
@@ -83,7 +88,7 @@ describe("AdminUserController Unit Tests", () => {
 
     it("returns 400 on invalid body", async () => {
       req.params = { userId: "2" };
-      req.body = { role: "invalid-role" };
+      req.body = { role: "x" }; // Mã vai trò tối thiểu 2 ký tự
       await controller.update(req as Request, res as Response);
       expect(statusMock).toHaveBeenCalledWith(400);
     });
@@ -215,6 +220,138 @@ describe("AdminUserController Unit Tests", () => {
 
       await controller.revokeInvitation(req as Request, res as Response);
       expect(statusMock).toHaveBeenCalledWith(200);
+    });
+  });
+
+  describe("listPermissions", () => {
+    it("returns 200 with permissions list", async () => {
+      mockRepo.listPermissions.mockResolvedValueOnce([
+        { id: 1, code: "livestream:view", name: "Xem Live", module: "livestream" },
+      ]);
+      await controller.listPermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(200);
+      expect(jsonMock).toHaveBeenCalledWith({
+        permissions: [{ id: 1, code: "livestream:view", name: "Xem Live", module: "livestream" }],
+      });
+    });
+
+    it("returns 500 when listPermissions fails", async () => {
+      mockRepo.listPermissions.mockRejectedValueOnce(new Error("DB error"));
+      await controller.listPermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(500);
+    });
+  });
+
+  describe("listRoles", () => {
+    it("returns 200 with roles list", async () => {
+      mockRepo.listRoles.mockResolvedValueOnce([
+        { id: 1, code: "admin", name: "Quản trị viên", permissions: [] },
+      ]);
+      await controller.listRoles(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(200);
+    });
+
+    it("returns 500 when listRoles fails", async () => {
+      mockRepo.listRoles.mockRejectedValueOnce(new Error("DB error"));
+      await controller.listRoles(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(500);
+    });
+  });
+
+  describe("createRole", () => {
+    it("returns 400 on invalid role body", async () => {
+      req.body = { name: "x" }; // name min 2 chars
+      await controller.createRole(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(400);
+    });
+
+    it("returns 201 on successful role creation", async () => {
+      req.body = { name: "Nhân viên kho", permissions: ["orders:view"] };
+      mockRepo.createRole.mockResolvedValueOnce({
+        id: 10,
+        code: "nhan_vien_kho",
+        name: "Nhân viên kho",
+        permissions: ["orders:view"],
+      });
+      await controller.createRole(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(201);
+    });
+
+    it("returns 409 on duplicate role code error 23505", async () => {
+      req.body = { name: "Admin phụ" };
+      const duplicateError: any = new Error("Duplicate key");
+      duplicateError.code = "23505";
+      mockRepo.createRole.mockRejectedValueOnce(duplicateError);
+      await controller.createRole(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(409);
+    });
+
+    it("returns 500 when createRole fails unexpectedly", async () => {
+      req.body = { name: "Admin phụ" };
+      mockRepo.createRole.mockRejectedValueOnce(new Error("Fatal DB"));
+      await controller.createRole(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(500);
+    });
+  });
+
+  describe("updateRolePermissions", () => {
+    it("returns 400 on invalid roleId", async () => {
+      req.params = { roleId: "invalid" };
+      await controller.updateRolePermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(400);
+    });
+
+    it("returns 400 on invalid body permissions", async () => {
+      req.params = { roleId: "10" };
+      req.body = { permissions: "not-an-array" };
+      await controller.updateRolePermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(400);
+    });
+
+    it("returns 404 when role not found", async () => {
+      req.params = { roleId: "999" };
+      req.body = { permissions: ["orders:view"] };
+      mockRepo.updateRolePermissions.mockResolvedValueOnce(null);
+      await controller.updateRolePermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(404);
+    });
+
+    it("returns 200 on successful permissions update", async () => {
+      req.params = { roleId: "10" };
+      req.body = { permissions: ["orders:view", "livestream:view"] };
+      mockRepo.updateRolePermissions.mockResolvedValueOnce({
+        id: 10,
+        code: "manager",
+        permissions: ["orders:view", "livestream:view"],
+      });
+      await controller.updateRolePermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(200);
+    });
+
+    it("returns 500 when updateRolePermissions fails unexpectedly", async () => {
+      req.params = { roleId: "10" };
+      req.body = { permissions: ["orders:view"] };
+      mockRepo.updateRolePermissions.mockRejectedValueOnce(new Error("DB error"));
+      await controller.updateRolePermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(500);
+    });
+  });
+
+  describe("getMyPermissions", () => {
+    it("returns 200 with my role and permissions", async () => {
+      mockRepo.getRolePermissions.mockResolvedValueOnce(["livestream:view"]);
+      await controller.getMyPermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(200);
+      expect(jsonMock).toHaveBeenCalledWith({
+        role: "admin",
+        permissions: ["livestream:view"],
+      });
+    });
+
+    it("returns 500 when getMyPermissions fails", async () => {
+      mockRepo.getRolePermissions.mockRejectedValueOnce(new Error("DB crash"));
+      await controller.getMyPermissions(req as Request, res as Response);
+      expect(statusMock).toHaveBeenCalledWith(500);
     });
   });
 });
