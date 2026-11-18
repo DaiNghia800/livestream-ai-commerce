@@ -29,7 +29,8 @@ import {
 import { formatMoney } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
 import { AddressFormDialog, ChonDiaChiDialog } from "./address-book-dialog";
-import { ChonCachTra, DiaChiNhanHang, loiXacNhan, type PhuongThuc } from "./checkout-parts";
+import { ChonCachTra, DiaChiNhanHang, laLoiDoiGia, loiXacNhan, type PhuongThuc } from "./checkout-parts";
+import { KhoiChonVanChuyen, chuPhiShip, useChonVanChuyen } from "./chon-van-chuyen";
 import { CustomerBankTransfer } from "./customer-bank-transfer";
 import { CustomerOnlinePayment } from "./customer-online-payment";
 import styles from "./cart-drawer.module.css";
@@ -263,13 +264,28 @@ function BuocXacNhan({
     ? dsDiaChi.find((d) => d.id === chonDiaChiId) ?? dsDiaChi.find((d) => d.isDefault) ?? dsDiaChi[0] ?? null
     : null;
 
+  // Giỏ đã là đơn nháp trên server nên hỏi bảng giá theo token.
+  const token = gio.confirmToken;
+  const ship = useChonVanChuyen(
+    token && diaChiChon
+      ? () =>
+          ordersApi.shippingOptions(token, {
+            provinceName: diaChiChon.provinceName,
+            wardCode: diaChiChon.wardCode,
+            streetLine: diaChiChon.streetLine,
+            paymentMethod: payment,
+          })
+      : null,
+    [token, diaChiChon?.provinceName, diaChiChon?.wardCode, diaChiChon?.streetLine, payment],
+  );
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (busy || !diaChiChon || !gio.confirmToken) return;
+    if (busy || !diaChiChon || !token) return;
     setBusy(true);
     setLoi("");
     try {
-      await ordersApi.confirm(gio.confirmToken, {
+      const don = await ordersApi.confirm(token, {
         recipientName: diaChiChon.recipientName,
         recipientPhone: diaChiChon.recipientPhone,
         provinceName: diaChiChon.provinceName,
@@ -277,10 +293,13 @@ function BuocXacNhan({
         streetLine: diaChiChon.streetLine,
         note: note.trim(),
         paymentMethod: payment,
+        shippingOption: ship.luaChon,
       });
-      onXong({ token: gio.confirmToken, amount: gio.totalAmount, phuongThuc: payment });
+      // Số tiền phải trả đọc từ server: đã gồm phí ship khách chọn.
+      onXong({ token, amount: don.totalAmount, phuongThuc: payment });
     } catch (err) {
       setLoi(loiXacNhan(err, gio.items));
+      if (laLoiDoiGia(err)) ship.reload();
     } finally {
       setBusy(false);
     }
@@ -298,6 +317,11 @@ function BuocXacNhan({
             onDoi={() => setHopThoai("chon")}
             onThem={() => setHopThoai("them")}
           />
+        </section>
+
+        <section className={styles.khoi}>
+          <h3>Phương thức vận chuyển</h3>
+          <KhoiChonVanChuyen ship={ship} />
         </section>
 
         <section className={styles.khoi}>
@@ -330,11 +354,17 @@ function BuocXacNhan({
 
       <footer className={styles.chan}>
         <div className={styles.tong}>
-          <span>Tổng tiền hàng</span>
-          <strong>{formatMoney(Number(gio.totalAmount))}</strong>
+          <span>Tổng thanh toán</span>
+          <strong data-testid="tong-thanh-toan">{formatMoney(Number(gio.totalAmount) + ship.phiShip)}</strong>
+          <span className="muted" data-testid="phi-van-chuyen">Phí ship: {chuPhiShip(ship, formatMoney)}</span>
         </div>
-        <Button type="submit" form="form-gio-xac-nhan" disabled={busy || !diaChiChon} className={styles.nutChinh}>
-          {busy ? "Đang xác nhận…" : "Xác nhận đơn hàng"}
+        <Button
+          type="submit"
+          form="form-gio-xac-nhan"
+          disabled={busy || !diaChiChon || ship.dangLayPhi}
+          className={styles.nutChinh}
+        >
+          {busy ? "Đang xác nhận…" : ship.dangLayPhi ? "Đang lấy phí vận chuyển…" : "Xác nhận đơn hàng"}
         </Button>
       </footer>
 

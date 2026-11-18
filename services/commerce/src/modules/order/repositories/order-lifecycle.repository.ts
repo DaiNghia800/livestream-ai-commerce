@@ -318,6 +318,25 @@ export async function recordStatusHistory(
 }
 
 /** Lưu thông tin giao hàng khách điền ở bước xác nhận. */
+/**
+ * Ghi dịch vụ vận chuyển khách chọn. Trigger trong DB cộng phí vào
+ * total_amount ngay trong câu UPDATE này, nên ai đọc đơn sau đó đều
+ * thấy tổng đã gồm ship.
+ */
+export async function setShippingChoice(
+  client: PoolClient,
+  params: { orderId: string; carrier: string; serviceCode: string; fee: string }
+): Promise<void> {
+  await client.query(
+    `UPDATE orders
+        SET shipping_carrier      = $2,
+            shipping_service_code = $3,
+            shipping_fee          = $4
+      WHERE id = $1`,
+    [params.orderId, params.carrier, params.serviceCode, params.fee]
+  );
+}
+
 export async function saveShippingInfo(
   client: PoolClient,
   params: {
@@ -425,6 +444,9 @@ export async function findOrderDetailByCode(
             ${SQL_DIA_CHI_GIAO}    AS "shippingAddress",
             o.note,
             o.cod_blocked     AS "codBlocked",
+            o.shipping_carrier      AS "shippingCarrier",
+            o.shipping_service_code AS "shippingServiceCode",
+            o.shipping_fee::text    AS "shippingFee",
             o.livestream_id   AS "livestreamId",
             o.created_at      AS "createdAt",
             (SELECT s.id FROM shipments s WHERE s.order_id = o.id

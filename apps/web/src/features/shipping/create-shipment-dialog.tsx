@@ -19,7 +19,9 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { shippingApi, type CarrierOption, type ShipmentDetail } from "@/lib/api";
+import { formatMoney } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
+import { tenHang } from "./labels";
 
 /** Cân nặng mặc định khi shop chưa cân: 500 g là một kiện áo thường. */
 const CAN_MAC_DINH = 500;
@@ -27,12 +29,15 @@ const CAN_MAC_DINH = 500;
 export function CreateShipmentDialog({
   orderId,
   orderCode,
+  khachChon = null,
   open,
   onClose,
   onCreated,
 }: {
   orderId: string;
   orderCode: string;
+  /** Dịch vụ khách đã chọn và trả phí lúc xác nhận; điền sẵn vào hộp thoại. */
+  khachChon?: { carrier: string; serviceCode: string | null; fee: string } | null;
   open: boolean;
   onClose: () => void;
   onCreated: (vanDon: ShipmentDetail) => void;
@@ -40,7 +45,7 @@ export function CreateShipmentDialog({
   const { data: hangData } = useApi(() => shippingApi.carriers(), []);
   const hangs: CarrierOption[] = hangData ?? [];
 
-  const [hang, setHang] = useState("");
+  const [hang, setHang] = useState(khachChon?.carrier ?? "");
   const [can, setCan] = useState(String(CAN_MAC_DINH));
   const [dai, setDai] = useState("");
   const [rong, setRong] = useState("");
@@ -65,6 +70,8 @@ export function CreateShipmentDialog({
       const vanDon = await shippingApi.create({
         orderId,
         carrier: hang,
+        // Giữ đúng dịch vụ khách đã trả tiền khi shop không đổi hãng.
+        serviceCode: khachChon && hang === khachChon.carrier ? khachChon.serviceCode : undefined,
         weightGram: canSo,
         lengthCm: dai ? Number(dai) : null,
         widthCm: rong ? Number(rong) : null,
@@ -120,6 +127,13 @@ export function CreateShipmentDialog({
             <strong>Shop tự giao</strong> nếu tự ship, trạng thái sẽ do shop bấm
             tay.
           </p>
+          {khachChon && (
+            <p className={hang === khachChon.carrier ? "muted" : "field-error"}>
+              Khách đã chọn <strong>{tenHang(khachChon.carrier, khachChon.serviceCode)}</strong> và
+              trả phí {formatMoney(Number(khachChon.fee))}.
+              {hang !== khachChon.carrier && " Đổi hãng thì phần chênh phí là của shop."}
+            </p>
+          )}
         </div>
 
         <div className="field">

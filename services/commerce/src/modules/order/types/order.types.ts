@@ -57,6 +57,11 @@ export interface Order {
   livestreamTitle?: string | null;
   /** Lý do huỷ (chỉ có khi CANCELLED), ví dụ OUT_OF_STOCK_AT_PAYMENT. */
   cancelReason?: string | null;
+  /** Dịch vụ vận chuyển khách chọn lúc xác nhận; null = shop tự quyết. */
+  shippingCarrier?: string | null;
+  shippingServiceCode?: string | null;
+  /** Phí ship đã nằm trong totalAmount. "0" khi khách chưa chọn. */
+  shippingFee?: string;
   items: OrderItem[];
 }
 

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import type { CustomerAuthUser } from "../../types/customer-auth";
+import { CustomerAccountMenu } from "@/components/layouts/customer-account-menu";
 import {
   Tv,
   CheckCircle2,
   ReceiptText,
   ShieldCheck,
   ShoppingCart,
-  LogOut,
 } from "lucide-react";
 
 interface CustomerLiveHeaderProps {
@@ -140,46 +140,40 @@ export function CustomerLiveHeader({
 
         {/* Customer Profile Widget or 1-Touch Login Button */}
         {currentUser ? (
-          <div className="flex items-center gap-2 pl-2 border-l border-outline-variant/40">
-            <div className="relative">
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/10 text-primary border border-outline-variant/60 flex items-center justify-center font-bold text-xs">
-                {currentUser.avatar ? (
-                  <img
-                    src={currentUser.avatar}
-                    alt={currentUser.full_name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  currentUser.full_name.charAt(0).toUpperCase()
-                )}
+          // Menu tài khoản dùng chung với các trang khách khác (Thông tin
+          // cá nhân, Đơn mua, Địa chỉ nhận hàng, Đăng xuất) — khách ở trang
+          // live vẫn tới được sổ địa chỉ và đơn mua như Shopee/TikTok.
+          <div className="flex items-center pl-2 border-l border-outline-variant/40">
+            <CustomerAccountMenu nutClassName="flex items-center gap-2" onSignOut={onSignOut}>
+              <div className="relative">
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/10 text-primary border border-outline-variant/60 flex items-center justify-center font-bold text-xs">
+                  {currentUser.avatar ? (
+                    <img
+                      src={currentUser.avatar}
+                      alt={currentUser.full_name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    currentUser.full_name.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div
+                  className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"
+                  title="Đang trực tuyến"
+                />
               </div>
-              <div
-                className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"
-                title="Đang trực tuyến"
-              />
-            </div>
-            <div className="hidden md:flex flex-col text-left">
-              <span className="text-xs font-semibold text-on-surface leading-tight truncate max-w-[120px]">
-                {currentUser.full_name}
-              </span>
-              <div className="flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-secondary" />
-                <span className="text-[10px] text-secondary font-semibold truncate max-w-[110px]" title={currentUser.email}>
-                  {currentUser.email}
+              <div className="hidden md:flex flex-col text-left">
+                <span className="text-xs font-semibold text-on-surface leading-tight truncate max-w-[120px]">
+                  {currentUser.full_name}
                 </span>
+                <div className="flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-secondary" />
+                  <span className="text-[10px] text-secondary font-semibold truncate max-w-[110px]" title={currentUser.email}>
+                    {currentUser.email}
+                  </span>
+                </div>
               </div>
-            </div>
-            {onSignOut && (
-              <button
-                type="button"
-                onClick={onSignOut}
-                className="p-1.5 text-outline hover:text-rose-600 hover:bg-surface-container rounded-lg transition-colors cursor-pointer"
-                title="Đăng xuất khỏi live"
-                aria-label="Đăng xuất"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
+            </CustomerAccountMenu>
           </div>
         ) : (
           <div className="pl-2 border-l border-outline-variant/40">

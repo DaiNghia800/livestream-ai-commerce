@@ -168,6 +168,10 @@ export interface DonChoVanDon {
   paidAmount: string;
   codBlocked: boolean;
   addressId: string | null;
+  /** Dịch vụ khách đã chọn và trả phí lúc xác nhận; null = chưa chọn. */
+  shippingCarrier: string | null;
+  shippingServiceCode: string | null;
+  shippingFee: string;
   address: {
     recipientName: string;
     recipientPhone: string;
@@ -200,6 +204,9 @@ export async function findOrderForShipment(
             COALESCE(p.paid_amount, 0)::text AS "paidAmount",
             o.cod_blocked   AS "codBlocked",
             o.address_id    AS "addressId",
+            o.shipping_carrier      AS "shippingCarrier",
+            o.shipping_service_code AS "shippingServiceCode",
+            o.shipping_fee::text    AS "shippingFee",
             CASE WHEN a.id IS NULL THEN NULL ELSE json_build_object(
                 'recipientName',  a.recipient_name,
                 'recipientPhone', a.recipient_phone,
