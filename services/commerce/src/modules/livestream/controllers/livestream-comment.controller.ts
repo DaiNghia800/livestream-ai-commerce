@@ -92,6 +92,8 @@ export class LivestreamCommentController {
 
       res.status(201).json({
         data: comment,
+        warning: (comment as any).warning || null,
+        filterReason: (comment as any).filterReason || null,
         ...(comment.role === "buyer" && {
           confirmationReceipt: createCommentConfirmationReceipt(
             comment.id,

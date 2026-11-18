@@ -7,10 +7,12 @@ import {
   ShopInvitationEmailAlreadyRegisteredError,
 } from "../repositories/auth.repository.js";
 import {
+  CreateRoleSchema,
   CreateShopInvitationSchema,
   ManagedUsersQuerySchema,
   ShopInvitationsQuerySchema,
   UpdateManagedUserSchema,
+  UpdateRolePermissionsSchema,
 } from "../schemas/auth.schema.js";
 import {
   CannotModifySelfError,
@@ -24,6 +26,18 @@ function respondWithValidationError(res: Response, error: ZodError): void {
     error: "BadRequest",
     message: error.issues.map((issue) => issue.message).join("; "),
   });
+}
+
+function slugifyRoleName(name: string): string {
+  const normalized = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || `role_${Date.now().toString(36)}`;
 }
 
 export class AdminUserController {
@@ -231,6 +245,111 @@ export class AdminUserController {
       res.status(500).json({
         error: "InternalServerError",
         message: "Không thể thu hồi lời mời shop",
+      });
+    }
+  };
+
+  listPermissions = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const permissions = await this.repository.listPermissions();
+      res.status(200).json({ permissions });
+    } catch (error) {
+      console.error("[AdminUserController] Failed to list permissions:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Không thể tải danh sách quyền hạn",
+      });
+    }
+  };
+
+  listRoles = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const roles = await this.repository.listRoles();
+      res.status(200).json({ roles });
+    } catch (error) {
+      console.error("[AdminUserController] Failed to list roles:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Không thể tải danh sách vai trò",
+      });
+    }
+  };
+
+  createRole = async (req: Request, res: Response): Promise<void> => {
+    const parsed = CreateRoleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      respondWithValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const code = parsed.data.code || slugifyRoleName(parsed.data.name);
+      const role = await this.repository.createRole({
+        ...parsed.data,
+        code,
+      });
+      res.status(201).json({ role });
+    } catch (error: any) {
+      if (error && error.code === "23505") {
+        res.status(409).json({
+          error: "Conflict",
+          message: "Vai trò này đã tồn tại trên hệ thống",
+        });
+        return;
+      }
+      console.error("[AdminUserController] Failed to create role:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Không thể tạo vai trò mới",
+      });
+    }
+  };
+
+  updateRolePermissions = async (req: Request, res: Response): Promise<void> => {
+    const roleId = Number(req.params.roleId);
+    if (!Number.isSafeInteger(roleId) || roleId < 1) {
+      res.status(400).json({
+        error: "BadRequest",
+        message: "Mã vai trò không hợp lệ",
+      });
+      return;
+    }
+    const parsed = UpdateRolePermissionsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      respondWithValidationError(res, parsed.error);
+      return;
+    }
+    try {
+      const updated = await this.repository.updateRolePermissions(
+        roleId,
+        parsed.data.permissions
+      );
+      if (!updated) {
+        res.status(404).json({
+          error: "NotFound",
+          message: "Không tìm thấy vai trò cần cập nhật",
+        });
+        return;
+      }
+      res.status(200).json({ role: updated });
+    } catch (error) {
+      console.error("[AdminUserController] Failed to update role permissions:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Không thể cập nhật quyền cho vai trò",
+      });
+    }
+  };
+
+  getMyPermissions = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const role = req.auth!.role;
+      const permissions = await this.repository.getRolePermissions(role);
+      res.status(200).json({ role, permissions });
+    } catch (error) {
+      console.error("[AdminUserController] Failed to get my permissions:", error);
+      res.status(500).json({
+        error: "InternalServerError",
+        message: "Không thể lấy thông tin quyền hạn của tài khoản",
       });
     }
   };
