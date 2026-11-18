@@ -338,7 +338,7 @@ export function StudioChatPanel({
 
                     {/* Nội dung tin nhắn inline */}
                     <span className="text-on-surface-variant text-[11px] truncate" title={msg.content}>
-                      &quot;{msg.content}&quot;
+                      {msg.content}
                     </span>
                   </div>
 
@@ -407,7 +407,7 @@ export function StudioChatPanel({
                 </div>
 
                 <p className="text-on-surface text-xs sm:text-[13px] leading-relaxed break-words pl-0.5">
-                  &quot;{msg.content}&quot;
+                  {msg.content}
                 </p>
 
                 {/* Action Buttons: Dành cho tin Cần Xử Lý hoặc tương tác nhanh */}

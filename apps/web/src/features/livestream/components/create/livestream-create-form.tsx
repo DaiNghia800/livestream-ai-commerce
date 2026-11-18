@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -116,10 +116,10 @@ export function LivestreamCreateForm() {
           "Bạn có chắc muốn thoát? Mọi thông tin vừa nhập chưa lưu sẽ không được ghi nhận."
         )
       ) {
-        router.push("/shop/livestream");
+        router.push("/admin/livestream");
       }
     } else {
-      router.push("/shop/livestream");
+      router.push("/admin/livestream");
     }
   };
 
@@ -146,7 +146,7 @@ export function LivestreamCreateForm() {
     setSuccessMessage(`Đã lưu bản nháp "${draftTitle}" thành công! (Dữ liệu mẫu frontend)`);
 
     setTimeout(() => {
-      router.push("/shop/livestream");
+      router.push("/admin/livestream");
     }, 800);
   };
 
@@ -215,7 +215,7 @@ export function LivestreamCreateForm() {
 
 
       setTimeout(() => {
-        router.push("/shop/livestream");
+        router.push("/admin/livestream");
       }, 1000);
     } catch (err) {
       if (err instanceof CreateLivestreamApiError) {

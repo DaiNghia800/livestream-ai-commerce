@@ -96,6 +96,14 @@ export interface ParsedProductOptions {
 
 const COMMON_SIZE_REGEX = /^(xs|s|m|l|xl|2xl|3xl|4xl|5xl|freesize|free size|[0-9]{2,3})$/i;
 
+export function matchOptionToken(text: string, token: string): boolean {
+  if (!text || !token) return false;
+  const escaped = token.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!escaped) return false;
+  const regex = new RegExp(`(?:^|[\\s•·/,|\\-])${escaped}(?:$|[\\s•·/,|\\-])`, "i");
+  return regex.test(text);
+}
+
 /**
  * Extract independent Color (with thumbnail) and Size lists matching TikTok Shop standards
  */
@@ -177,60 +185,67 @@ export function parseProductOptions(product: CustomerLiveProductItem): ParsedPro
   const colors = Array.from(colorMap.values());
   const sizes = Array.from(sizeSet);
 
+  const isColorMatch = (v: (typeof parsedVariants)[number], c: string) => {
+    if (v.color) return v.color.toLowerCase() === c.toLowerCase();
+    return matchOptionToken(v.name, c);
+  };
+
+  const isSizeMatch = (v: (typeof parsedVariants)[number], s: string) => {
+    if (v.size) return v.size.toLowerCase() === s.toLowerCase();
+    return matchOptionToken(v.name, s);
+  };
+
   const findVariant = (c?: string | null, s?: string | null) => {
-    if (c && s) {
-      return (
-        parsedVariants.find(
-          (v) =>
-            v.color?.toLowerCase() === c.toLowerCase() &&
-            v.size?.toLowerCase() === s.toLowerCase()
-        ) ||
-        parsedVariants.find(
-          (v) =>
-            v.name.toLowerCase().includes(c.toLowerCase()) &&
-            v.name.toLowerCase().includes(s.toLowerCase())
-        )
+    const cleanC = c?.trim() || null;
+    const cleanS = s?.trim() || null;
+
+    if (cleanC && cleanS) {
+      // 1. Exact match on both parsed attributes
+      const exact = parsedVariants.find(
+        (v) =>
+          v.color?.toLowerCase() === cleanC.toLowerCase() &&
+          v.size?.toLowerCase() === cleanS.toLowerCase()
       );
+      if (exact) return exact;
+
+      // 2. Token-boundary matching for variants where color or size couldn't be parsed
+      return parsedVariants.find((v) => isColorMatch(v, cleanC) && isSizeMatch(v, cleanS));
     }
-    if (c) {
-      return parsedVariants.find(
-        (v) => v.color?.toLowerCase() === c.toLowerCase()
-      );
+
+    if (cleanC) {
+      return parsedVariants.find((v) => isColorMatch(v, cleanC));
     }
-    if (s) {
-      return parsedVariants.find(
-        (v) => v.size?.toLowerCase() === s.toLowerCase()
-      );
+
+    if (cleanS) {
+      return parsedVariants.find((v) => isSizeMatch(v, cleanS));
     }
+
     return parsedVariants[0];
   };
 
   const isCombinationAvailable = (c?: string | null, s?: string | null) => {
-    if (!c && !s) return true;
-    if (c && s) {
-      const match = parsedVariants.find(
-        (v) =>
-          (v.color?.toLowerCase() === c.toLowerCase() &&
-            v.size?.toLowerCase() === s.toLowerCase()) ||
-          (v.name.toLowerCase().includes(c.toLowerCase()) &&
-            v.name.toLowerCase().includes(s.toLowerCase()))
-      );
+    const cleanC = c?.trim() || null;
+    const cleanS = s?.trim() || null;
+
+    if (!cleanC && !cleanS) return true;
+
+    if (cleanC && cleanS) {
+      const match = findVariant(cleanC, cleanS);
       return Boolean(match && (match.stock === undefined || match.stock > 0));
     }
-    if (c) {
+
+    if (cleanC) {
       return parsedVariants.some(
-        (v) =>
-          v.color?.toLowerCase() === c.toLowerCase() &&
-          (v.stock === undefined || v.stock > 0)
+        (v) => isColorMatch(v, cleanC) && (v.stock === undefined || v.stock > 0)
       );
     }
-    if (s) {
+
+    if (cleanS) {
       return parsedVariants.some(
-        (v) =>
-          v.size?.toLowerCase() === s.toLowerCase() &&
-          (v.stock === undefined || v.stock > 0)
+        (v) => isSizeMatch(v, cleanS) && (v.stock === undefined || v.stock > 0)
       );
     }
+
     return true;
   };
 
@@ -453,7 +468,10 @@ export function CustomerLiveProducts({
               <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
                 {/* #2 Stock urgency */}
                 {(() => {
-                  const currentStock = activeHeroVariant?.stock ?? heroProduct.stock;
+                  const currentStock =
+                    heroSelectedColor && heroSelectedSize && !activeHeroVariant
+                      ? 0
+                      : (activeHeroVariant?.stock ?? heroProduct.stock);
                   const u = stockUrgencyClasses(currentStock);
                   return (
                     <span className={u.badge}>

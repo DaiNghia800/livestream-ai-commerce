@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { ChevronRight, Radio } from "lucide-react";
 
 export function CreatePageHeader() {
@@ -10,7 +10,7 @@ export function CreatePageHeader() {
         className="flex items-center gap-1.5 text-xs font-medium text-on-surface-variant"
       >
         <Link
-          href="/shop/livestream"
+          href="/admin/livestream"
           className="flex items-center gap-1 text-on-surface-variant transition-colors hover:text-primary"
         >
           <Radio className="h-3.5 w-3.5 text-primary" aria-hidden="true" />

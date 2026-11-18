@@ -53,14 +53,18 @@ export function LivestreamKpiGrid({
   // 1. Tổng số phiên
   const totalSessions = statusCounts ? statusCounts.all : items.length;
 
-  // 2. Đang phát
-  const liveCount = statusCounts
-    ? statusCounts.live
-    : items.filter((i) => i.status === "LIVE" || i.status === "STARTING").length;
-
-  const totalCurrentViewers = items
-    .filter((i) => i.status === "LIVE")
-    .reduce((sum, i) => sum + (i.currentViewers || 0), 0);
+  // 2. Mắt xem cao nhất (Peak Viewers)
+  const maxPeakViewers = items.reduce(
+    (max, i) => Math.max(max, i.peakViewers || i.currentViewers || 0),
+    0
+  );
+  const topPeakSession = items
+    .filter((i) => (i.peakViewers || i.currentViewers || 0) > 0)
+    .sort(
+      (a, b) =>
+        (b.peakViewers || b.currentViewers || 0) -
+        (a.peakViewers || a.currentViewers || 0)
+    )[0];
 
   // 3. Sắp diễn ra
   const scheduledCount = statusCounts
@@ -86,7 +90,7 @@ export function LivestreamKpiGrid({
       className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-5 md:gap-4 items-stretch"
     >
       {/* Card 1: Tổng số phiên */}
-      <div className="flex min-h-[120px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
+      <div className="flex min-h-[130px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
         <div className="flex items-center justify-between text-on-surface-variant">
           <span className="text-xs font-medium text-on-surface-variant">
             Tổng số phiên (kỳ này)
@@ -110,42 +114,36 @@ export function LivestreamKpiGrid({
         </div>
       </div>
 
-      {/* Card 2: Đang phát (LIVE ACTIVE) */}
-      <div className={`relative flex min-h-[120px] h-full flex-col justify-between overflow-hidden rounded-xl border p-4 shadow-xs transition-shadow hover:shadow-sm ${
-        liveCount > 0 ? "border-red-200 bg-red-50/20" : "border-outline-variant bg-surface-container-lowest"
-      }`}>
-        <div className="flex items-center justify-between text-red-700">
-          <span className={`text-xs font-semibold ${liveCount > 0 ? "text-red-700" : "text-on-surface-variant"}`}>
-            Đang phát trực tiếp
+      {/* Card 2: Mắt xem cao nhất (Peak Viewers) */}
+      <div className="flex min-h-[130px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
+        <div className="flex items-center justify-between text-on-surface-variant">
+          <span className="text-xs font-medium text-on-surface-variant">
+            Mắt xem cao nhất
           </span>
-          {liveCount > 0 ? (
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
-            </span>
-          ) : (
-            <div className="h-2 w-2 rounded-full bg-slate-300" />
-          )}
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-red-600">
+            <Radio className="h-4 w-4" aria-hidden="true" />
+          </div>
         </div>
 
         <div className="my-2 flex items-baseline gap-1.5">
-          <span className={`font-heading text-2xl font-bold tracking-tight tabular-nums ${liveCount > 0 ? "text-red-600" : "text-on-surface"}`}>
-            {liveCount}
+          <span className="font-heading text-2xl font-bold tracking-tight text-on-surface tabular-nums">
+            {maxPeakViewers > 0 ? maxPeakViewers.toLocaleString("vi-VN") : "0"}
           </span>
-          <span className="text-xs font-medium text-outline">phiên live</span>
+          <span className="text-xs text-outline">mắt xem</span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-          <Radio className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true" />
-          <span className="font-semibold text-on-surface tabular-nums">
-            {totalCurrentViewers.toLocaleString("vi-VN")}
+        <div className="flex items-center gap-1 text-xs text-on-surface-variant truncate">
+          <TrendingUp className="h-3.5 w-3.5 text-red-600 shrink-0" aria-hidden="true" />
+          <span className="text-outline truncate">
+            {topPeakSession?.title
+              ? `Kỷ lục: ${topPeakSession.title}`
+              : "Kỷ lục người xem cùng lúc"}
           </span>
-          <span className="text-outline">mắt xem hiện tại</span>
         </div>
       </div>
 
       {/* Card 3: Sắp diễn ra */}
-      <div className="flex min-h-[120px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
+      <div className="flex min-h-[130px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
         <div className="flex items-center justify-between text-on-surface-variant">
           <span className="text-xs font-medium text-on-surface-variant">
             Sắp diễn ra
@@ -171,7 +169,7 @@ export function LivestreamKpiGrid({
       </div>
 
       {/* Card 4: Doanh thu */}
-      <div className="flex min-h-[120px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
+      <div className="flex min-h-[130px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
         <div className="flex items-center justify-between text-on-surface-variant">
           <span className="text-xs font-medium text-on-surface-variant">
             Doanh thu tuần này
@@ -195,7 +193,7 @@ export function LivestreamKpiGrid({
       </div>
 
       {/* Card 5: Đơn tạo từ AI */}
-      <div className="flex min-h-[120px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
+      <div className="flex min-h-[130px] h-full flex-col justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-xs transition-shadow hover:shadow-sm">
         <div className="flex items-center justify-between text-on-surface-variant">
           <span
             className="text-xs font-medium text-on-surface-variant"

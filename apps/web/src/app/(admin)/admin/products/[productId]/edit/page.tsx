@@ -14,6 +14,6 @@ export default async function ProductEditRoute({
 }) {
   const { productId } = await params;
   const { from } = await searchParams;
-  const returnTo = from === "inventory" ? "/shop/inventory" : "/shop/products";
+  const returnTo = from === "inventory" ? "/admin/inventory" : "/admin/products";
   return <EditProductPage key={productId} productId={productId} returnTo={returnTo} />;
 }

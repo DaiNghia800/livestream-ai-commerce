@@ -12,6 +12,8 @@ export interface BackendCommentItem {
   role: "host" | "moderator" | "buyer";
   createdAt: string;
   orderCreated?: boolean;
+  warning?: string | null;
+  filterReason?: string | null;
 }
 
 export interface PostCommentPayload {
@@ -37,6 +39,7 @@ export function mapBackendCommentToStudioChatMessage(
       });
 
   const isOrder = Boolean(item.orderCreated);
+  const isFlood = item.filterReason === "duplicate_flood" || Boolean(item.warning);
   return {
     id: item.id,
     userId: item.userId,
@@ -45,9 +48,10 @@ export function mapBackendCommentToStudioChatMessage(
     content: item.content,
     timestamp,
     createdAt: item.createdAt,
-    badge: isOrder ? "AI Chốt Đơn" : item.role === "host" ? "Chủ shop" : undefined,
+    badge: isOrder ? "AI Chốt Đơn" : isFlood ? "Cần xử lý" : item.role === "host" ? "Chủ shop" : undefined,
     orderCreated: isOrder,
-    status: isOrder ? "PENDING_CONFIRMATION" : undefined,
+    status: isOrder ? "PENDING_CONFIRMATION" : isFlood ? "NEEDS_REVIEW" : undefined,
+    reviewReason: isFlood ? (item.warning || "Thao tác quá nhanh") : undefined,
   };
 }
 
@@ -108,7 +112,12 @@ export async function postLivestreamComment(
 export async function postLivestreamCommentWithReceipt(
   livestreamId: string,
   payload: PostCommentPayload
-): Promise<{ comment: StudioChatMessage; confirmationReceipt: string | null } | null> {
+): Promise<{
+  comment: StudioChatMessage;
+  confirmationReceipt: string | null;
+  warning?: string | null;
+  filterReason?: string | null;
+} | null> {
   if (!isValidUuid(livestreamId)) {
     return null;
   }
@@ -130,8 +139,18 @@ export async function postLivestreamCommentWithReceipt(
     }
 
     const data = await res.json();
+    const rawComment = (data.data || {}) as BackendCommentItem;
+    if (data.warning && !rawComment.warning) {
+      rawComment.warning = data.warning;
+    }
+    if (data.filterReason && !rawComment.filterReason) {
+      rawComment.filterReason = data.filterReason;
+    }
+
     return {
-      comment: mapBackendCommentToStudioChatMessage(data.data),
+      comment: mapBackendCommentToStudioChatMessage(rawComment),
+      warning: data.warning || rawComment.warning || null,
+      filterReason: data.filterReason || rawComment.filterReason || null,
       confirmationReceipt: typeof data.confirmationReceipt === "string"
         ? data.confirmationReceipt
         : null,

@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import {
   Archive,
   BarChart3,
@@ -34,7 +34,9 @@ export function LivestreamTableRow({
   const isScheduled = item.status === "SCHEDULED";
   const isDraft = item.status === "DRAFT";
   const isEnded = item.status === "ENDED";
-  const hasOrders = Boolean(item.aiOrderCount && item.aiOrderCount > 0);
+  const hasConfirmedOrders = Boolean(
+    item.hasConfirmedOrders || (item.confirmedOrderCount && item.confirmedOrderCount > 0)
+  );
   const isSelectable = !isLive && !isStarting;
 
   return (
@@ -302,8 +304,8 @@ export function LivestreamTableRow({
               onClick={() => onDelete?.(item)}
               disabled={isDeleting}
               title={
-                hasOrders
-                  ? "Phiên đã phát sinh đơn hàng (Được lưu trữ để bảo vệ dữ liệu)"
+                hasConfirmedOrders
+                  ? "Phiên đã phát sinh đơn đặt hàng thực tế (Được lưu trữ để bảo vệ dữ liệu)"
                   : isDraft
                   ? "Xóa bản nháp"
                   : isScheduled
@@ -311,8 +313,8 @@ export function LivestreamTableRow({
                   : "Xóa phiên livestream"
               }
               aria-label={
-                hasOrders
-                  ? "Phiên đã phát sinh đơn hàng (Được lưu trữ để bảo vệ dữ liệu)"
+                hasConfirmedOrders
+                  ? "Phiên đã phát sinh đơn đặt hàng (Được lưu trữ để bảo vệ dữ liệu)"
                   : isDraft
                   ? "Xóa bản nháp"
                   : isScheduled
@@ -320,12 +322,12 @@ export function LivestreamTableRow({
                   : "Xóa phiên livestream"
               }
               className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:opacity-50 cursor-pointer ${
-                hasOrders
+                hasConfirmedOrders
                   ? "text-outline/70 hover:bg-surface-container hover:text-on-surface"
                   : "text-outline hover:bg-red-50 hover:text-red-600"
               }`}
             >
-              {hasOrders ? (
+              {hasConfirmedOrders ? (
                 <Archive className="h-3.5 w-3.5 text-outline/80" aria-hidden="true" />
               ) : (
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

@@ -1,16 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import styles from "./admin-portal.module.css";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_COMMERCE_API_URL ?? "http://localhost:8000";
 
-export function AdminLoginPage() {
+function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl") || "/admin";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,23 +31,41 @@ export function AdminLoginPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.detail ?? "Email hoặc mật khẩu không đúng.");
+        throw new Error(data.detail ?? data.message ?? "Email hoặc mật khẩu không đúng.");
       }
-      if (data.user?.role !== "admin") {
+
+      // Check role: allow admin and shop_owner (staff)
+      const role = data.user?.role;
+      if (role !== "admin" && role !== "shop_owner") {
         throw new Error("Tài khoản này không có quyền admin.");
       }
+
+      // Store both for full compatibility across modules
+      localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("admin_access_token", data.access_token);
-      localStorage.setItem("user_role", "admin");
+      localStorage.setItem("user_role", role);
+
       if (data.user) {
-        localStorage.setItem(
-          "admin_auth_user",
-          JSON.stringify({ full_name: data.user.full_name, email: data.user.email })
-        );
+        const userJson = JSON.stringify({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: data.user.full_name,
+          role: data.user.role,
+        });
+        localStorage.setItem("auth_user", userJson);
+        localStorage.setItem("admin_auth_user", userJson);
       }
+
       if (data.refresh_token) {
+        localStorage.setItem("refresh_token", data.refresh_token);
         localStorage.setItem("admin_refresh_token", data.refresh_token);
       }
-      router.replace("/shop/invitations");
+
+      // Trigger storage event for any sync listeners
+      window.dispatchEvent(new Event("storage"));
+
+      const target = returnUrl.startsWith("/admin") ? returnUrl : "/admin";
+      router.replace(target);
     } catch (signInError) {
       setError(
         signInError instanceof Error
@@ -65,11 +86,11 @@ export function AdminLoginPage() {
         <p className={styles.eyebrow}>LIVEORDER AI · ADMIN</p>
         <h1>Cổng quản trị</h1>
         <p className={styles.muted}>
-          Đăng nhập riêng với tài khoản quản trị viên để tiếp tục.
+          Đăng nhập vào hệ thống quản lý LiveOrder AI Studio.
         </p>
         {error && <p className={styles.error} role="alert">{error}</p>}
         <label>
-          Email quản trị
+          Email tài khoản
           <input
             type="email"
             autoComplete="username"
@@ -92,9 +113,17 @@ export function AdminLoginPage() {
           {saving ? "Đang xác thực…" : "Đăng nhập quản trị"}
         </button>
         <Link className={styles.storeLink} href="/login">
-          Quay lại trang đăng nhập shop/khách hàng
+          Quay lại trang đăng nhập khách hàng
         </Link>
       </form>
     </main>
+  );
+}
+
+export function AdminLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminLoginForm />
+    </Suspense>
   );
 }

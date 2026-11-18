@@ -12,6 +12,7 @@ import {
   Play,
   Share2,
   Check,
+  ShoppingBag,
 } from "lucide-react";
 import type { Livestream } from "../../types/livestream";
 import { ReplayVideoModal } from "./replay-video-modal";
@@ -90,11 +91,11 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
       <div className="space-y-1.5">
         {/* Breadcrumb Hierarchy */}
         <nav aria-label="Đường dẫn trang" className="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
-          <Link href="/shop/livestream" className="hover:text-primary transition-colors">
+          <Link href="/admin/livestream" className="hover:text-primary transition-colors">
             Livestream
           </Link>
           <ChevronRight className="h-3.5 w-3.5 text-outline" aria-hidden="true" />
-          <span className="text-primary font-semibold">Chi tiết phiên #{session.id}</span>
+          <span className="text-primary font-semibold">Chi tiết phiên</span>
         </nav>
 
         {/* Session Title & Live Pulse Badge */}
@@ -132,18 +133,30 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
           )}
         </button>
 
+        {/* Nút Xem đơn hàng của phiên (nếu phiên đã hoặc đang có đơn) */}
+        {(session.status === "LIVE" || session.status === "ENDED" || (session.aiOrderCount ?? 0) > 0) && (
+          <Link
+            href="/admin/orders"
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
+            title="Mở danh sách quản lý đơn hàng"
+          >
+            <ShoppingBag className="h-4 w-4 text-white" aria-hidden="true" />
+            <span>Xem đơn hàng</span>
+          </Link>
+        )}
+
         {/* DRAFT: Chỉnh sửa phiên & Vào Studio */}
         {session.status === "DRAFT" && (
           <>
             <Link
-              href={`/shop/livestream/${session.id}/edit`}
+              href={`/admin/livestream/${session.id}/edit`}
               className="inline-flex items-center gap-2 h-9 px-3.5 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container-low transition-all active:scale-[0.98] shadow-xs"
             >
               <Pencil className="h-4 w-4 text-primary" aria-hidden="true" />
               <span>Chỉnh sửa phiên</span>
             </Link>
             <Link
-              href={`/shop/livestream/${session.id}/studio`}
+              href={`/admin/livestream/${session.id}/studio`}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 text-xs font-semibold rounded-lg transition-all active:scale-[0.98]"
             >
               <Radio className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -156,14 +169,14 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
         {session.status === "SCHEDULED" && (
           <>
             <Link
-              href={`/shop/livestream/${session.id}/edit`}
+              href={`/admin/livestream/${session.id}/edit`}
               className="inline-flex items-center gap-2 h-9 px-3.5 bg-white border border-outline-variant text-on-surface text-xs font-semibold rounded-lg hover:bg-surface-container-low transition-all active:scale-[0.98] shadow-xs"
             >
               <Pencil className="h-4 w-4 text-primary" aria-hidden="true" />
               <span>Chỉnh sửa phiên</span>
             </Link>
             <Link
-              href={`/shop/livestream/${session.id}/studio`}
+              href={`/admin/livestream/${session.id}/studio`}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 text-xs font-semibold rounded-lg transition-all active:scale-[0.98]"
             >
               <Radio className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -176,14 +189,14 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
         {(session.status === "LIVE" || session.status === "STARTING") && (
           <>
             <Link
-              href={`/shop/livestream/${session.id}/monitoring`}
+              href={`/admin/livestream/${session.id}/monitoring`}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white border border-outline-variant hover:bg-surface-container text-on-surface text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
             >
               <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
               <span>Theo dõi Live</span>
             </Link>
             <Link
-              href={`/shop/livestream/${session.id}/studio`}
+              href={`/admin/livestream/${session.id}/studio`}
               className="inline-flex items-center gap-2 h-9 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all active:scale-[0.98]"
             >
               <Radio className="h-4 w-4 text-white animate-pulse" aria-hidden="true" />
@@ -204,14 +217,14 @@ export function DetailPageHeader({ session }: DetailPageHeaderProps) {
               <span>Xem lại video (Replay)</span>
             </button>
             <Link
-              href={`/shop/livestream/${session.id}/report`}
+              href={`/admin/livestream/${session.id}/report`}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-primary text-white hover:bg-primary-container text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
             >
               <BarChart3 className="h-4 w-4" aria-hidden="true" />
               <span>Xem báo cáo tổng kết</span>
             </Link>
             <Link
-              href={`/shop/livestream/${session.id}/monitoring`}
+              href={`/admin/livestream/${session.id}/monitoring`}
               className="inline-flex items-center gap-1.5 h-9 px-3 bg-white border border-outline-variant hover:bg-surface-container text-on-surface text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-[0.98]"
             >
               <Activity className="h-4 w-4 text-purple-600" aria-hidden="true" />

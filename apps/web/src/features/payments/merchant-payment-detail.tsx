@@ -100,7 +100,7 @@ function PaymentDetailView({
       <div className="page-head">
         <div>
           <nav className="breadcrumb" aria-label="Đường dẫn trang">
-            <Link href="/shop/payments">Thanh toán</Link>
+            <Link href="/admin/payments">Thanh toán</Link>
             <ChevronRight size={14} aria-hidden="true" />
             <span>{payment.txnRef}</span>
           </nav>

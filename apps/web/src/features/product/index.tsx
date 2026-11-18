@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -259,7 +259,7 @@ export function MerchantProduct() {
           )}
           <Link
             role="button"
-            href="/shop/products/new"
+            href="/admin/products/new"
             className="h-10 whitespace-nowrap px-4 rounded-lg bg-primary-container hover:bg-primary text-on-primary text-label-md font-headline-md font-semibold inline-flex items-center gap-2 shadow-sm transition-transform active:scale-[0.98] border-none cursor-pointer hover:no-underline"
           >
             <Plus size={18} aria-hidden="true" />

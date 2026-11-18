@@ -9,6 +9,8 @@ import { LivestreamFilters, type DatePreset } from "./livestream-filters";
 import { LivestreamKpiGrid } from "./livestream-kpi-grid";
 import { LivestreamTable } from "./livestream-table";
 import { DeleteLivestreamModal } from "./delete-livestream-modal";
+import { LivestreamPageHeader } from "./livestream-page-header";
+import { BroadcastScheduleModal } from "./broadcast-schedule-modal";
 
 function formatDeleteLivestreamError(rawMsg: string): string {
   const lower = rawMsg.toLowerCase();
@@ -73,6 +75,7 @@ export function LivestreamOverview() {
     errorMessage: null,
   });
   const [isDeletingSessions, setIsDeletingSessions] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   // Toast Notification state
   const [toast, setToast] = useState<{
@@ -362,14 +365,19 @@ export function LivestreamOverview() {
       return;
     }
 
-    if (session.aiOrderCount && session.aiOrderCount > 0) {
+    const hasConfirmedOrders = Boolean(
+      session.hasConfirmedOrders ||
+      (session.confirmedOrderCount && session.confirmedOrderCount > 0)
+    );
+
+    if (hasConfirmedOrders) {
       setDeleteModal({
         isOpen: true,
         sessions: [session],
         errorMessage:
           session.status === "ENDED"
-            ? "Phiên livestream này đã phát sinh đơn hàng của khách hàng và hiện đang được lưu trữ trong danh mục 'Đã kết thúc'. Hệ thống bảo lưu phiên vĩnh viễn để phục vụ tra cứu đơn hàng và đối soát doanh thu shop."
-            : "Phiên livestream này đã có đơn hàng của khách hàng phát sinh. Để bảo vệ quyền lợi người mua và số liệu kế toán, hệ thống không cho phép xóa vĩnh viễn.",
+            ? "Phiên livestream này đã phát sinh đơn hàng đã xác nhận của khách hàng và hiện đang được lưu trữ trong danh mục 'Đã kết thúc'. Hệ thống bảo lưu phiên vĩnh viễn để phục vụ tra cứu đơn hàng và đối soát doanh thu shop."
+            : "Phiên livestream này đã có đơn hàng của khách hàng được đặt. Để bảo vệ quyền lợi người mua và số liệu kế toán, hệ thống không cho phép xóa vĩnh viễn.",
       });
       return;
     }
@@ -412,12 +420,13 @@ export function LivestreamOverview() {
   };
 
   const handleConfirmDelete = async () => {
-    // Chỉ thực hiện xóa đối với các phiên đủ điều kiện (chưa có đơn hàng, không live/starting)
+    // Chỉ thực hiện xóa đối với các phiên đủ điều kiện (chưa có đơn hàng xác nhận, không live/starting)
     const targets = deleteModal.sessions.filter(
       (s) =>
         s.status !== "LIVE" &&
         s.status !== "STARTING" &&
-        (!s.aiOrderCount || s.aiOrderCount === 0)
+        !s.hasConfirmedOrders &&
+        (!s.confirmedOrderCount || s.confirmedOrderCount === 0)
     );
     if (targets.length === 0) return;
 
@@ -497,6 +506,9 @@ export function LivestreamOverview() {
 
   return (
     <div className="relative space-y-0">
+      {/* 1. Page Header with Breadcrumb and Actions */}
+      <LivestreamPageHeader onOpenSchedule={() => setIsScheduleModalOpen(true)} />
+
       {/* Toast Notification */}
       {toast && (
         <aside
@@ -624,6 +636,13 @@ export function LivestreamOverview() {
         isDeleting={isDeletingSessions}
         sessions={deleteModal.sessions}
         errorMessage={deleteModal.errorMessage}
+      />
+
+      {/* Broadcast Schedule Calendar Modal */}
+      <BroadcastScheduleModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        items={apiAllItems || mockLivestreams}
       />
     </div>
   );
