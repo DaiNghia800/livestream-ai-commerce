@@ -52,14 +52,9 @@ test("admin cannot use the shared shop login", async ({ page }) => {
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill("admin-pass");
   await page.getByRole("button", { name: "Đăng nhập" }).click();
 
-  await expect(
-    page.getByText(
-      "Tài khoản quản trị viên cần đăng nhập riêng tại cổng /admin.",
-      { exact: true }
-    )
-  ).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("access_token"))).toBeNull();
-  expect(await page.evaluate(() => localStorage.getItem("admin_access_token"))).toBeNull();
+  await expect(page).toHaveURL(/\/admin/);
+  expect(await page.evaluate(() => localStorage.getItem("admin_access_token"))).toBe("admin-access-token");
+  expect(await page.evaluate(() => localStorage.getItem("user_role"))).toBe("admin");
 });
 
 test("shop owner login opens the merchant dashboard", async ({ page }) => {
@@ -80,13 +75,14 @@ test("shop owner login opens the merchant dashboard", async ({ page }) => {
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill("shop-pass");
   await page.getByRole("button", { name: "Đăng nhập" }).click();
 
-  await expect(page).toHaveURL(/\/shop$/);
+  await expect(page).toHaveURL(/\/admin$/);
   expect(await page.evaluate(() => localStorage.getItem("user_role"))).toBe("shop_owner");
   await expect(page.getByText("Shop Owner", { exact: true })).toHaveCount(1);
-  await expect(page.getByText("Chủ cửa hàng", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Chủ shop / Quản lý", { exact: true })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Tổng quan hoạt động Livestream & Đơn hàng" })).toBeVisible();
 });
-test("admin login opens the shared merchant invitation workspace", async ({ page }) => {
+
+test("admin login opens the admin dashboard workspace", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "shared-shop-token");
   });
@@ -101,34 +97,24 @@ test("admin login opens the shared merchant invitation workspace", async ({ page
       }),
     });
   });
-  await page.route("**/api/admin/shop-invitations**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ invitations: [], total: 0 }),
-    });
-  });
 
-  await page.goto("/admin");
+  await page.goto("/admin/login");
 
   await expect(page.getByRole("heading", { name: "Cổng quản trị" })).toBeVisible();
-  await page.getByLabel("Email quản trị").fill("admin@example.com");
+  await page.getByLabel("Email tài khoản").fill("admin@example.com");
   await page.getByLabel("Mật khẩu").fill("admin-pass");
   await page.getByRole("button", { name: "Đăng nhập quản trị" }).click();
 
-  await expect(page).toHaveURL(/\/shop\/invitations$/);
-  await expect(page.getByRole("heading", { name: "Quản trị hệ thống" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "Tổng quan hoạt động Livestream & Đơn hàng" })).toBeVisible();
   await expect(page.getByText("System Admin", { exact: true })).toHaveCount(1);
   await expect(page.getByText("Quản trị viên", { exact: true })).toHaveCount(1);
   const openMenu = page.getByRole("button", { name: "Mở menu quản lý" });
   if (await openMenu.isVisible()) await openMenu.click();
   await expect(page.getByRole("navigation", { name: "Điều hướng chủ shop" }))
     .toBeVisible();
-  await expect(page.getByRole("link", { name: "Mời shop" }))
+  await expect(page.getByRole("link", { name: "Tổng quan" }))
     .toHaveAttribute("aria-current", "page");
-  expect(await page.evaluate(() => localStorage.getItem("access_token"))).toBe(
-    "shared-shop-token"
-  );
   expect(await page.evaluate(() => localStorage.getItem("admin_access_token"))).toBe(
     "admin-access-token"
   );
@@ -147,8 +133,8 @@ test("admin portal refuses a non-admin login without saving credentials", async 
     });
   });
 
-  await page.goto("/admin");
-  await page.getByLabel("Email quản trị").fill("customer@example.com");
+  await page.goto("/admin/login");
+  await page.getByLabel("Email tài khoản").fill("customer@example.com");
   await page.getByLabel("Mật khẩu").fill("customer-pass");
   await page.getByRole("button", { name: "Đăng nhập quản trị" }).click();
 
@@ -159,8 +145,8 @@ test("admin portal refuses a non-admin login without saving credentials", async 
 });
 
 test("invitation workspace redirects to admin login without an admin session", async ({ page }) => {
-  await page.goto("/shop/invitations");
-  await expect(page).toHaveURL(/\/admin$/);
+  await page.goto("/admin/invitations");
+  await expect(page).toHaveURL(/\/admin\/login/);
   await expect(page.getByRole("heading", { name: "Cổng quản trị" })).toBeVisible();
 });
 
@@ -170,7 +156,7 @@ test("non-admin merchant sessions do not see admin navigation tabs", async ({ pa
     localStorage.setItem("user_role", "shop_owner");
   });
 
-  await page.goto("/shop");
+  await page.goto("/admin");
 
   await expect(page.getByRole("link", { name: "Mời shop" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Quản lý người dùng" })).toHaveCount(0);
@@ -216,7 +202,7 @@ test("admin creates a shop invitation in the shared merchant layout", async ({ p
     });
   });
 
-  await page.goto("/shop/invitations");
+  await page.goto("/admin/invitations");
   await expect(page.getByRole("heading", { name: "Quản trị hệ thống" })).toBeVisible();
   await page.getByLabel("Tên người đại diện").fill("Shop Representative");
   await page.getByLabel("Email đăng nhập").fill("shop@example.com");
@@ -230,10 +216,10 @@ test("admin creates a shop invitation in the shared merchant layout", async ({ p
   const openMenu = page.getByRole("button", { name: "Mở menu quản lý" });
   if (await openMenu.isVisible()) await openMenu.click();
   await expect(page.getByRole("link", { name: "Quản lý người dùng" }))
-    .toHaveAttribute("href", "/shop/users");
+    .toHaveAttribute("href", "/admin/users");
 });
 
-test("user management is available inside the merchant shell at /shop/users", async ({ page }) => {
+test("user management is available inside the merchant shell at /admin/users", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("admin_access_token", "admin-access-token");
     localStorage.setItem("user_role", "admin");
@@ -250,7 +236,7 @@ test("user management is available inside the merchant shell at /shop/users", as
     });
   });
 
-  await page.goto("/shop/users");
+  await page.goto("/admin/users");
 
   if ((page.viewportSize()?.width ?? 1024) <= 767) {
     await page.getByRole("button", { name: "Mở menu quản lý" }).click();
