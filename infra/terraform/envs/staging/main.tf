@@ -86,6 +86,7 @@ module "compute" {
   web_base_url           = "https://dev.d220orcvb6awpu.amplifyapp.com"
   ai_results_queue_url   = data.aws_sqs_queue.ai_results.url
   s3_bucket_name         = data.aws_s3_bucket.images.bucket
+  comments_queue_url     = data.aws_sqs_queue.comments.url
 }
 
 module "edge" {
