@@ -92,3 +92,8 @@ variable "s3_bucket_name" {
   type    = string
   default = ""
 }
+
+variable "comments_queue_url" {
+  type    = string
+  default = ""
+}
