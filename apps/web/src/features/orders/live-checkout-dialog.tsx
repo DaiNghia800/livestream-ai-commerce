@@ -6,7 +6,7 @@
  *   Chọn phân loại (sheet của trang live) → "Mua ngay" → MÀN NÀY
  *     1. Địa chỉ nhận hàng (từ sổ của tài khoản, "Thay đổi")
  *     2. Sản phẩm (ảnh, tên, phân loại, số lượng, giá)
- *     3. Vận chuyển
+ *     3. Vận chuyển (bảng giá theo địa chỉ, khách chọn hãng, phí vào tổng)
  *     4. Phương thức thanh toán (COD / thanh toán online)
  *     5. Lời nhắn cho shop
  *     6. Chi tiết thanh toán + thanh dưới "Tổng cộng · Đặt hàng"
@@ -33,9 +33,11 @@ import {
   type UserAddress,
 } from "@/lib/api";
 import { useDaGan } from "@/lib/use-da-gan";
+import { tenHang } from "@/features/shipping/labels";
 import { docDiaChi } from "./address-book-dialog";
-import { ChonCachTra, loiXacNhan, type PhuongThuc } from "./checkout-parts";
+import { ChonCachTra, laLoiDoiGia, loiXacNhan, type PhuongThuc } from "./checkout-parts";
 import { ChonDiaChiNhanHang } from "./chon-dia-chi-nhan-hang";
+import { KhoiChonVanChuyen, chuPhiShip, useChonVanChuyen } from "./chon-van-chuyen";
 import { CustomerBankTransfer } from "./customer-bank-transfer";
 import { CustomerOnlinePayment } from "./customer-online-payment";
 import styles from "./live-checkout-dialog.module.css";
@@ -83,6 +85,9 @@ export function LiveCheckoutDialog({
   const [thongBaoChat, setThongBaoChat] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loi, setLoi] = useState("");
+  // Giỏ server đã tạo ở lần bấm Đặt hàng trước mà xác nhận hỏng (phí đổi,
+  // hết hàng…): lần sau dùng lại token, không thêm món vào giỏ lần nữa.
+  const [tokenGio, setTokenGio] = useState<string | null>(null);
   const [ketQua, setKetQua] = useState<{
     order: CustomerOrder;
     token: string;
@@ -102,12 +107,33 @@ export function LiveCheckoutDialog({
     setKetQua(null);
     setLoi("");
     setBusy(false);
+    setTokenGio(null);
     onClose();
   }
 
   const tongTienHang = lines.reduce((s, l) => s + l.price * l.quantity, 0);
   const soMon = lines.reduce((s, l) => s + l.quantity, 0);
-  const datDuoc = daDangNhap && Boolean(livestreamId) && Boolean(diaChi) && lines.length > 0 && !busy;
+
+  // Bảng giá vận chuyển theo địa chỉ đang chọn. Đơn chưa có trên server
+  // (món chỉ vào giỏ lúc bấm Đặt hàng) nên hỏi bằng số món + tiền hàng;
+  // lúc xác nhận server báo giá lại trên đơn thật và từ chối nếu lệch.
+  const ship = useChonVanChuyen(
+    open && diaChi && livestreamId && lines.length > 0
+      ? () =>
+          ordersApi.shippingOptionsForCart({
+            provinceName: diaChi.provinceName,
+            wardCode: diaChi.wardCode,
+            streetLine: diaChi.streetLine,
+            paymentMethod: phuongThuc,
+            itemCount: soMon,
+            goodsAmount: String(tongTienHang),
+          })
+      : null,
+    [open, livestreamId, diaChi?.provinceName, diaChi?.wardCode, diaChi?.streetLine, phuongThuc, soMon, tongTienHang],
+  );
+  const tongThanhToan = tongTienHang + ship.phiShip;
+  const datDuoc =
+    daDangNhap && Boolean(livestreamId) && Boolean(diaChi) && lines.length > 0 && !busy && !ship.dangLayPhi;
 
   async function datHang() {
     if (!datDuoc || !livestreamId || !diaChi) return;
@@ -115,16 +141,20 @@ export function LiveCheckoutDialog({
     setLoi("");
     let gio: CartOrder | null = null;
     try {
-      for (const line of lines) {
-        gio = await cartApi.addItem({
-          livestreamId,
-          skuId: line.skuId,
-          skuCode: line.skuCode,
-          quantity: line.quantity,
-        });
+      let token = tokenGio;
+      if (!token) {
+        for (const line of lines) {
+          gio = await cartApi.addItem({
+            livestreamId,
+            skuId: line.skuId,
+            skuCode: line.skuCode,
+            quantity: line.quantity,
+          });
+        }
+        token = gio?.confirmToken ?? null;
+        if (!gio || !token) throw new Error("Không tạo được giỏ hàng.");
+        setTokenGio(token);
       }
-      const token = gio?.confirmToken;
-      if (!gio || !token) throw new Error("Không tạo được giỏ hàng.");
       const order = await ordersApi.confirm(token, {
         recipientName: diaChi.recipientName,
         recipientPhone: diaChi.recipientPhone,
@@ -133,6 +163,8 @@ export function LiveCheckoutDialog({
         streetLine: diaChi.streetLine,
         note: loiNhan.trim() || undefined,
         paymentMethod: phuongThuc,
+        // Đúng giá khách đang thấy; server đối chiếu, lệch thì 409.
+        shippingOption: ship.luaChon,
       });
       setKetQua({ order, token, phuongThuc });
       onPlaced?.({ orderCode: order.orderCode, phuongThuc, thongBaoChat, order });
@@ -142,6 +174,8 @@ export function LiveCheckoutDialog({
           ? "Phiên đăng nhập đã hết hạn. Đăng nhập lại rồi đặt hàng tiếp."
           : loiXacNhan(err, gio?.items ?? [])
       );
+      // Phí hãng vừa đổi: nạp bảng giá mới để khách chọn lại rồi bấm tiếp.
+      if (laLoiDoiGia(err)) ship.reload();
     } finally {
       setBusy(false);
     }
@@ -205,13 +239,14 @@ export function LiveCheckoutDialog({
                 </ul>
               </section>
 
-              {/* 3. Vận chuyển */}
+              {/* 3. Vận chuyển: khách chọn hãng, phí vào tổng ngay */}
               <section className={styles.khoi}>
                 <h3 className={styles.tieuDe}><Truck size={16} aria-hidden="true" /> Vận chuyển</h3>
-                <div className={styles.dong}>
-                  <span>Giao hàng tiêu chuẩn</span>
-                  <span className="muted">Phí tính khi shop tạo vận đơn</span>
-                </div>
+                {daDangNhap && livestreamId ? (
+                  <KhoiChonVanChuyen ship={ship} />
+                ) : (
+                  <p className="muted">Đăng nhập và chọn địa chỉ để xem phí vận chuyển.</p>
+                )}
               </section>
 
               {/* 4. Phương thức thanh toán */}
@@ -244,8 +279,14 @@ export function LiveCheckoutDialog({
               <section className={styles.khoi}>
                 <h3 className={styles.tieuDe}>Chi tiết thanh toán</h3>
                 <div className={styles.dong}><span>Tổng tiền hàng ({soMon} món)</span><span>{formatMoney(tongTienHang)}</span></div>
-                <div className={styles.dong}><span>Phí vận chuyển</span><span className="muted">Tính sau</span></div>
-                <div className={`${styles.dong} ${styles.tong}`}><span>Tổng thanh toán</span><strong>{formatMoney(tongTienHang)}</strong></div>
+                <div className={styles.dong} data-testid="phi-van-chuyen">
+                  <span>Phí vận chuyển</span>
+                  <span className={ship.phuongAnChon ? undefined : "muted"}>{chuPhiShip(ship, formatMoney)}</span>
+                </div>
+                <div className={`${styles.dong} ${styles.tong}`}>
+                  <span>Tổng thanh toán</span>
+                  <strong data-testid="tong-thanh-toan">{formatMoney(tongThanhToan)}</strong>
+                </div>
               </section>
 
               {loi && <div className="notice notice-danger" role="alert">{loi}</div>}
@@ -254,7 +295,7 @@ export function LiveCheckoutDialog({
             <div className={styles.chan}>
               <div className={styles.chanTong}>
                 <span className="muted">Tổng cộng</span>
-                <strong>{formatMoney(tongTienHang)}</strong>
+                <strong>{formatMoney(tongThanhToan)}</strong>
               </div>
               <Button type="button" className={styles.nutDat} disabled={!datDuoc} onClick={() => void datHang()}>
                 {busy ? "Đang đặt hàng…" : "Đặt hàng"}
@@ -359,6 +400,16 @@ function KetQua({
             <div><dt>Giao tới</dt><dd className={styles.diaChiDu}>{docDiaChi(diaChi)}</dd></div>
           </>
         )}
+        {order.shippingCarrier && (
+          <div>
+            <dt>Vận chuyển</dt>
+            <dd>
+              {tenHang(order.shippingCarrier, order.shippingServiceCode)}
+              {Number(order.shippingFee ?? 0) > 0 ? ` · ${formatMoney(Number(order.shippingFee))}` : " · miễn phí"}
+            </dd>
+          </div>
+        )}
+        {/* Tổng đọc từ server: đã gồm phí ship khách chọn. */}
         <div><dt>Tổng thanh toán</dt><dd><strong>{formatMoney(Number(order.totalAmount))}</strong></dd></div>
       </dl>
 

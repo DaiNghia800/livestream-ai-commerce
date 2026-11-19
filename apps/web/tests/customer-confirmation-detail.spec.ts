@@ -205,11 +205,13 @@ test.describe("Trang xác nhận — không bịa số", () => {
 
   test("phí vận chuyển nói thẳng là chưa tính được", async ({ page }) => {
     // Hãng báo giá theo địa chỉ, mà lúc này khách còn đang gõ. Hiện
-    // một con số rồi đổi sau là mất lòng tin đúng chỗ nhạy nhất.
+    // một con số rồi đổi sau là mất lòng tin đúng chỗ nhạy nhất:
+    // chưa có địa chỉ thì dòng phí là chữ, và tổng chỉ là tiền hàng.
     await dungTrang(page);
-    await expect(
-      page.getByText("shop báo sau khi chốt địa chỉ"),
-    ).toBeVisible();
+    const phi = page.getByTestId("phi-van-chuyen");
+    await expect(phi).toContainText("chọn địa chỉ để tính");
+    await expect(phi).not.toContainText("₫");
+    await expect(page.getByTestId("tong-thanh-toan")).toHaveText(/250\.000/);
   });
 });
 

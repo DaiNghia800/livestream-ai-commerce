@@ -97,6 +97,15 @@ export interface AppConfig {
   // ── Vận chuyển — TOÀN BỘ là môi trường thử ──────────────────────
   /** Hãng dùng khi màn hình không nêu rõ. */
   defaultCarrier: string;
+  /**
+   * Hãng được đưa cho KHÁCH chọn ở bước xác nhận. Rỗng = mọi hãng đã
+   * khai khoá. Shop thu hẹp lại khi chỉ muốn ký với một vài hãng.
+   */
+  shippingQuoteCarriers: string[];
+  /** Khối lượng ước tính mỗi món để báo giá trước khi shop cân thật. */
+  shippingQuoteWeightGram: number;
+  /** Phí shop tự giao, tính bằng đồng; "0" là miễn phí. */
+  selfDeliveryFee: string;
   mockCarrierSecret: string;
   /** Kho gửi hàng. Mọi hãng đều bắt khai điểm lấy. */
   shipFrom: {
@@ -323,6 +332,12 @@ export const config: AppConfig = {
   // bất kỳ hãng nào. Bốn hãng thật đều đòi tài khoản, có hãng còn
   // phải chờ nhân viên kinh doanh gọi lại.
   defaultCarrier: process.env.SHIPPING_CARRIER || "mock",
+  shippingQuoteCarriers: (process.env.SHIPPING_QUOTE_CARRIERS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  shippingQuoteWeightGram: parseInt(process.env.SHIPPING_QUOTE_WEIGHT_GRAM || "500", 10) || 500,
+  selfDeliveryFee: String(Math.max(0, Number(process.env.SELF_DELIVERY_FEE || "0") || 0)),
   mockCarrierSecret:
     process.env.MOCK_CARRIER_SECRET || "sandbox-only-carrier-secret",
 

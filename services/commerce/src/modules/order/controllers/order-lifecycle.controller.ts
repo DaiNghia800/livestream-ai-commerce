@@ -6,12 +6,16 @@ import {
   OrderAccessError,
   OrderNotFoundError,
   OutOfStockError,
+  ShippingOptionUnavailableError,
+  ShippingQuoteChangedError,
 } from "../../../shared/errors/domain.errors.js";
 import {
   CancelIntentRequestSchema,
   CancelOrderRequestSchema,
+  CartShippingOptionsRequestSchema,
   ConfirmOrderRequestSchema,
   SetOrderAddressRequestSchema,
+  ShippingOptionsRequestSchema,
 } from "../schemas/order.schema.js";
 import type { CancelIntentService } from "../services/cancel-intent.service.js";
 import type { OrderLifecycleService } from "../services/order-lifecycle.service.js";
@@ -84,6 +88,36 @@ export class OrderLifecycleController {
       );
     } catch (err) {
       this.handleError(err, res, "open confirm link");
+    }
+  };
+
+  /**
+   * POST /orders/confirm/:token/shipping-options — bảng giá vận chuyển
+   * cho địa chỉ khách vừa chọn. POST vì mang địa chỉ trong body và
+   * không được cache: giá đổi theo hãng từng giờ.
+   */
+  shippingOptions = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = ShippingOptionsRequestSchema.parse(req.body);
+      res.json(
+        await this.service.quoteShippingOptions(req.params.token, input, req.auth?.userId ?? null)
+      );
+    } catch (err) {
+      this.handleError(err, res, "quote shipping options");
+    }
+  };
+
+  /**
+   * POST /orders/shipping-options — bảng giá cho giỏ chưa thành đơn.
+   * Không cần token vì chưa có đơn; không có gì riêng tư để bảo vệ
+   * (chỉ địa chỉ giao và số món khách tự nhập).
+   */
+  shippingOptionsForCart = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const input = CartShippingOptionsRequestSchema.parse(req.body);
+      res.json(await this.service.quoteShippingOptionsForCart(input));
+    } catch (err) {
+      this.handleError(err, res, "quote shipping options for cart");
     }
   };
 
@@ -222,6 +256,25 @@ export class OrderLifecycleController {
       return;
     }
 
+    // Phí ship đổi giữa lúc khách xem và lúc bấm: 409 để trang khách
+    // nạp lại bảng giá; gửi kèm giá mới để màn hình nói rõ đổi ra sao.
+    if (err instanceof ShippingQuoteChangedError) {
+      res.status(409).json({
+        error: "ShippingQuoteChanged",
+        message: err.message,
+        carrier: err.carrier,
+        serviceCode: err.serviceCode,
+        expectedFee: err.expectedFee,
+        actualFee: err.actualFee,
+      });
+      return;
+    }
+
+    if (err instanceof ShippingOptionUnavailableError) {
+      res.status(422).json({ error: "ShippingOptionUnavailable", message: err.message });
+      return;
+    }
+
     console.error(`[OrderLifecycleController] Internal error on ${action}:`, err);
     res.status(500).json({
       error: "InternalServerError",
@@ -243,6 +296,9 @@ export class OrderLifecycleController {
       // Bối cảnh phiên live: khách nhận ra đơn của mình nhờ tên phiên
       // và chính câu họ đã gõ, chứ không nhờ mã đơn.
       livestreamTitle: order.livestreamTitle ?? null,
+      shippingCarrier: order.shippingCarrier ?? null,
+      shippingServiceCode: order.shippingServiceCode ?? null,
+      shippingFee: order.shippingFee ?? "0",
       items: order.items,
     };
   }

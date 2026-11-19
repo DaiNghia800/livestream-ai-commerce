@@ -3,8 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * Mua bằng nút trên trang live, theo nhịp TikTok Shop:
  *   Chọn phân loại → "Mua ngay" → màn Thanh toán (sổ địa chỉ, sản phẩm, vận
- *   chuyển, cách trả, lời nhắn, tổng) → Đặt hàng → kết quả (COD: thành công;
- *   online: bước thanh toán).
+ *   chuyển — bảng giá theo địa chỉ, khách chọn hãng — cách trả, lời nhắn,
+ *   tổng đã gồm ship) → Đặt hàng → kết quả (COD: thành công; online: bước
+ *   thanh toán).
  * Khách đã đăng nhập đi đường này với đơn thật; khách vãng lai vẫn gõ tay
  * trong sheet cũ. Backend được giả lập hoàn toàn.
  */
@@ -43,20 +44,40 @@ const CART = {
     isPartial: false, unitPrice: "199000.00", variantName: "Đen / M", imageUrl: null }],
 };
 
+/** Bảng giá vận chuyển giả: shop tự giao miễn phí và GHN 30.000đ. */
+const BANG_GIA = {
+  weightGram: 500,
+  items: [
+    { carrier: "self", carrierLabel: "Shop tự giao", serviceCode: "self", fee: "0", etaText: "Shop liên hệ hẹn giao" },
+    { carrier: "ghn", carrierLabel: "Giao Hàng Nhanh", serviceCode: "2", fee: "30000", etaText: "2 - 3 ngày" },
+  ],
+};
+
 type Stub = {
   live: boolean;
   diaChi: typeof DIA_CHI | null;
   goiDat?: (body: unknown) => void;
   /** Trạng thái đơn trả về cho các lần hỏi lại sau khi đặt (online). */
   trangThaiSau?: string[];
+  /** Lần xác nhận đầu bị 409 "phí vừa đổi", lần sau mới qua. */
+  doiGiaMotLan?: boolean;
+  /** Đếm số lần màn hình hỏi bảng giá. */
+  demBangGia?: { lan: number };
 };
 
 async function stubBackend(page: Page, stub: Stub) {
   const trangThaiSau = [...(stub.trangThaiSau ?? [])];
+  let conDoiGia = Boolean(stub.doiGiaMotLan);
   await page.route("**/api/**", (route) => {
     const req = route.request();
     const u = new URL(req.url());
     const p = u.pathname;
+    if (p === "/api/orders/shipping-options" && req.method() === "POST") {
+      if (stub.demBangGia) stub.demBangGia.lan += 1;
+      // Giỏ chưa thành đơn: client gửi số món + tiền hàng để server ước.
+      expect(req.postDataJSON()).toMatchObject({ itemCount: 1, goodsAmount: "199000" });
+      return route.fulfill({ json: BANG_GIA });
+    }
     if (p === "/api/orders/confirm/tok-1" && req.method() === "GET") {
       const status = trangThaiSau.length > 1 ? trangThaiSau.shift()! : trangThaiSau[0] ?? "AWAITING_PAYMENT";
       return route.fulfill({ json: { ...CART, status, cancelReason: status === "CANCELLED" ? "OUT_OF_STOCK_AT_PAYMENT" : null } });
@@ -76,12 +97,29 @@ async function stubBackend(page: Page, stub: Stub) {
       return route.fulfill({ status: 201, json: { cart: CART, rejected: [] } });
     }
     if (p === "/api/orders/confirm/tok-1" && req.method() === "POST") {
-      const body = req.postDataJSON() as { paymentMethod?: string };
+      const body = req.postDataJSON() as {
+        paymentMethod?: string;
+        shippingOption?: { carrier: string; serviceCode: string; fee: string };
+      };
       stub.goiDat?.(body);
+      if (conDoiGia) {
+        conDoiGia = false;
+        return route.fulfill({ status: 409, json: {
+          error: "ShippingQuoteChanged", message: "đổi giá", carrier: "ghn", serviceCode: "2",
+          expectedFee: body.shippingOption?.fee ?? "0", actualFee: "35000",
+        } });
+      }
+      // Phí khách chọn ghi vào đơn, tổng đã gồm ship — như server thật làm.
+      const phi = Number(body.shippingOption?.fee ?? 0);
       // Online: server trả AWAITING_PAYMENT (chưa giữ hàng); COD: CONFIRMED.
       return route.fulfill({ json: { ...CART, status: body.paymentMethod === "ONLINE" ? "AWAITING_PAYMENT" : "CONFIRMED",
         recipientName: "Đạt Lê", recipientPhone: "0989541246",
-        shippingAddress: "12 Nguyễn Huệ, khu dân cư Hưng Phú 1 dãy nhà số 3, Phường Hưng Phú, Cần Thơ" } });
+        shippingAddress: "12 Nguyễn Huệ, khu dân cư Hưng Phú 1 dãy nhà số 3, Phường Hưng Phú, Cần Thơ",
+        totalAmount: `${199000 + phi}.00`,
+        shippingCarrier: body.shippingOption?.carrier ?? null,
+        shippingServiceCode: body.shippingOption?.serviceCode ?? null,
+        shippingFee: `${phi}.00`,
+      } });
     }
     if (p === "/api/payments/customer/confirm/tok-1/gateways") {
       return route.fulfill({ json: { items: [{ name: "mock", label: "Cổng giả (môi trường thử)", ready: true, missing: [] }] } });
@@ -135,7 +173,11 @@ test("đã đăng nhập, phiên thật: màn Thanh toán đủ các bước; on
   await expect(dong).toContainText("Đạt Lê");
   await expect(dong).toContainText("12 Nguyễn Huệ, khu dân cư Hưng Phú 1 dãy nhà số 3, Phường Hưng Phú, Cần Thơ");
   await expect(man.getByText("Áo thun A12")).toBeVisible();
-  await expect(man.getByText("Giao hàng tiêu chuẩn")).toBeVisible();
+  // 3. Vận chuyển: bảng giá về theo địa chỉ, dòng rẻ nhất chọn sẵn, tổng chưa cộng ship.
+  const nhomShip = man.getByRole("radiogroup", { name: "Phương thức vận chuyển" });
+  await expect(nhomShip.getByRole("radio")).toHaveCount(2);
+  await expect(nhomShip.getByRole("radio", { name: /Shop tự giao/ })).toBeChecked();
+  await expect(man.getByTestId("tong-thanh-toan")).toHaveText(/199\.000/);
   await expect(man.getByRole("radio", { name: /Thanh toán khi nhận hàng/ })).toBeChecked();
   await expect(man.getByText("Tổng cộng")).toBeVisible();
 
@@ -167,7 +209,10 @@ test("đã đăng nhập, phiên thật: màn Thanh toán đủ các bước; on
 
   // Đơn thật: thêm vào giỏ server với SKU của phiên, rồi xác nhận bằng địa chỉ đã chọn + ONLINE.
   expect(goi[0]).toMatchObject({ livestreamId: LIVE_ID, skuCode: "A12-DEN-M", quantity: 1 });
-  expect(goi[1]).toMatchObject({ recipientName: "Lê Văn Tiến", streetLine: "1 Hùng Vương", paymentMethod: "ONLINE" });
+  expect(goi[1]).toMatchObject({
+    recipientName: "Lê Văn Tiến", streetLine: "1 Hùng Vương", paymentMethod: "ONLINE",
+    shippingOption: { carrier: "self", serviceCode: "self", fee: "0" },
+  });
 });
 
 test("online nhưng hết hàng lúc tiền về: báo huỷ và hoàn tiền", async ({ page }) => {
@@ -182,15 +227,51 @@ test("online nhưng hết hàng lúc tiền về: báo huỷ và hoàn tiền", 
   await expect(ketQua.getByTestId("buoc-thanh-toan")).toHaveCount(0);
 });
 
-test("COD: đặt hàng thành công, có link xem đơn", async ({ page }) => {
+test("COD: chọn GHN, phí vào tổng ngay, đặt hàng thành công kèm hãng đã chọn", async ({ page }) => {
+  const goi: unknown[] = [];
   await dangNhap(page);
-  await stubBackend(page, { live: true, diaChi: DIA_CHI });
+  await stubBackend(page, { live: true, diaChi: DIA_CHI, goiDat: (b) => goi.push(b) });
   const man = await sangManThanhToan(page);
+
+  const nhomShip = man.getByRole("radiogroup", { name: "Phương thức vận chuyển" });
+  await nhomShip.getByRole("radio", { name: /Giao Hàng Nhanh/ }).check();
+  await expect(man.getByTestId("phi-van-chuyen")).toContainText("30.000");
+  await expect(man.getByTestId("tong-thanh-toan")).toHaveText(/229\.000/);
+
   await man.getByRole("button", { name: "Đặt hàng" }).click();
   // exact: tiêu đề hộp thoại là "Đặt hàng thành công", h4 bên trong là "…!".
   await expect(page.getByRole("heading", { name: "Đặt hàng thành công", exact: true })).toBeVisible();
-  await expect(page.getByTestId("live-checkout-ket-qua").getByTestId("buoc-thanh-toan")).toHaveCount(0);
+  const ketQua = page.getByTestId("live-checkout-ket-qua");
+  await expect(ketQua.getByTestId("buoc-thanh-toan")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Xem đơn hàng" })).toHaveAttribute("href", "/orders");
+  // Kết quả đọc từ server: hãng đã chọn và tổng đã gồm ship.
+  await expect(ketQua).toContainText("Giao Hàng Nhanh · 30.000");
+  await expect(ketQua).toContainText("229.000");
+  expect(goi[1]).toMatchObject({ paymentMethod: "COD", shippingOption: { carrier: "ghn", serviceCode: "2", fee: "30000" } });
+});
+
+test("phí hãng đổi giữa chừng: báo phí mới, nạp lại bảng giá, bấm lại không thêm món vào giỏ lần nữa", async ({ page }) => {
+  const goi: unknown[] = [];
+  const demBangGia = { lan: 0 };
+  await dangNhap(page);
+  await stubBackend(page, { live: true, diaChi: DIA_CHI, goiDat: (b) => goi.push(b), doiGiaMotLan: true, demBangGia });
+  const man = await sangManThanhToan(page);
+  const nhomShip = man.getByRole("radiogroup", { name: "Phương thức vận chuyển" });
+  await nhomShip.getByRole("radio", { name: /Giao Hàng Nhanh/ }).check();
+  const truoc = demBangGia.lan;
+
+  await man.getByRole("button", { name: "Đặt hàng" }).click();
+  const loi = man.getByRole("alert").filter({ hasText: "Phí vận chuyển vừa thay đổi" });
+  await expect(loi).toContainText("35.000");
+  await expect.poll(() => demBangGia.lan).toBeGreaterThan(truoc);
+
+  // Bấm lại: giỏ server đã có món từ lần trước, chỉ xác nhận lại.
+  await man.getByRole("button", { name: "Đặt hàng" }).click();
+  await expect(page.getByRole("heading", { name: "Đặt hàng thành công", exact: true })).toBeVisible();
+  const themGio = goi.filter((b) => (b as { livestreamId?: string }).livestreamId === LIVE_ID);
+  expect(themGio).toHaveLength(1);
+  const xacNhan = goi.filter((b) => (b as { paymentMethod?: string }).paymentMethod);
+  expect(xacNhan).toHaveLength(2);
 });
 
 test("sổ địa chỉ trống: mời thêm địa chỉ và khoá nút Đặt hàng", async ({ page }) => {

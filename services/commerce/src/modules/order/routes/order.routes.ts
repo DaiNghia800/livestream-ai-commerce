@@ -129,6 +129,9 @@ export function createOrderRouter(
   });
 
   router.get("/confirm/:token", taiKhoanTuyChon, lifecycleController.openConfirmLink);
+  router.post("/confirm/:token/shipping-options", taiKhoanTuyChon, lifecycleController.shippingOptions);
+  // Giỏ chưa thành đơn (màn Thanh toán trên trang live) hỏi giá trước khi đặt.
+  router.post("/shipping-options", lifecycleController.shippingOptionsForCart);
   router.post("/confirm/:token", taiKhoanTuyChon, lifecycleController.confirm);
 
   // Luồng shop

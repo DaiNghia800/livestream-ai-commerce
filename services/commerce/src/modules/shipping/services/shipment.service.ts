@@ -26,6 +26,7 @@ import {
   CarrierRejectedError,
   canAdvance,
   type ShippingAddress,
+  type ShippingCarrier,
 } from "../carriers/index.js";
 import { config } from "../../../config.js";
 import { getCarrier } from "../carriers/index.js";
@@ -93,14 +94,19 @@ export class ShipmentService {
   constructor(private readonly pool: Pool) {}
 
   async createShipment(input: TaoVanDonInput): Promise<VanDon> {
-    const carrierName = input.carrier ?? undefined;
-    const carrier = getCarrier(carrierName);
+    // Hãng khách đã chọn lúc xác nhận là mặc định; shop vẫn ghi đè
+    // được khi hộp thoại nêu rõ, nhưng phần chênh phí là của shop.
+    // Phải đọc đơn mới biết, nên hãng được chốt bên trong giao dịch.
+    let carrier: ShippingCarrier;
+    let serviceCode: string | null = input.serviceCode ?? null;
 
-    // GHN service 5 requires weight and dimensions for every item.
-    // The shipment form only collects dimensions for the whole parcel.
+    // Chặn sớm trước khi chạm database khi đã biết chắc sẽ đi GHN (shop
+    // nêu hãng, hoặc hãng mặc định là GHN). Kiểm tra lại bên trong giao
+    // dịch vì hãng cuối cùng có thể là hãng khách đã chọn.
+    const hangDuKien = getCarrier(input.carrier ?? undefined);
     if (
-      carrier.name === "ghn" &&
-      (input.weightGram >= 20000 || Number(input.serviceCode) === 5)
+      hangDuKien.name === "ghn" &&
+      (input.weightGram >= 20000 || Number(serviceCode) === 5)
     ) {
       throw new GhnHeavyShipmentNotSupportedError();
     }
@@ -120,6 +126,20 @@ export class ShipmentService {
       const order = await findOrderForShipment(client, input.orderId);
       if (!order) {
         throw new ShipmentNotFoundError(input.orderId);
+      }
+
+      carrier = getCarrier(input.carrier ?? order.shippingCarrier ?? undefined);
+      if (!input.carrier && !input.serviceCode && order.shippingCarrier === carrier.name) {
+        serviceCode = order.shippingServiceCode;
+      }
+
+      // GHN service 5 requires weight and dimensions for every item.
+      // The shipment form only collects dimensions for the whole parcel.
+      if (
+        carrier.name === "ghn" &&
+        (input.weightGram >= 20000 || Number(serviceCode) === 5)
+      ) {
+        throw new GhnHeavyShipmentNotSupportedError();
       }
 
       // Chỉ đơn đã xác nhận mới được đẩy đi. Đơn nháp thì khách còn có
@@ -159,7 +179,7 @@ export class ShipmentService {
       const id = await insertShipmentRequested(client, {
         orderId: order.id,
         carrier: carrier.name,
-        serviceCode: input.serviceCode ?? null,
+        serviceCode,
         clientOrderCode,
         codAmount,
         weightGram: input.weightGram,
@@ -212,7 +232,7 @@ export class ShipmentService {
         heightCm: input.heightCm ?? null,
         codAmount,
         insuranceValue: input.insuranceValue ?? "0",
-        serviceCode: input.serviceCode ?? null,
+        serviceCode,
         clientOrderCode,
         orderCode,
         note: input.note ?? null,

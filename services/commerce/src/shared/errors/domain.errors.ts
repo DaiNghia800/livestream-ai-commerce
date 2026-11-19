@@ -134,3 +134,33 @@ export class OrderAccessError extends DomainError {
   }
 }
 
+
+/**
+ * Phí ship server báo giá lại lúc xác nhận khác con số khách đã thấy.
+ *
+ * Khách không được trả theo giá cũ: hãng đổi bảng giá, hoặc ai đó sửa
+ * body request. Trang khách nạp lại bảng giá rồi hỏi khách lần nữa.
+ */
+export class ShippingQuoteChangedError extends DomainError {
+  readonly code = "SHIPPING_QUOTE_CHANGED";
+
+  constructor(
+    readonly carrier: string,
+    readonly serviceCode: string,
+    readonly expectedFee: string,
+    readonly actualFee: string
+  ) {
+    super(
+      `Phí vận chuyển ${carrier}/${serviceCode} đã đổi: khách thấy ${expectedFee}, hiện là ${actualFee}.`
+    );
+  }
+}
+
+/** Khách chọn một dịch vụ không còn trong danh sách shop đưa ra. */
+export class ShippingOptionUnavailableError extends DomainError {
+  readonly code = "SHIPPING_OPTION_UNAVAILABLE";
+
+  constructor(readonly carrier: string, readonly reason: string) {
+    super(`Dịch vụ vận chuyển "${carrier}" hiện không chọn được: ${reason}`);
+  }
+}

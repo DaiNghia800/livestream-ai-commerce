@@ -22,3 +22,6 @@
 .cachTra input { flex: 0 0 auto; width: 18px; height: 18px; min-height: 0; margin: 2px 0 0; padding: 0; accent-color: var(--color-primary); }
 .cachTra:hover { border-color: var(--color-primary); }
 .cachTraChon { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary) inset; }
+
+/* Phí ship đứng sát mép phải của thẻ chọn hãng, cùng hàng với tên hãng. */
+.phiShip { flex: 0 0 auto; white-space: nowrap; align-self: center; }

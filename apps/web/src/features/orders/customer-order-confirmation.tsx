@@ -30,12 +30,14 @@ import {
   shippingApi,
   type UserAddress,
 } from "@/lib/api";
+import { tenHang } from "@/features/shipping/labels";
 import { formatMoney } from "@/lib/format";
 import { useApi } from "@/lib/use-api";
 import styles from "./customer-order-confirmation.module.css";
 import { AddressFormDialog, ChonDiaChiDialog } from "./address-book-dialog";
 import { AddressPicker } from "./address-picker";
-import { ChonCachTra, DiaChiNhanHang, loiXacNhan, type PhuongThuc } from "./checkout-parts";
+import { ChonCachTra, DiaChiNhanHang, laLoiDoiGia, loiXacNhan, type PhuongThuc } from "./checkout-parts";
+import { KhoiChonVanChuyen, chuPhiShip, useChonVanChuyen } from "./chon-van-chuyen";
 import { CustomerBankTransfer } from "./customer-bank-transfer";
 import { CustomerOnlinePayment } from "./customer-online-payment";
 
@@ -86,6 +88,47 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
     [provinceName],
   );
 
+  // Dùng sổ khi đã đăng nhập và sổ đọc được. Token hết hạn (401) thì
+  // lùi về form tay — không chặn khách chỉ vì phiên đăng nhập cũ.
+  const dungSo = daDangNhap && !soDiaChi.error;
+  const dsDiaChi = dungSo ? soDiaChi.data ?? null : null;
+  const diaChiChon = dsDiaChi
+    ? dsDiaChi.find((d) => d.id === chonDiaChiId) ??
+      dsDiaChi.find((d) => d.isDefault) ??
+      dsDiaChi[0] ??
+      null
+    : null;
+  const selectedWard = wards.refreshing ? undefined : wards.data?.find((ward) => ward.code === wardCode);
+  const addressReady = dungSo
+    ? Boolean(diaChiChon)
+    : Boolean(provinceName && selectedWard && streetLine.trim().length >= 3);
+  const coTheXacNhan = data?.status === "DRAFT" || data?.status === "PENDING_CONFIRMATION";
+
+  // Số nhà gõ tay thì chờ khách ngừng gõ nửa giây rồi mới hỏi giá, khỏi
+  // bắn một request mỗi phím. Set state trong callback của timer, không
+  // phải đồng bộ trong effect.
+  const [streetLineTre, setStreetLineTre] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setStreetLineTre(streetLine.trim()), 500);
+    return () => clearTimeout(t);
+  }, [streetLine]);
+
+  // Địa chỉ để xin bảng giá: chỉ khi đơn còn xác nhận được và địa chỉ đã đủ.
+  const diaChiBaoGia = coTheXacNhan && addressReady
+    ? dungSo && diaChiChon
+      ? { provinceName: diaChiChon.provinceName, wardCode: diaChiChon.wardCode, streetLine: diaChiChon.streetLine }
+      : streetLineTre.length >= 3
+        ? { provinceName, wardCode, streetLine: streetLineTre }
+        : null
+    : null;
+  const ship = useChonVanChuyen(
+    diaChiBaoGia
+      ? () => ordersApi.shippingOptions(token, { ...diaChiBaoGia, paymentMethod: payment })
+      : null,
+    [token, diaChiBaoGia?.provinceName, diaChiBaoGia?.wardCode, diaChiBaoGia?.streetLine, payment],
+  );
+  const { phuongAnChon, dangLayPhi } = ship;
+
   if (loading) return <LoadingState />;
   if (error) {
     if (error.status === 404) {
@@ -114,22 +157,14 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
   }
   if (!data) return null;
 
-  const canConfirm = data.status === "DRAFT" || data.status === "PENDING_CONFIRMATION";
-  // Dùng sổ khi đã đăng nhập và sổ đọc được. Token hết hạn (401) thì
-  // lùi về form tay — không chặn khách chỉ vì phiên đăng nhập cũ.
-  const dungSo = daDangNhap && !soDiaChi.error;
-  const dsDiaChi = dungSo ? soDiaChi.data ?? null : null;
-  const diaChiChon = dsDiaChi
-    ? dsDiaChi.find((d) => d.id === chonDiaChiId) ??
-      dsDiaChi.find((d) => d.isDefault) ??
-      dsDiaChi[0] ??
-      null
-    : null;
-  const selectedWard = wards.refreshing ? undefined : wards.data?.find((ward) => ward.code === wardCode);
-  const addressReady = dungSo
-    ? Boolean(diaChiChon)
-    : Boolean(provinceName && selectedWard && streetLine.trim().length >= 3);
+  const canConfirm = coTheXacNhan;
   const soMon = data.items.reduce((tong, item) => tong + item.quantity, 0);
+  // Tiền hàng tách khỏi phí ship: trước khi xác nhận, phí lấy từ dòng
+  // khách đang chọn; sau đó lấy đúng con số server đã ghi vào đơn.
+  const phiDaGhi = Number(data.shippingFee ?? 0);
+  const tienHang = Number(data.totalAmount) - phiDaGhi;
+  const phiShip = canConfirm ? Number(phuongAnChon?.fee ?? 0) : phiDaGhi;
+  const tongThanhToan = tienHang + phiShip;
   // Bình luận gốc của dòng đầu tiên là đủ: khách nhận ra đơn của mình
   // ngay khi thấy chính câu họ đã gõ.
   const cuPhap = data.items.find((item) => item.sourceComment)?.sourceComment;
@@ -161,10 +196,14 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
         ...diaChi,
         note: note.trim(),
         paymentMethod: payment,
+        // Gửi đúng giá khách đang thấy; server báo giá lại và từ chối nếu lệch.
+        shippingOption: ship.luaChon,
       });
       reload();
     } catch (cause) {
       setSubmitError(loiXacNhan(cause, data?.items ?? []));
+      // Phí đổi giữa chừng: lấy bảng giá mới để khách chọn lại.
+      if (laLoiDoiGia(cause)) ship.reload();
       // Tải lại để trang phản ánh đúng trạng thái thật — form giữ
       // nguyên những gì khách đã gõ.
       reload();
@@ -328,6 +367,15 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
                 <div><dt>Người nhận</dt><dd>{data.recipientName}</dd></div>
                 <div><dt>Số điện thoại</dt><dd>{data.recipientPhone}</dd></div>
                 <div><dt>Địa chỉ</dt><dd>{data.shippingAddress}</dd></div>
+                {data.shippingCarrier && (
+                  <div>
+                    <dt>Vận chuyển</dt>
+                    <dd>
+                      {tenHang(data.shippingCarrier, data.shippingServiceCode)}
+                      {phiDaGhi > 0 ? ` · ${formatMoney(phiDaGhi)}` : " · miễn phí"}
+                    </dd>
+                  </div>
+                )}
               </dl>
             ) : <p className="muted">Chưa có thông tin nhận hàng.</p>}
           </Card>
@@ -343,6 +391,13 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
           {canConfirm && (
             <Card>
               <GiuCho soMon={soMon} />
+            </Card>
+          )}
+
+          {canConfirm && (
+            <Card>
+              <h2>Phương thức vận chuyển</h2>
+              <KhoiChonVanChuyen ship={ship} />
             </Card>
           )}
 
@@ -373,27 +428,30 @@ export function CustomerOrderConfirmation({ token }: { token: string }) {
             <div className={styles.tomTat}>
               <div>
                 <span>Tạm tính ({soMon} sản phẩm)</span>
-                <span>{formatMoney(Number(data.totalAmount))}</span>
+                <span>{formatMoney(tienHang)}</span>
               </div>
-              {/* Phí vận chuyển chưa tính được ở bước này: hãng báo giá
-                  theo địa chỉ, mà khách còn đang gõ. Nói thẳng thay vì
-                  hiện một con số rồi đổi sau. */}
-              <div className="muted">
+              <div className={phuongAnChon || !canConfirm ? undefined : "muted"} data-testid="phi-van-chuyen">
                 <span>Phí vận chuyển</span>
-                <span>shop báo sau khi chốt địa chỉ</span>
+                <span>
+                  {canConfirm
+                    ? chuPhiShip(ship, formatMoney)
+                    : data.shippingCarrier
+                      ? phiDaGhi > 0 ? formatMoney(phiDaGhi) : "Miễn phí"
+                      : "shop báo sau khi chốt địa chỉ"}
+                </span>
               </div>
             </div>
             <div className={styles.total}>
-              <span>Tổng tiền hàng</span>
-              <strong>{formatMoney(Number(data.totalAmount))}</strong>
+              <span>Tổng thanh toán</span>
+              <strong data-testid="tong-thanh-toan">{formatMoney(tongThanhToan)}</strong>
             </div>
 
             {submitError && <div className="notice notice-danger" role="alert">{submitError}</div>}
 
             {canConfirm && (
               <>
-                <Button type="submit" form="form-xac-nhan" disabled={busy || !addressReady}>
-                  {busy ? "Đang xác nhận…" : "Xác nhận đơn hàng"}
+                <Button type="submit" form="form-xac-nhan" disabled={busy || !addressReady || dangLayPhi}>
+                  {busy ? "Đang xác nhận…" : dangLayPhi ? "Đang lấy phí vận chuyển…" : "Xác nhận đơn hàng"}
                 </Button>
                 <p className={styles.camKet}>
                   Bằng việc xác nhận, bạn đồng ý với điều khoản mua hàng
